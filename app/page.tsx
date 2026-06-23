@@ -13,6 +13,7 @@ export default function Home() {
           <NavItem icon="📁" label="Mis proyectos" />
           <NavItem icon="🕐" label="Recientes" />
           <div className="text-blue-500 text-xs uppercase tracking-widest px-2 py-2 mt-3">Módulos</div>
+          <NavItem icon="⊛" label="Estática" />
           <NavItem icon="━" label="Vigas" />
           <NavItem icon="⬡" label="Pórticos" />
           <NavItem icon="△" label="Armaduras" />
@@ -48,6 +49,13 @@ export default function Home() {
         </div>
 
         <div className="flex-1 overflow-y-auto p-6">
+
+          {/* Estática */}
+          <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">FUNDAMENTOS</div>
+          <div className="grid grid-cols-3 gap-3 mb-6">
+            <ModuleCard color="bg-slate-50" iconColor="text-slate-700" icon="⊛" name="Estática" desc="Vectores, equilibrio 2D y 3D, cables, pares, centroides, momentos de inercia" tag="6 subtemas" />
+          </div>
+
           {/* Estructuras */}
           <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">ANÁLISIS ESTRUCTURAL</div>
           <div className="grid grid-cols-3 gap-3 mb-6">
@@ -94,6 +102,7 @@ export default function Home() {
             <StatCard label="Proyectos activos" value="5" sub="En progreso" />
             <StatCard label="PDFs exportados" value="12" sub="Memorias de cálculo" />
           </div>
+
         </div>
       </div>
     </div>
