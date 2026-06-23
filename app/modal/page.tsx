@@ -1,65 +1,33 @@
+import Sidebar from "../components/Sidebar"
+
 export default function Modal() {
   return (
     <div className="flex h-screen bg-gray-100 font-sans">
-      <div className="w-56 bg-blue-900 flex flex-col flex-shrink-0">
-        <div className="px-4 py-5 border-b border-blue-800">
-          <a href="/" className="text-blue-100 font-medium text-base">◈ NodoCalc</a>
-          <div className="text-blue-400 text-xs mt-1">Plataforma de cálculo para ingeniería civil</div>
-        </div>
-        <div className="p-2 flex-1 overflow-y-auto">
-          <div className="text-blue-500 text-xs uppercase tracking-widest px-2 py-2">Principal</div>
-          <a href="/" className="flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer text-sm mb-0.5 text-blue-300 hover:bg-blue-800">⊞ Dashboard</a>
-          <div className="text-blue-500 text-xs uppercase tracking-widest px-2 py-2 mt-3">Módulos</div>
-          <a href="/estatica" className="flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer text-sm mb-0.5 text-blue-300 hover:bg-blue-800">⊛ Estática</a>
-          <a href="/vigas" className="flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer text-sm mb-0.5 text-blue-300 hover:bg-blue-800">━ Vigas</a>
-          <a href="/porticos" className="flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer text-sm mb-0.5 text-blue-300 hover:bg-blue-800">⬡ Pórticos</a>
-          <a href="/armaduras" className="flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer text-sm mb-0.5 text-blue-300 hover:bg-blue-800">△ Armaduras</a>
-          <a href="/matricial" className="flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer text-sm mb-0.5 text-blue-300 hover:bg-blue-800">⊞ Método Matricial</a>
-          <a href="/pandeo" className="flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer text-sm mb-0.5 text-blue-300 hover:bg-blue-800">⊟ Pandeo</a>
-          <a href="/dinamica" className="flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer text-sm mb-0.5 text-blue-300 hover:bg-blue-800">〜 Dinámica Estructural</a>
-          <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm mb-0.5 bg-blue-700 text-blue-100">◎ Análisis Modal</div>
-          <div className="flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer text-sm mb-0.5 text-blue-300 hover:bg-blue-800">⊡ Geotecnia</div>
-          <div className="flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer text-sm mb-0.5 text-blue-300 hover:bg-blue-800">💧 Hidráulica</div>
-          <div className="flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer text-sm mb-0.5 text-blue-300 hover:bg-blue-800">🏗 Diseño Estructural</div>
-          <div className="flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer text-sm mb-0.5 text-blue-300 hover:bg-blue-800">🔧 Herramientas</div>
-        </div>
-        <div className="p-2 border-t border-blue-800">
-          <div className="flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-blue-800 cursor-pointer">
-            <div className="w-7 h-7 rounded-full bg-blue-700 flex items-center justify-center text-blue-100 text-xs font-medium">JL</div>
-            <span className="text-blue-300 text-xs">Julián León</span>
-          </div>
-        </div>
-      </div>
-
+      <Sidebar />
       <div className="flex-1 flex flex-col overflow-hidden">
         <div className="bg-white border-b border-gray-200 px-6 py-4">
           <span className="text-gray-400 text-sm">Módulos /</span>
           <span className="text-gray-800 font-medium text-base ml-1">Análisis Modal</span>
         </div>
-
         <div className="flex-1 overflow-y-auto p-6">
-
           <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">MATRIZ DE RIGIDEZ</div>
           <div className="grid grid-cols-2 gap-4 mb-6">
             <MetodoCard nombre="Matriz de rigidez de pórtico plano" desc="Ensamblaje de la matriz de rigidez global de un pórtico plano multinivel por método matricial." tag="Rigidez" />
             <MetodoCard nombre="Matriz de masas" desc="Matriz de masas concentradas y consistentes para pórticos multinivel." tag="Masas" />
           </div>
-
           <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">ANÁLISIS DE FRECUENCIAS Y MODOS</div>
           <div className="grid grid-cols-2 gap-4 mb-6">
-            <MetodoCard nombre="Frecuencias naturales" desc="Determinación de frecuencias naturales ωi resolviendo el problema de valores propios det(K - ω²M) = 0." tag="Frecuencias" />
+            <MetodoCard nombre="Frecuencias naturales" desc="Determinación de frecuencias naturales ωi resolviendo el problema de valores propios." tag="Frecuencias" />
             <MetodoCard nombre="Modos de vibración" desc="Vectores propios normalizados para cada modo de vibración de la estructura." tag="Modos" />
             <MetodoCard nombre="Método de la potencia" desc="Iteración para obtener la frecuencia fundamental y el modo dominante." tag="Numérico" />
             <MetodoCard nombre="Método de Jacobi" desc="Rotaciones de Jacobi para obtener todos los valores y vectores propios simultáneamente." tag="Numérico" />
           </div>
-
           <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">RESPUESTA DINÁMICA</div>
           <div className="grid grid-cols-2 gap-4">
             <MetodoCard nombre="Superposición modal" desc="Descomposición de la respuesta en contribuciones modales independientes." tag="Respuesta" />
             <MetodoCard nombre="Espectro de diseño modal" desc="Combinación modal CQC y SRSS para respuesta espectral sísmica." tag="Sísmica" />
             <MetodoCard nombre="Participación de masas" desc="Factor de participación modal y masa participativa por modo." tag="Respuesta" />
           </div>
-
         </div>
       </div>
     </div>
