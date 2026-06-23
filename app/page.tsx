@@ -53,7 +53,7 @@ export default function Home() {
           {/* Estática */}
           <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">FUNDAMENTOS</div>
           <div className="grid grid-cols-3 gap-3 mb-6">
-            <ModuleCard color="bg-slate-50" iconColor="text-slate-700" icon="⊛" name="Estática" desc="Vectores, equilibrio 2D y 3D, cables, pares, centroides, momentos de inercia" tag="6 subtemas" />
+            <a href="/estatica"><ModuleCard color="bg-slate-50" iconColor="text-slate-700" icon="⊛" name="Estática" desc="Vectores, equilibrio 2D y 3D, cables, pares, centroides, momentos de inercia" tag="6 subtemas" /></a>
           </div>
 
           {/* Estructuras */}
