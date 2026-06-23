@@ -1,7 +1,6 @@
 export default function Home() {
   return (
     <div className="flex h-screen bg-gray-100 font-sans">
-      {/* Sidebar */}
       <div className="w-56 bg-blue-900 flex flex-col flex-shrink-0">
         <div className="px-4 py-5 border-b border-blue-800">
           <div className="text-blue-100 font-medium text-base">◈ NodoCalc</div>
@@ -13,18 +12,18 @@ export default function Home() {
           <NavItem icon="📁" label="Mis proyectos" />
           <NavItem icon="🕐" label="Recientes" />
           <div className="text-blue-500 text-xs uppercase tracking-widest px-2 py-2 mt-3">Módulos</div>
-          <NavItem icon="⊛" label="Estática" />
-          <NavItem icon="━" label="Vigas" />
-          <NavItem icon="⬡" label="Pórticos" />
-          <NavItem icon="△" label="Armaduras" />
-          <NavItem icon="⊞" label="Método Matricial" />
-          <NavItem icon="⊟" label="Pandeo" />
-          <NavItem icon="〜" label="Dinámica Estructural" />
-          <NavItem icon="◎" label="Análisis Modal" />
-          <NavItem icon="◈" label="Section Builder" />
-          <NavItem icon="▣" label="Building" />
-          <NavItem icon="⊡" label="Geotecnia" />
-          <NavItem icon="💧" label="Hidráulica" />
+          <a href="/estatica"><NavItem icon="⊛" label="Estática" /></a>
+          <a href="/vigas"><NavItem icon="━" label="Vigas" /></a>
+          <a href="/porticos"><NavItem icon="⬡" label="Pórticos" /></a>
+          <a href="/armaduras"><NavItem icon="△" label="Armaduras" /></a>
+          <a href="/matricial"><NavItem icon="⊞" label="Método Matricial" /></a>
+          <a href="/pandeo"><NavItem icon="⊟" label="Pandeo" /></a>
+          <a href="/dinamica"><NavItem icon="〜" label="Dinámica Estructural" /></a>
+          <a href="/modal"><NavItem icon="◎" label="Análisis Modal" /></a>
+          <a href="/geotecnia"><NavItem icon="⊡" label="Geotecnia" /></a>
+          <a href="/hidraulica"><NavItem icon="💧" label="Hidráulica" /></a>
+          <a href="/diseno"><NavItem icon="🏗" label="Diseño Estructural" /></a>
+          <a href="/herramientas"><NavItem icon="🔧" label="Herramientas" /></a>
           <div className="text-blue-500 text-xs uppercase tracking-widest px-2 py-2 mt-3">Cuenta</div>
           <NavItem icon="⚙" label="Ajustes" />
         </div>
@@ -36,7 +35,6 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Main */}
       <div className="flex-1 flex flex-col overflow-hidden">
         <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
           <span className="text-gray-800 font-medium text-base">Dashboard</span>
@@ -50,44 +48,42 @@ export default function Home() {
 
         <div className="flex-1 overflow-y-auto p-6">
 
-          {/* Estática */}
           <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">FUNDAMENTOS</div>
           <div className="grid grid-cols-3 gap-3 mb-6">
             <a href="/estatica"><ModuleCard color="bg-slate-50" iconColor="text-slate-700" icon="⊛" name="Estática" desc="Vectores, equilibrio 2D y 3D, cables, pares, centroides, momentos de inercia" tag="6 subtemas" /></a>
           </div>
 
-          {/* Estructuras */}
           <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">ANÁLISIS ESTRUCTURAL</div>
           <div className="grid grid-cols-3 gap-3 mb-6">
             <a href="/vigas"><ModuleCard color="bg-blue-50" iconColor="text-blue-700" icon="━" name="Vigas" desc="Doble integración, Cross, Tres momentos, Slope-Deflection, Kani, Castigliano" tag="9 métodos" /></a>
-            <ModuleCard color="bg-teal-50" iconColor="text-teal-700" icon="⬡" name="Pórticos" desc="Cross, Slope-Deflection, Kani — con y sin desplazamiento lateral" tag="5 métodos" />
-            <ModuleCard color="bg-indigo-50" iconColor="text-indigo-700" icon="△" name="Armaduras" desc="Nodos, secciones, Maxwell-Cremona, trabajo virtual, Castigliano" tag="7 métodos" />
+            <a href="/porticos"><ModuleCard color="bg-teal-50" iconColor="text-teal-700" icon="⬡" name="Pórticos" desc="Cross, Slope-Deflection, Kani — con y sin desplazamiento lateral" tag="5 métodos" /></a>
+            <a href="/armaduras"><ModuleCard color="bg-indigo-50" iconColor="text-indigo-700" icon="△" name="Armaduras" desc="Nodos, secciones, Maxwell-Cremona, trabajo virtual, Castigliano" tag="7 métodos" /></a>
           </div>
 
-          {/* Avanzado */}
           <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">ANÁLISIS AVANZADO</div>
           <div className="grid grid-cols-3 gap-3 mb-6">
-            <ModuleCard color="bg-violet-50" iconColor="text-violet-700" icon="⊞" name="Método Matricial" desc="Vigas, pórticos y armaduras planas y espaciales — casos paramétricos" tag="5 tipos" />
-            <ModuleCard color="bg-orange-50" iconColor="text-orange-700" icon="⊟" name="Pandeo" desc="Euler, Johnson, Rankine, excentricidad, pandeo lateral torsional" tag="8 métodos" />
-            <ModuleCard color="bg-rose-50" iconColor="text-rose-700" icon="〜" name="Dinámica Estructural" desc="1GDL con/sin amortiguamiento, respuesta sísmica, espectros" tag="5 métodos" />
+            <a href="/matricial"><ModuleCard color="bg-violet-50" iconColor="text-violet-700" icon="⊞" name="Método Matricial" desc="Vigas, pórticos y armaduras planas y espaciales — casos paramétricos" tag="5 tipos" /></a>
+            <a href="/pandeo"><ModuleCard color="bg-orange-50" iconColor="text-orange-700" icon="⊟" name="Pandeo" desc="Euler, Johnson, Rankine, excentricidad, pandeo lateral torsional" tag="8 métodos" /></a>
+            <a href="/dinamica"><ModuleCard color="bg-rose-50" iconColor="text-rose-700" icon="〜" name="Dinámica Estructural" desc="1GDL con/sin amortiguamiento, respuesta sísmica, espectros" tag="5 métodos" /></a>
           </div>
 
-          {/* Herramientas */}
-          <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">HERRAMIENTAS</div>
+          <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">DISEÑO Y MODAL</div>
           <div className="grid grid-cols-3 gap-3 mb-6">
-            <ModuleCard color="bg-cyan-50" iconColor="text-cyan-700" icon="◎" name="Análisis Modal" desc="Matriz de rigidez, frecuencias, modos, superposición modal" tag="Pórticos multinivel" />
-            <ModuleCard color="bg-emerald-50" iconColor="text-emerald-700" icon="◈" name="Section Builder" desc="Propiedades geométricas de secciones — conectado a todos los módulos" tag="I, A, S, Z, r" />
-            <ModuleCard color="bg-sky-50" iconColor="text-sky-700" icon="▣" name="Building" desc="Modelado de edificios por niveles, masas y rigideces por piso" tag="Multinivel" />
+            <a href="/modal"><ModuleCard color="bg-cyan-50" iconColor="text-cyan-700" icon="◎" name="Análisis Modal" desc="Matriz de rigidez, frecuencias, modos, superposición modal" tag="Pórticos multinivel" /></a>
+            <a href="/diseno"><ModuleCard color="bg-green-50" iconColor="text-green-700" icon="🏗" name="Diseño Estructural" desc="Vigas, losas, columnas, zapatas en concreto reforzado ACI/NSR-10" tag="Concreto reforzado" /></a>
           </div>
 
-          {/* Geotecnia e Hidráulica */}
           <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">GEOTECNIA E HIDRÁULICA</div>
           <div className="grid grid-cols-3 gap-3 mb-6">
-            <ModuleCard color="bg-amber-50" iconColor="text-amber-700" icon="⊡" name="Geotecnia" desc="Relaciones de fase, esfuerzos, consolidación, cimentaciones, taludes" tag="10 subtemas" />
-            <ModuleCard color="bg-blue-50" iconColor="text-blue-600" icon="💧" name="Hidráulica" desc="Fluidos, Bernoulli, tuberías, canales, hidrología" tag="7 subtemas" />
+            <a href="/geotecnia"><ModuleCard color="bg-amber-50" iconColor="text-amber-700" icon="⊡" name="Geotecnia" desc="Relaciones de fase, esfuerzos, consolidación, cimentaciones, taludes" tag="10 subtemas" /></a>
+            <a href="/hidraulica"><ModuleCard color="bg-blue-50" iconColor="text-blue-600" icon="💧" name="Hidráulica" desc="Fluidos, Bernoulli, tuberías, canales, hidrología" tag="7 subtemas" /></a>
           </div>
 
-          {/* Recientes */}
+          <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">HERRAMIENTAS</div>
+          <div className="grid grid-cols-3 gap-3 mb-6">
+            <a href="/herramientas"><ModuleCard color="bg-gray-50" iconColor="text-gray-600" icon="🔧" name="Herramientas" desc="Clasificación de suelos, secciones, catálogos de perfiles, conversión de unidades" tag="Apoyo" /></a>
+          </div>
+
           <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">CÁLCULOS RECIENTES</div>
           <div className="flex flex-col gap-2 mb-6">
             <RecentItem name="Pórtico de 2 pisos — método matricial" time="Hace 2 horas" badge="Pórticos" badgeColor="bg-teal-100 text-teal-800" />
@@ -95,7 +91,6 @@ export default function Home() {
             <RecentItem name="Análisis espectral — edificio 8 pisos" time="Hace 3 días" badge="Dinámica" badgeColor="bg-rose-100 text-rose-800" />
           </div>
 
-          {/* Stats */}
           <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">RESUMEN</div>
           <div className="grid grid-cols-3 gap-3">
             <StatCard label="Cálculos realizados" value="24" sub="Este mes" />
