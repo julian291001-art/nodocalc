@@ -37,12 +37,11 @@ export default function Home() {
 
       <div className="flex-1 flex flex-col overflow-hidden">
         <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-          <span className="text-gray-800 font-medium text-base">Dashboard</span>
-          <div className="flex items-center gap-3">
-            <a href="/precios"><span className="text-xs bg-blue-100 text-blue-800 px-3 py-1 rounded-full font-medium cursor-pointer hover:bg-blue-200">Plan Pro</span></a>
-            <button className="flex items-center gap-2 bg-blue-700 text-white text-sm px-4 py-2 rounded-lg hover:bg-blue-800">
-              + Nuevo cálculo
-            </button>
+            <span className="text-gray-800 font-medium text-base">Dashboard</span>
+            <div className="flex items-center gap-3">
+            <a href="/precios"><span className="text-xs bg-blue-100 text-blue-800 px-3 py-1 rounded-full font-medium cursor-pointer hover:bg-blue-200">Ver planes</span></a>
+            <a href="/sign-in" className="text-sm text-gray-600 hover:text-gray-800 px-3 py-2">Iniciar sesión</a>
+            <a href="/sign-up" className="flex items-center gap-2 bg-blue-700 text-white text-sm px-4 py-2 rounded-lg hover:bg-blue-800">Registrarse</a>
           </div>
         </div>
 
