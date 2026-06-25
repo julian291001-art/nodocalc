@@ -56,9 +56,6 @@ function getPoligonos(plantilla: Plantilla, p: Params): { pts: Poligono; signo: 
       ]
 
     case "I": {
-      // ala inferior desde x=0
-      // alma desde x=x_alma
-      // ala superior desde x=x_sup
       const hTotal = tf_inf + hw + tf_sup
       return [
         { pts: [{ x: 0, y: 0 }, { x: bf_inf, y: 0 }, { x: bf_inf, y: tf_inf }, { x: 0, y: tf_inf }], signo: 1 },
@@ -76,16 +73,13 @@ function getPoligonos(plantilla: Plantilla, p: Params): { pts: Poligono; signo: 
     }
 
     case "C": {
-      // alma desde x=0, ala inferior desde x=0, ala superior desde x=x_sup
       const hTotal = tf_inf + hw + tf_sup
+      const maxBf = Math.max(bf_sup, bf_inf)
       return [{
         pts: [
-          { x: 0, y: 0 }, { x: bf_inf, y: 0 }, { x: bf_inf, y: tf_inf },
+          { x: 0, y: 0 }, { x: maxBf, y: 0 }, { x: maxBf, y: tf_inf },
           { x: tw, y: tf_inf }, { x: tw, y: tf_inf + hw },
-          { x: x_sup + bf_sup, y: tf_inf + hw }, { x: x_sup + bf_sup, y: hTotal },
-          { x: x_sup, y: hTotal }, { x: x_sup, y: tf_inf + hw },
-          { x: tw, y: tf_inf + hw }, { x: tw, y: tf_inf },
-          { x: bf_inf, y: tf_inf }, { x: bf_inf, y: 0 },
+          { x: maxBf, y: tf_inf + hw }, { x: maxBf, y: hTotal }, { x: 0, y: hTotal },
         ], signo: 1
       }]
     }
@@ -108,7 +102,7 @@ function getPoligonos(plantilla: Plantilla, p: Params): { pts: Poligono; signo: 
     }
 
     case "Z": {
-      // Z correcta: ala inf a la izquierda, alma vertical, ala sup a la derecha
+      // Z: ala inf izquierda, alma vertical, ala sup derecha
       const hTotal = tf_inf + hw + tf_sup
       return [{
         pts: [
@@ -236,13 +230,12 @@ const plantillasConfig: Record<Plantilla, { label: string; campos: { key: string
   C: {
     label: "Canal C asimétrico",
     campos: [
-      { key: "bf_inf", labelHtml: "Ancho ala inferior b<sub>f,inf</sub> (cm)", default: 10 },
-      { key: "tf_inf", labelHtml: "Espesor ala inferior t<sub>f,inf</sub> (cm)", default: 1 },
+      { key: "bf_sup", labelHtml: "Ancho ala superior b<sub>f,sup</sub> (cm)", default: 10 },
+      { key: "tf_sup", labelHtml: "Espesor ala superior t<sub>f,sup</sub> (cm)", default: 1 },
       { key: "tw", labelHtml: "Espesor alma t<sub>w</sub> (cm)", default: 1 },
       { key: "hw", labelHtml: "Alto alma h<sub>w</sub> (cm)", default: 20 },
-      { key: "x_sup", labelHtml: "Posición ala sup x<sub>sup</sub> desde borde izq. alma (cm)", default: 0 },
-      { key: "bf_sup", labelHtml: "Ancho ala superior b<sub>f,sup</sub> (cm)", default: 8 },
-      { key: "tf_sup", labelHtml: "Espesor ala superior t<sub>f,sup</sub> (cm)", default: 1 },
+      { key: "bf_inf", labelHtml: "Ancho ala inferior b<sub>f,inf</sub> (cm)", default: 8 },
+      { key: "tf_inf", labelHtml: "Espesor ala inferior t<sub>f,inf</sub> (cm)", default: 1 },
     ]
   },
   cajon: {
@@ -271,7 +264,7 @@ const plantillasConfig: Record<Plantilla, { label: string; campos: { key: string
   coordenadas: { label: "Por coordenadas", campos: [] },
 }
 
-// ── Componente de cota SVG ─────────────────────────────────────────────────
+// ── Cota SVG ───────────────────────────────────────────────────────────────
 function Cota({ x1, y1, x2, y2, label, off = 14 }: {
   x1: number; y1: number; x2: number; y2: number; label: string; off?: number
 }) {
@@ -300,14 +293,15 @@ function Cota({ x1, y1, x2, y2, label, off = 14 }: {
   )
 }
 
-// ── Esquemas de referencia SVG ─────────────────────────────────────────────
+// ── Esquemas SVG con subíndices completos ──────────────────────────────────
 function EsquemaReferencia({ plantilla }: { plantilla: Plantilla }) {
   switch (plantilla) {
+
     case "rectangular": return (
       <svg viewBox="0 0 220 180" className="w-full h-40">
         <rect x="40" y="20" width="120" height="110" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
         <Cota x1={40} y1={148} x2={160} y2={148} label="b" />
-        <Cota x1={178} y1={20} x2={178} y2={130} label="h" off={14} />
+        <Cota x1={178} y1={20} x2={178} y2={130} label="h" off={12} />
       </svg>
     )
 
@@ -326,124 +320,139 @@ function EsquemaReferencia({ plantilla }: { plantilla: Plantilla }) {
         <circle cx="100" cy="90" r="48" fill="white" stroke="#1d4ed8" strokeWidth="1.5" />
         <line x1="100" y1="90" x2="165" y2="90" stroke="#dc2626" strokeWidth="1.2" strokeDasharray="4,2" />
         <circle cx="100" cy="90" r="3" fill="#dc2626" />
-        <text x="132" y="82" fontSize="11" fill="#dc2626" fontStyle="italic" fontWeight="600">r</text>
-        <line x1="148" y1="93" x2="165" y2="93" stroke="#e11d48" strokeWidth="2" />
-        <text x="157" y="107" fontSize="10" fill="#e11d48" fontStyle="italic" fontWeight="600">t</text>
+        <text x="128" y="82" fontSize="10" fill="#dc2626" fontStyle="italic" fontWeight="600">r</text>
+        {/* cota t */}
+        <line x1="148" y1="90" x2="165" y2="90" stroke="#e11d48" strokeWidth="1.5" />
+        <line x1="148" y1="86" x2="148" y2="94" stroke="#e11d48" strokeWidth="1" />
+        <line x1="165" y1="86" x2="165" y2="94" stroke="#e11d48" strokeWidth="1" />
+        <text x="157" y="104" fontSize="9" fill="#e11d48" fontStyle="italic" fontWeight="600">t</text>
       </svg>
     )
 
     case "I": return (
-      <svg viewBox="0 0 280 260" className="w-full h-52">
+      <svg viewBox="0 0 300 280" className="w-full h-56">
         {/* ala inferior */}
-        <rect x="20" y="205" width="130" height="18" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
-        {/* alma — desplazada con x_alma */}
-        <rect x="55" y="80" width="18" height="125" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
-        {/* ala superior — desplazada con x_sup */}
-        <rect x="40" y="62" width="100" height="18" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
+        <rect x="20" y="222" width="130" height="18" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
+        {/* alma desplazada x_alma desde izq ala inf */}
+        <rect x="57" y="90" width="16" height="132" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
+        {/* ala superior desplazada x_sup desde izq ala inf */}
+        <rect x="40" y="72" width="100" height="18" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
 
         {/* cotas ala inferior */}
-        <Cota x1={20} y1={238} x2={150} y2={238} label="b<sub>f,inf</sub>" />
-        <Cota x1={165} y1={205} x2={165} y2={223} label="t<sub>f,inf</sub>" off={24} />
+        <Cota x1={20} y1={254} x2={150} y2={254} label="b<sub>f,inf</sub>" />
+        <Cota x1={168} y1={222} x2={168} y2={240} label="t<sub>f,inf</sub>" off={26} />
 
-        {/* cota x_alma */}
-        <Cota x1={20} y1={195} x2={55} y2={195} label="x<sub>alma</sub>" />
+        {/* cota x_alma — desde borde izq ala inf hasta borde izq alma */}
+        <Cota x1={20} y1={212} x2={57} y2={212} label="x<sub>alma</sub>" />
 
         {/* cotas alma */}
-        <Cota x1={55} y1={145} x2={73} y2={145} label="t<sub>w</sub>" />
-        <Cota x1={190} y1={80} x2={190} y2={205} label="h<sub>w</sub>" off={14} />
+        <Cota x1={57} y1={155} x2={73} y2={155} label="t<sub>w</sub>" />
+        <Cota x1={185} y1={90} x2={185} y2={222} label="h<sub>w</sub>" off={14} />
 
-        {/* cota x_sup */}
-        <Cota x1={20} y1={72} x2={40} y2={72} label="x<sub>sup</sub>" />
+        {/* cota x_sup — desde borde izq ala inf hasta borde izq ala sup */}
+        <Cota x1={20} y1={82} x2={40} y2={82} label="x<sub>sup</sub>" />
 
         {/* cotas ala superior */}
-        <Cota x1={40} y1={50} x2={140} y2={50} label="b<sub>f,sup</sub>" />
-        <Cota x1={165} y1={62} x2={165} y2={80} label="t<sub>f,sup</sub>" off={24} />
+        <Cota x1={40} y1={60} x2={140} y2={60} label="b<sub>f,sup</sub>" />
+        <Cota x1={168} y1={72} x2={168} y2={90} label="t<sub>f,sup</sub>" off={26} />
       </svg>
     )
 
     case "T": return (
-      <svg viewBox="0 0 220 200" className="w-full h-40">
-        <rect x="20" y="20" width="140" height="20" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
-        <rect x="72" y="40" width="26" height="120" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
-        <Cota x1={20} y1={8} x2={160} y2={8} label="b<sub>f</sub>" />
-        <Cota x1={170} y1={20} x2={170} y2={40} label="t<sub>f</sub>" off={16} />
-        <Cota x1={170} y1={40} x2={170} y2={160} label="h<sub>w</sub>" off={14} />
-        <Cota x1={72} y1={110} x2={98} y2={110} label="t<sub>w</sub>" />
+      <svg viewBox="0 0 230 210" className="w-full h-44">
+        {/* ala */}
+        <rect x="20" y="20" width="150" height="18" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
+        {/* alma centrada */}
+        <rect x="82" y="38" width="26" height="130" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
+        {/* cotas */}
+        <Cota x1={20} y1={8} x2={170} y2={8} label="b<sub>f</sub>" />
+        <Cota x1={185} y1={20} x2={185} y2={38} label="t<sub>f</sub>" off={16} />
+        <Cota x1={185} y1={38} x2={185} y2={168} label="h<sub>w</sub>" off={14} />
+        <Cota x1={82} y1={120} x2={108} y2={120} label="t<sub>w</sub>" />
       </svg>
     )
 
     case "L": return (
-      <svg viewBox="0 0 200 200" className="w-full h-40">
-        <polygon points="20,170 20,20 38,20 38,152 160,152 160,170" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
-        <Cota x1={20} y1={185} x2={160} y2={185} label="b" />
-        <Cota x1={175} y1={20} x2={175} y2={170} label="h" off={14} />
-        <Cota x1={20} y1={110} x2={38} y2={110} label="t" />
+      <svg viewBox="0 0 210 210" className="w-full h-44">
+        <polygon points="20,180 20,20 38,20 38,162 170,162 170,180" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
+        <Cota x1={20} y1={196} x2={170} y2={196} label="b" />
+        <Cota x1={185} y1={20} x2={185} y2={180} label="h" off={12} />
+        <Cota x1={20} y1={115} x2={38} y2={115} label="t" />
       </svg>
     )
 
     case "C": return (
-      <svg viewBox="0 0 270 260" className="w-full h-52">
-        {/* ala inferior */}
-        <rect x="20" y="210" width="90" height="16" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
+      <svg viewBox="0 0 270 270" className="w-full h-56">
+        {/* forma C: alma izq, ala inf abajo, ala sup arriba */}
+        {/* ala superior */}
+        <rect x="20" y="20" width="120" height="18" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
         {/* alma */}
-        <rect x="20" y="80" width="16" height="130" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
-        {/* ala superior desplazada con x_sup */}
-        <rect x="36" y="64" width="90" height="16" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
-
-        {/* cotas ala inferior */}
-        <Cota x1={20} y1={242} x2={110} y2={242} label="b<sub>f,inf</sub>" />
-        <Cota x1={125} y1={210} x2={125} y2={226} label="t<sub>f,inf</sub>" off={24} />
-
-        {/* cota alma */}
-        <Cota x1={20} y1={145} x2={36} y2={145} label="t<sub>w</sub>" />
-        <Cota x1={145} y1={80} x2={145} y2={210} label="h<sub>w</sub>" off={14} />
-
-        {/* cota x_sup */}
-        <Cota x1={20} y1={74} x2={36} y2={74} label="x<sub>sup</sub>" />
+        <rect x="20" y="38" width="16" height="155" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
+        {/* ala inferior */}
+        <rect x="20" y="193" width="100" height="18" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
 
         {/* cotas ala superior */}
-        <Cota x1={36} y1={52} x2={126} y2={52} label="b<sub>f,sup</sub>" />
-        <Cota x1={145} y1={64} x2={145} y2={80} label="t<sub>f,sup</sub>" off={24} />
+        <Cota x1={20} y1={8} x2={140} y2={8} label="b<sub>f,sup</sub>" />
+        <Cota x1={155} y1={20} x2={155} y2={38} label="t<sub>f,sup</sub>" off={26} />
+
+        {/* cotas alma */}
+        <Cota x1={20} y1={115} x2={36} y2={115} label="t<sub>w</sub>" />
+        <Cota x1={155} y1={38} x2={155} y2={193} label="h<sub>w</sub>" off={14} />
+
+        {/* cotas ala inferior */}
+        <Cota x1={20} y1={228} x2={120} y2={228} label="b<sub>f,inf</sub>" />
+        <Cota x1={155} y1={193} x2={155} y2={211} label="t<sub>f,inf</sub>" off={26} />
       </svg>
     )
 
     case "cajon": return (
-      <svg viewBox="0 0 260 230" className="w-full h-48">
-        <polygon points="20,200 40,20 200,20 220,200" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
-        <polygon points="38,182 55,38 185,38 202,182" fill="white" stroke="#1d4ed8" strokeWidth="1.5" />
-        <Cota x1={40} y1={8} x2={200} y2={8} label="b<sub>sup</sub>" />
-        <Cota x1={20} y1={218} x2={220} y2={218} label="b<sub>inf</sub>" />
-        <Cota x1={230} y1={20} x2={230} y2={200} label="h" off={14} />
+      <svg viewBox="0 0 270 240" className="w-full h-48">
+        {/* exterior */}
+        <rect x="20" y="20" width="180" height="180" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
+        {/* interior hueco */}
+        <rect x="38" y="38" width="144" height="144" fill="white" stroke="#1d4ed8" strokeWidth="1.5" />
+
+        {/* cotas exteriores */}
+        <Cota x1={20} y1={8} x2={200} y2={8} label="b<sub>sup</sub> = b<sub>inf</sub>" />
+        <Cota x1={215} y1={20} x2={215} y2={200} label="h" off={12} />
+
+        {/* cotas espesores */}
         <Cota x1={20} y1={110} x2={38} y2={110} label="t<sub>izq</sub>" />
-        <Cota x1={40} y1={20} x2={55} y2={38} label="t<sub>sup</sub>" />
-        <Cota x1={185} y1={38} x2={202} y2={20} label="t<sub>der</sub>" />
-        <Cota x1={38} y1={182} x2={55} y2={200} label="t<sub>inf</sub>" />
+        <Cota x1={110} y1={20} x2={110} y2={38} label="t<sub>sup</sub>" />
+        <Cota x1={182} y1={110} x2={200} y2={110} label="t<sub>der</sub>" />
+        <Cota x1={110} y1={182} x2={110} y2={200} label="t<sub>inf</sub>" />
       </svg>
     )
 
     case "Z": return (
-      <svg viewBox="0 0 260 260" className="w-full h-52">
+      <svg viewBox="0 0 280 280" className="w-full h-56">
+        {/*
+          Z correcta:
+          - ala inferior: desde x=0 hasta x=bf_inf, altura tf_inf
+          - alma: desde x=0 hasta x=tw, desde y=tf_inf hasta y=tf_inf+hw
+          - ala superior: desde x=tw hasta x=tw+bf_sup, desde y=tf_inf+hw hasta y=tf_inf+hw+tf_sup
+        */}
         {/* ala inferior izquierda */}
-        <rect x="20" y="205" width="90" height="16" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
+        <rect x="20" y="215" width="110" height="18" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
         {/* alma */}
-        <rect x="20" y="80" width="16" height="125" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
+        <rect x="20" y="60" width="16" height="155" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
         {/* ala superior derecha */}
-        <rect x="36" y="64" width="90" height="16" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
+        <rect x="36" y="42" width="110" height="18" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
 
         {/* cotas ala inferior */}
-        <Cota x1={20} y1={238} x2={110} y2={238} label="b<sub>f,inf</sub>" />
-        <Cota x1={125} y1={205} x2={125} y2={221} label="t<sub>f,inf</sub>" off={24} />
+        <Cota x1={20} y1={250} x2={130} y2={250} label="b<sub>f,inf</sub>" />
+        <Cota x1={155} y1={215} x2={155} y2={233} label="t<sub>f,inf</sub>" off={26} />
 
         {/* cotas alma */}
-        <Cota x1={20} y1={142} x2={36} y2={142} label="t<sub>w</sub>" />
-        <Cota x1={145} y1={80} x2={145} y2={205} label="h<sub>w</sub>" off={14} />
+        <Cota x1={20} y1={137} x2={36} y2={137} label="t<sub>w</sub>" />
+        <Cota x1={155} y1={60} x2={155} y2={215} label="h<sub>w</sub>" off={14} />
 
         {/* cotas ala superior */}
-        <Cota x1={36} y1={52} x2={126} y2={52} label="b<sub>f,sup</sub>" />
-        <Cota x1={145} y1={64} x2={145} y2={80} label="t<sub>f,sup</sub>" off={24} />
+        <Cota x1={36} y1={30} x2={146} y2={30} label="b<sub>f,sup</sub>" />
+        <Cota x1={175} y1={42} x2={175} y2={60} label="t<sub>f,sup</sub>" off={26} />
 
-        {/* flecha indicando Z */}
-        <text x="140" y="145" fontSize="28" fill="rgba(59,130,246,0.3)" fontWeight="bold">Z</text>
+        {/* línea punteada mostrando la forma Z */}
+        <line x1="20" y1="215" x2="36" y2="60" stroke="#94a3b8" strokeWidth="0.8" strokeDasharray="4,3" />
       </svg>
     )
 
@@ -453,7 +462,8 @@ function EsquemaReferencia({ plantilla }: { plantilla: Plantilla }) {
         <line x1="20" y1="140" x2="20" y2="10" stroke="#9ca3af" strokeWidth="1" />
         <text x="183" y="143" fontSize="10" fill="#9ca3af">x</text>
         <text x="14" y="8" fontSize="10" fill="#9ca3af">y</text>
-        <polygon points="55,120 140,120 155,60 75,45 40,80" fill="rgba(59,130,246,0.12)" stroke="#1d4ed8" strokeWidth="1.5" strokeDasharray="5,3" />
+        <polygon points="55,120 140,120 155,60 75,45 40,80"
+          fill="rgba(59,130,246,0.12)" stroke="#1d4ed8" strokeWidth="1.5" strokeDasharray="5,3" />
         <text x="47" y="125" fontSize="8" fill="#1d4ed8">P₁↻</text>
         <text x="138" y="125" fontSize="8" fill="#1d4ed8">P₂</text>
         <text x="153" y="58" fontSize="8" fill="#1d4ed8">P₃</text>
@@ -508,9 +518,7 @@ function dibujarCanvas(
   const W = canvas.width - padL - padR
   const H = canvas.height - padT - padB
   const mg = 0.15
-  const rX = (xmax - xmin) * (1 + mg * 2)
-  const rY = (ymax - ymin) * (1 + mg * 2)
-  const scale = Math.min(W / rX, H / rY)
+  const scale = Math.min(W / ((xmax - xmin) * (1 + mg * 2)), H / ((ymax - ymin) * (1 + mg * 2)))
 
   const ox = padL + (-xmin + (xmax - xmin) * mg) * scale
   const oy = canvas.height - padB - (-ymin + (ymax - ymin) * mg) * scale
@@ -521,40 +529,38 @@ function dibujarCanvas(
   const stepX = niceStep(xmax - xmin)
   const stepY = niceStep(ymax - ymin)
 
-  // Cuadrícula completa — sin cortes
+  // Cuadrícula completa
   ctx.strokeStyle = "#e5e7eb"; ctx.lineWidth = 0.5
-
   const x0g = Math.floor((xmin - (xmax - xmin) * mg) / stepX) * stepX
   const x1g = xmax + (xmax - xmin) * mg + stepX * 2
   for (let gx = x0g; gx <= x1g; gx = parseFloat((gx + stepX).toFixed(10))) {
     ctx.beginPath(); ctx.moveTo(tx(gx), 0); ctx.lineTo(tx(gx), canvas.height); ctx.stroke()
   }
-
   const y0g = Math.floor((ymin - (ymax - ymin) * mg) / stepY) * stepY
   const y1g = ymax + (ymax - ymin) * mg + stepY * 2
   for (let gy = y0g; gy <= y1g; gy = parseFloat((gy + stepY).toFixed(10))) {
     ctx.beginPath(); ctx.moveTo(0, ty(gy)); ctx.lineTo(canvas.width, ty(gy)); ctx.stroke()
   }
 
-  // Etiquetas X — saltar las que se enciman
+  // Etiquetas X
   ctx.fillStyle = "#9ca3af"; ctx.font = "9px sans-serif"; ctx.textAlign = "center"
-  let lastLabelX = -Infinity
+  let lastLX = -Infinity
   for (let gx = x0g; gx <= x1g; gx = parseFloat((gx + stepX).toFixed(10))) {
     const px = tx(gx)
     if (px < padL || px > canvas.width - padR) continue
-    if (px - lastLabelX < 30) continue
-    lastLabelX = px
+    if (px - lastLX < 30) continue
+    lastLX = px
     ctx.fillText(Number.isInteger(gx) ? `${gx}` : `${parseFloat(gx.toFixed(2))}`, px, canvas.height - 6)
   }
 
   // Etiquetas Y
   ctx.textAlign = "right"
-  let lastLabelY = Infinity
+  let lastLY = Infinity
   for (let gy = y0g; gy <= y1g; gy = parseFloat((gy + stepY).toFixed(10))) {
     const py = ty(gy)
     if (py < padT || py > canvas.height - padB) continue
-    if (lastLabelY - py < 20) continue
-    lastLabelY = py
+    if (lastLY - py < 20) continue
+    lastLY = py
     ctx.fillText(Number.isInteger(gy) ? `${gy}` : `${parseFloat(gy.toFixed(2))}`, padL - 4, py + 3)
   }
 
@@ -562,12 +568,11 @@ function dibujarCanvas(
   ctx.strokeStyle = "#6b7280"; ctx.lineWidth = 1.2
   ctx.beginPath(); ctx.moveTo(0, oy); ctx.lineTo(canvas.width, oy); ctx.stroke()
   ctx.beginPath(); ctx.moveTo(ox, 0); ctx.lineTo(ox, canvas.height); ctx.stroke()
-
   ctx.fillStyle = "#374151"; ctx.font = "bold 10px sans-serif"
   ctx.textAlign = "left"; ctx.fillText("x (cm)", canvas.width - 38, oy - 4)
   ctx.textAlign = "center"; ctx.fillText("y (cm)", ox + 4, padT - 6)
 
-  // Elementos
+  // Dibujar elementos
   const fills = ["rgba(59,130,246,0.2)", "rgba(16,185,129,0.2)", "rgba(245,158,11,0.2)", "rgba(239,68,68,0.2)", "rgba(139,92,246,0.2)"]
   const strokes = ["#1d4ed8", "#059669", "#d97706", "#dc2626", "#7c3aed"]
 
