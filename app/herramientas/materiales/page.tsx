@@ -147,7 +147,7 @@ export default function Materiales() {
                   >
                     <div className="flex items-center gap-2">
                       <span className="text-sm text-gray-800">{mat.nombre}</span>
-                      {mat.personalizado && <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Personalizado</span>}
+                      {mat.personalizado === true && <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Personalizado</span>}
                     </div>
                     <span className="text-xs text-gray-400">E = {mat.E} GPa</span>
                   </div>
