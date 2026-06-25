@@ -25,7 +25,7 @@ export default function Herramientas() {
           </div>
           <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">SECCIONES TRANSVERSALES</div>
           <div className="grid grid-cols-2 gap-4 mb-6">
-            <HerramientaCard nombre="Section Builder" desc="Diseña secciones personalizadas (I, T, cajón, circular, compuesta) y calcula A, Ix, Iy, Sx, Sy, rx, ry." tag="Secciones" />
+            <a href="/herramientas/secciones"><HerramientaCard nombre="Section Builder" desc="Diseña secciones personalizadas (I, T, cajón, circular, compuesta) y calcula A, Ix, Iy, Sx, Sy, rx, ry." tag="Secciones" /></a>
             <HerramientaCard nombre="Catálogo W (AISC)" desc="Perfiles W4 a W44. Busca por designación o por propiedades mínimas requeridas." tag="Catálogo" />
             <HerramientaCard nombre="Catálogo IPE (Europa)" desc="Perfiles IPE 80 a IPE 600 con todas sus propiedades geométricas." tag="Catálogo" />
             <HerramientaCard nombre="Catálogo HEA / HEB / HEM" desc="Perfiles de ala ancha europeos con propiedades completas." tag="Catálogo" />
