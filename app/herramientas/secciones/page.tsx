@@ -52,12 +52,11 @@ function getPoligonos(plantilla: Plantilla, p: Params): { pts: Poligono; signo: 
         { pts: [{ x: (maxBf - bf_sup) / 2, y: tf_inf + hw }, { x: (maxBf + bf_sup) / 2, y: tf_inf + hw }, { x: (maxBf + bf_sup) / 2, y: tf_inf + hw + tf_sup }, { x: (maxBf - bf_sup) / 2, y: tf_inf + hw + tf_sup }], signo: 1 },
       ]
     }
-    case "T": {
+    case "T":
       return [
         { pts: [{ x: (bf - tw) / 2, y: 0 }, { x: (bf + tw) / 2, y: 0 }, { x: (bf + tw) / 2, y: hw }, { x: (bf - tw) / 2, y: hw }], signo: 1 },
         { pts: [{ x: 0, y: hw }, { x: bf, y: hw }, { x: bf, y: hw + tf }, { x: 0, y: hw + tf }], signo: 1 },
       ]
-    }
     case "C":
       return [{ pts: [{ x: 0, y: 0 }, { x: bf_inf, y: 0 }, { x: bf_inf, y: tf_inf }, { x: tw, y: tf_inf }, { x: tw, y: tf_inf + hw }, { x: bf_sup, y: tf_inf + hw }, { x: bf_sup, y: tf_inf + hw + tf_sup }, { x: 0, y: tf_inf + hw + tf_sup }], signo: 1 }]
     case "L":
@@ -122,11 +121,7 @@ function calcularSeccion(poligonos: { pts: Poligono; signo: number }[]): Resulta
   return { A, xc, yc, Icx, Icy, Ixy: Icxy, Sx_top, Sx_bot, Sy, rx, ry, J, I1: (Icx + Icy) / 2 + R, I2: (Icx + Icy) / 2 - R, theta_p }
 }
 
-// Labels con subíndices HTML
-const plantillasConfig: Record<Plantilla, {
-  label: string
-  campos: { key: string; labelHtml: string; default: number }[]
-}> = {
+const plantillasConfig: Record<Plantilla, { label: string; campos: { key: string; labelHtml: string; default: number }[] }> = {
   rectangular: { label: "Rectangular", campos: [{ key: "b", labelHtml: "Base <i>b</i> (cm)", default: 30 }, { key: "h", labelHtml: "Altura <i>h</i> (cm)", default: 50 }] },
   circular: { label: "Circular", campos: [{ key: "r", labelHtml: "Radio <i>r</i> (cm)", default: 20 }] },
   tubo: { label: "Tubo circular", campos: [{ key: "r", labelHtml: "Radio exterior <i>r</i> (cm)", default: 20 }, { key: "t", labelHtml: "Espesor <i>t</i> (cm)", default: 2 }] },
@@ -222,16 +217,16 @@ function EsquemaReferencia({ plantilla }: { plantilla: Plantilla }) {
       </svg>
     )
     case "I": return (
-      <svg viewBox="0 0 250 230" className="w-full h-48">
-        <rect x="25" y="175" width="130" height="18" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
-        <rect x="62" y="55" width="20" height="120" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
+      <svg viewBox="0 0 260 240" className="w-full h-48">
+        <rect x="25" y="180" width="130" height="18" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
+        <rect x="62" y="55" width="20" height="125" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
         <rect x="35" y="37" width="110" height="18" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
-        <Cota x1={35} y1={25} x2={145} y2={25} label="b<sub>f,sup</sub>" />
-        <Cota x1={25} y1={215} x2={155} y2={215} label="b<sub>f,inf</sub>" />
-        <Cota x1={165} y1={37} x2={165} y2={55} label="t<sub>f,sup</sub>" off={22} />
-        <Cota x1={165} y1={175} x2={165} y2={193} label="t<sub>f,inf</sub>" off={22} />
-        <Cota x1={185} y1={55} x2={185} y2={175} label="h<sub>w</sub>" off={14} />
-        <Cota x1={62} y1={140} x2={82} y2={140} label="t<sub>w</sub>" />
+        <Cota x1={35} y1={24} x2={145} y2={24} label="b<sub>f,sup</sub>" />
+        <Cota x1={25} y1={224} x2={155} y2={224} label="b<sub>f,inf</sub>" />
+        <Cota x1={168} y1={37} x2={168} y2={55} label="t<sub>f,sup</sub>" off={24} />
+        <Cota x1={168} y1={180} x2={168} y2={198} label="t<sub>f,inf</sub>" off={24} />
+        <Cota x1={188} y1={55} x2={188} y2={180} label="h<sub>w</sub>" off={14} />
+        <Cota x1={62} y1={145} x2={82} y2={145} label="t<sub>w</sub>" />
       </svg>
     )
     case "T": return (
@@ -253,38 +248,40 @@ function EsquemaReferencia({ plantilla }: { plantilla: Plantilla }) {
       </svg>
     )
     case "C": return (
-      <svg viewBox="0 0 230 220" className="w-full h-44">
-        <polygon points="20,195 20,15 110,15 110,32 38,32 38,168 125,168 125,185 20,185"
+      <svg viewBox="0 0 250 240" className="w-full h-48">
+        <polygon points="20,210 20,15 130,15 130,33 38,33 38,177 115,177 115,195 20,195"
           fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
-        <Cota x1={20} y1={4} x2={125} y2={4} label="b<sub>f,sup</sub>" />
-        <Cota x1={20} y1={207} x2={110} y2={207} label="b<sub>f,inf</sub>" />
-        <Cota x1={140} y1={15} x2={140} y2={32} label="t<sub>f,sup</sub>" off={22} />
-        <Cota x1={140} y1={168} x2={140} y2={185} label="t<sub>f,inf</sub>" off={22} />
-        <Cota x1={155} y1={32} x2={155} y2={168} label="h<sub>w</sub>" off={14} />
-        <Cota x1={20} y1={100} x2={38} y2={100} label="t<sub>w</sub>" />
+        <Cota x1={20} y1={4} x2={130} y2={4} label="b<sub>f,sup</sub>" />
+        <Cota x1={20} y1={226} x2={115} y2={226} label="b<sub>f,inf</sub>" />
+        <Cota x1={145} y1={15} x2={145} y2={33} label="t<sub>f,sup</sub>" off={26} />
+        <Cota x1={145} y1={177} x2={145} y2={195} label="t<sub>f,inf</sub>" off={26} />
+        <Cota x1={165} y1={33} x2={165} y2={177} label="h<sub>w</sub>" off={14} />
+        <Cota x1={20} y1={110} x2={38} y2={110} label="t<sub>w</sub>" />
       </svg>
     )
     case "cajon": return (
-      <svg viewBox="0 0 250 220" className="w-full h-44">
-        <polygon points="20,190 40,20 190,20 210,190" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
-        <polygon points="38,172 55,38 175,38 192,172" fill="white" stroke="#1d4ed8" strokeWidth="1.5" />
-        <Cota x1={40} y1={8} x2={190} y2={8} label="b<sub>sup</sub>" />
-        <Cota x1={20} y1={205} x2={210} y2={205} label="b<sub>inf</sub>" />
-        <Cota x1={218} y1={20} x2={218} y2={190} label="h" off={14} />
-        <Cota x1={20} y1={105} x2={38} y2={105} label="t<sub>izq</sub>" />
+      <svg viewBox="0 0 260 230" className="w-full h-48">
+        <polygon points="20,200 40,20 200,20 220,200" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
+        <polygon points="38,180 55,38 185,38 202,180" fill="white" stroke="#1d4ed8" strokeWidth="1.5" />
+        <Cota x1={40} y1={8} x2={200} y2={8} label="b<sub>sup</sub>" />
+        <Cota x1={20} y1={218} x2={220} y2={218} label="b<sub>inf</sub>" />
+        <Cota x1={230} y1={20} x2={230} y2={200} label="h" off={14} />
+        <Cota x1={20} y1={110} x2={38} y2={110} label="t<sub>izq</sub>" />
         <Cota x1={40} y1={20} x2={55} y2={38} label="t<sub>sup</sub>" />
+        <Cota x1={185} y1={38} x2={202} y2={20} label="t<sub>der</sub>" />
+        <Cota x1={38} y1={180} x2={55} y2={200} label="t<sub>inf</sub>" />
       </svg>
     )
     case "Z": return (
-      <svg viewBox="0 0 230 220" className="w-full h-44">
-        <polygon points="20,190 20,172 90,172 90,38 20,38 20,20 60,20 60,38 108,38 108,172 60,172 60,190"
+      <svg viewBox="0 0 240 230" className="w-full h-48">
+        <polygon points="20,200 20,182 90,182 90,38 20,38 20,20 60,20 60,38 108,38 108,182 60,182 60,200"
           fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
         <Cota x1={20} y1={8} x2={60} y2={8} label="b<sub>f,sup</sub>" />
-        <Cota x1={20} y1={205} x2={60} y2={205} label="b<sub>f,inf</sub>" />
-        <Cota x1={120} y1={38} x2={120} y2={172} label="h<sub>w</sub>" off={14} />
-        <Cota x1={60} y1={105} x2={90} y2={105} label="t<sub>w</sub>" />
-        <Cota x1={140} y1={20} x2={140} y2={38} label="t<sub>f,sup</sub>" off={22} />
-        <Cota x1={140} y1={172} x2={140} y2={190} label="t<sub>f,inf</sub>" off={22} />
+        <Cota x1={20} y1={218} x2={60} y2={218} label="b<sub>f,inf</sub>" />
+        <Cota x1={125} y1={38} x2={125} y2={182} label="h<sub>w</sub>" off={14} />
+        <Cota x1={60} y1={110} x2={90} y2={110} label="t<sub>w</sub>" />
+        <Cota x1={148} y1={20} x2={148} y2={38} label="t<sub>f,sup</sub>" off={26} />
+        <Cota x1={148} y1={182} x2={148} y2={200} label="t<sub>f,inf</sub>" off={26} />
       </svg>
     )
     case "coordenadas": return (
@@ -307,9 +304,9 @@ function EsquemaReferencia({ plantilla }: { plantilla: Plantilla }) {
   }
 }
 
-function niceStep(range: number, targetTicks = 6): number {
+function niceStep(range: number, targetTicks = 5): number {
   const raw = range / targetTicks
-  const exp = Math.floor(Math.log10(raw))
+  const exp = Math.floor(Math.log10(raw || 1))
   const base = Math.pow(10, exp)
   if (raw / base > 5) return base * 5
   if (raw / base > 2) return base * 2
@@ -321,6 +318,7 @@ function dibujarCanvas(canvas: HTMLCanvasElement, elementos: Elemento[], resulta
   if (!ctx) return
   ctx.clearRect(0, 0, canvas.width, canvas.height)
 
+  // Recolectar todos los puntos incluyendo origen
   const todosLosPts: { x: number; y: number }[] = [{ x: 0, y: 0 }]
   for (const el of elementos) {
     if (el.plantilla === "coordenadas") { todosLosPts.push(...coordPts); continue }
@@ -334,81 +332,80 @@ function dibujarCanvas(canvas: HTMLCanvasElement, elementos: Elemento[], resulta
     if (p.y < ymin) ymin = p.y; if (p.y > ymax) ymax = p.y
   }
 
-  // Padding en unidades reales
-  const pad = 50
-  const W = canvas.width - pad * 2
-  const H = canvas.height - pad * 2
-  const rangeX = (xmax - xmin) || 10
-  const rangeY = (ymax - ymin) || 10
-  const margin = 0.15
-  const scale = Math.min(W / (rangeX * (1 + margin * 2)), H / (rangeY * (1 + margin * 2)))
+  // Asegurar rango mínimo
+  if (xmax - xmin < 1) { xmin -= 5; xmax += 5 }
+  if (ymax - ymin < 1) { ymin -= 5; ymax += 5 }
 
-  const ox = pad + (-xmin + rangeX * margin) * scale
-  const oy = canvas.height - pad - (-ymin + rangeY * margin) * scale
+  const padLeft = 50, padRight = 20, padTop = 20, padBottom = 30
+  const W = canvas.width - padLeft - padRight
+  const H = canvas.height - padTop - padBottom
+  const margin = 0.15
+  const rangeX = (xmax - xmin) * (1 + margin * 2)
+  const rangeY = (ymax - ymin) * (1 + margin * 2)
+  const scale = Math.min(W / rangeX, H / rangeY)
+
+  const ox = padLeft + (-xmin + (xmax - xmin) * margin) * scale
+  const oy = canvas.height - padBottom - (-ymin + (ymax - ymin) * margin) * scale
 
   const tx = (x: number) => ox + x * scale
   const ty = (y: number) => oy - y * scale
 
-  // Cuadrícula con paso razonable
-  const stepX = niceStep(rangeX)
-  const stepY = niceStep(rangeY)
+  // Paso de cuadrícula razonable
+  const stepX = niceStep(xmax - xmin)
+  const stepY = niceStep(ymax - ymin)
 
-  // Líneas verticales
-  const xStart = Math.floor((xmin - rangeX * margin) / stepX) * stepX
-  const xEnd = xmax + rangeX * margin
+  // Cuadrícula completa — desde fuera del canvas hasta fuera
   ctx.strokeStyle = "#e5e7eb"; ctx.lineWidth = 0.5
-  for (let gx = xStart; gx <= xEnd + stepX; gx += stepX) {
+
+  const xGridStart = Math.floor((xmin - (xmax - xmin) * margin) / stepX) * stepX
+  const xGridEnd = xmax + (xmax - xmin) * margin + stepX
+  for (let gx = xGridStart; gx <= xGridEnd; gx = Math.round((gx + stepX) * 1e10) / 1e10) {
     const px = tx(gx)
-    if (px < 0 || px > canvas.width) continue
     ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, canvas.height); ctx.stroke()
   }
 
-  // Líneas horizontales
-  const yStart = Math.floor((ymin - rangeY * margin) / stepY) * stepY
-  const yEnd = ymax + rangeY * margin
-  for (let gy = yStart; gy <= yEnd + stepY; gy += stepY) {
+  const yGridStart = Math.floor((ymin - (ymax - ymin) * margin) / stepY) * stepY
+  const yGridEnd = ymax + (ymax - ymin) * margin + stepY
+  for (let gy = yGridStart; gy <= yGridEnd; gy = Math.round((gy + stepY) * 1e10) / 1e10) {
     const py = ty(gy)
-    if (py < 0 || py > canvas.height) continue
     ctx.beginPath(); ctx.moveTo(0, py); ctx.lineTo(canvas.width, py); ctx.stroke()
   }
 
-  // Etiquetas X — solo las que caben bien
+  // Etiquetas X — espaciado razonable
   ctx.fillStyle = "#9ca3af"; ctx.font = "9px sans-serif"; ctx.textAlign = "center"
-  for (let gx = xStart; gx <= xEnd + stepX; gx += stepX) {
+  for (let gx = xGridStart; gx <= xGridEnd; gx = Math.round((gx + stepX) * 1e10) / 1e10) {
     const px = tx(gx)
-    if (px < 20 || px > canvas.width - 10) continue
-    const label = Number.isInteger(gx) ? `${gx}` : `${gx.toFixed(1)}`
-    ctx.fillText(label, px, canvas.height - 6)
+    if (px < padLeft || px > canvas.width - padRight) continue
+    const label = Number.isInteger(gx) ? `${gx}` : `${parseFloat(gx.toFixed(2))}`
+    ctx.fillText(label, px, canvas.height - 5)
   }
 
   // Etiquetas Y
   ctx.textAlign = "right"
-  for (let gy = yStart; gy <= yEnd + stepY; gy += stepY) {
+  for (let gy = yGridStart; gy <= yGridEnd; gy = Math.round((gy + stepY) * 1e10) / 1e10) {
     const py = ty(gy)
-    if (py < 10 || py > canvas.height - 20) continue
-    const label = Number.isInteger(gy) ? `${gy}` : `${gy.toFixed(1)}`
-    ctx.fillText(label, ox - 6, py + 3)
+    if (py < padTop || py > canvas.height - padBottom) continue
+    const label = Number.isInteger(gy) ? `${gy}` : `${parseFloat(gy.toFixed(2))}`
+    ctx.fillText(label, padLeft - 4, py + 3)
   }
 
-  // Ejes
+  // Ejes principales
   ctx.strokeStyle = "#6b7280"; ctx.lineWidth = 1.2
   ctx.beginPath(); ctx.moveTo(0, oy); ctx.lineTo(canvas.width, oy); ctx.stroke()
   ctx.beginPath(); ctx.moveTo(ox, 0); ctx.lineTo(ox, canvas.height); ctx.stroke()
 
   // Labels ejes
-  ctx.fillStyle = "#374151"; ctx.font = "bold 10px sans-serif"; ctx.textAlign = "left"
-  ctx.fillText("x (cm)", canvas.width - 38, oy - 4)
-  ctx.textAlign = "center"
-  ctx.fillText("y (cm)", ox + 4, 10)
+  ctx.fillStyle = "#374151"; ctx.font = "bold 10px sans-serif"
+  ctx.textAlign = "left"; ctx.fillText("x (cm)", canvas.width - 38, oy - 4)
+  ctx.textAlign = "center"; ctx.fillText("y (cm)", ox + 4, padTop - 6)
 
-  // Colores por elemento
+  // Colores elementos
   const fills = ["rgba(59,130,246,0.2)", "rgba(16,185,129,0.2)", "rgba(245,158,11,0.2)", "rgba(239,68,68,0.2)", "rgba(139,92,246,0.2)"]
   const strokes = ["#1d4ed8", "#059669", "#d97706", "#dc2626", "#7c3aed"]
 
-  // Dibujar elementos
   elementos.forEach((el, idx) => {
     const pols = el.plantilla === "coordenadas"
-      ? [{ pts: coordPts, signo: 1 }]
+      ? [{ pts: coordPts, signo: 1 as const }]
       : offsetPoligonos(getPoligonos(el.plantilla, el.params), el.x0, el.y0)
     const fill = fills[idx % fills.length]
     const stroke = strokes[idx % strokes.length]
@@ -422,7 +419,6 @@ function dibujarCanvas(canvas: HTMLCanvasElement, elementos: Elemento[], resulta
       ctx.strokeStyle = stroke; ctx.lineWidth = 1.8
       ctx.fill(); ctx.stroke()
     }
-    // Label
     if (el.plantilla !== "coordenadas") {
       ctx.fillStyle = stroke; ctx.font = "bold 10px sans-serif"; ctx.textAlign = "center"
       ctx.fillText(el.label, tx(el.x0 + 3), ty(el.y0 + 3))
@@ -479,8 +475,7 @@ export default function SectionBuilder() {
       pols.push(...p.map(q => ({ ...q, signo: q.signo * el.signo })))
     }
     if (pols.length === 0 || pols.every(p => p.pts.length < 3)) return
-    const res = calcularSeccion(pols)
-    setResultado(res)
+    setResultado(calcularSeccion(pols))
   }
 
   const handlePlantilla = (p: Plantilla) => {
@@ -516,7 +511,9 @@ export default function SectionBuilder() {
     } else {
       if (plantillaActual === "coordenadas") {
         try {
-          const pts: Poligono = coordInput.trim().split("\n").filter(l => l.trim()).map(l => { const [x, y] = l.split(",").map(Number); return { x, y } })
+          const pts: Poligono = coordInput.trim().split("\n").filter(l => l.trim()).map(l => {
+            const [x, y] = l.split(",").map(Number); return { x, y }
+          })
           setCoordPts(pts)
           const el: Elemento = { id: nextId.current++, plantilla: "coordenadas", params: {}, x0: 0, y0: 0, signo: signoActual, label: `Coord${nextId.current - 1}` }
           const nuevos = [...elementos, el]
@@ -524,7 +521,11 @@ export default function SectionBuilder() {
           calcularConElementos(nuevos, pts)
         } catch { alert("Error en coordenadas"); return }
       } else {
-        const el: Elemento = { id: nextId.current++, plantilla: plantillaActual, params: { ...paramsActuales }, x0: parseFloat(x0) || 0, y0: parseFloat(y0) || 0, signo: signoActual, label: `E${nextId.current - 1}` }
+        const el: Elemento = {
+          id: nextId.current++, plantilla: plantillaActual, params: { ...paramsActuales },
+          x0: parseFloat(x0) || 0, y0: parseFloat(y0) || 0, signo: signoActual,
+          label: `E${nextId.current - 1}`
+        }
         const nuevos = [...elementos, el]
         setElementos(nuevos)
         calcularConElementos(nuevos)
@@ -543,12 +544,21 @@ export default function SectionBuilder() {
     if (!resultado) return null
     const x = parseFloat(ptoX), y = parseFloat(ptoY)
     if (isNaN(x) || isNaN(y)) return null
-    return { Ix: resultado.Icx + resultado.A * (y - resultado.yc) ** 2, Iy: resultado.Icy + resultado.A * (x - resultado.xc) ** 2 }
+    return {
+      Ix: resultado.Icx + resultado.A * (y - resultado.yc) ** 2,
+      Iy: resultado.Icy + resultado.A * (x - resultado.xc) ** 2,
+    }
   })()
 
   const cargarEnModulo = (modulo: string) => {
     if (!resultado) return
-    setSeccion({ nombre: `Sección compuesta (${elementos.length} elem.)`, A: resultado.A, Icx: resultado.Icx, Icy: resultado.Icy, Sx_top: resultado.Sx_top, Sx_bot: resultado.Sx_bot, Sy: resultado.Sy, rx: resultado.rx, ry: resultado.ry, J: resultado.J, E: null, fc: null, ft: null, fy: null }, "secciones")
+    setSeccion({
+      nombre: `Sección compuesta (${elementos.length} elem.)`,
+      A: resultado.A, Icx: resultado.Icx, Icy: resultado.Icy,
+      Sx_top: resultado.Sx_top, Sx_bot: resultado.Sx_bot, Sy: resultado.Sy,
+      rx: resultado.rx, ry: resultado.ry, J: resultado.J,
+      E: null, fc: null, ft: null, fy: null,
+    }, "secciones")
     router.push(`/${modulo}`)
   }
 
@@ -568,8 +578,6 @@ export default function SectionBuilder() {
 
             {/* Panel izquierdo */}
             <div className="flex flex-col gap-4">
-
-              {/* Elementos */}
               <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="flex items-center justify-between mb-3">
                   <div className="text-xs text-gray-400 font-medium tracking-wider">ELEMENTOS</div>
@@ -598,14 +606,12 @@ export default function SectionBuilder() {
                   ))}
                 </div>
 
-                {/* Formulario */}
                 {mostrarAgregar && (
                   <div className="p-4 bg-blue-50 rounded-xl border border-blue-200">
                     <div className="text-xs text-blue-700 font-medium mb-3">
                       {editandoId !== null ? `EDITANDO — ${elementos.find(e => e.id === editandoId)?.label}` : "NUEVO ELEMENTO"}
                     </div>
 
-                    {/* Tipo */}
                     <div className="text-xs text-gray-500 mb-1.5">Tipo de sección</div>
                     <div className="flex flex-wrap gap-1.5 mb-3">
                       {(Object.keys(plantillasConfig) as Plantilla[]).map(p => (
@@ -616,12 +622,10 @@ export default function SectionBuilder() {
                       ))}
                     </div>
 
-                    {/* Esquema */}
                     <div className="bg-white rounded-lg p-2 mb-3 border border-blue-100">
                       <EsquemaReferencia plantilla={plantillaActual} />
                     </div>
 
-                    {/* Campos */}
                     {plantillaActual === "coordenadas" ? (
                       <div className="mb-3">
                         <div className="text-xs text-gray-500 mb-1">Coordenadas (x,y) una por línea</div>
@@ -642,7 +646,6 @@ export default function SectionBuilder() {
                       </div>
                     )}
 
-                    {/* Posición y signo */}
                     <div className="grid grid-cols-3 gap-2 mb-3">
                       <div>
                         <div className="text-xs text-gray-500 mb-0.5">x₀ (cm)</div>
@@ -675,25 +678,23 @@ export default function SectionBuilder() {
                 )}
               </div>
 
-              {/* Steiner */}
               {resultado && (
                 <div className="bg-white border border-gray-200 rounded-xl p-5">
                   <div className="text-xs text-gray-400 font-medium tracking-wider mb-2">INERCIA EN PUNTO SOLICITADO</div>
-                  <div className="text-xs text-gray-500 mb-3">I<sub>x</sub>' e I<sub>y</sub>' respecto a ejes paralelos por (x,y) — Teorema de Steiner</div>
+                  <div className="text-xs text-gray-500 mb-3">I<sub>x</sub>′ e I<sub>y</sub>′ respecto a ejes paralelos por (x,y) — Steiner</div>
                   <div className="grid grid-cols-2 gap-3 mb-3">
                     <div><div className="text-xs text-gray-500 mb-1">x (cm)</div><input type="number" value={ptoX} onChange={e => setPtoX(e.target.value)} placeholder="0" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400" /></div>
                     <div><div className="text-xs text-gray-500 mb-1">y (cm)</div><input type="number" value={ptoY} onChange={e => setPtoY(e.target.value)} placeholder="0" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400" /></div>
                   </div>
                   {steiner && (
                     <div className="grid grid-cols-2 gap-3">
-                      <div className="p-3 bg-blue-50 rounded-lg"><div className="text-xs text-blue-500">I<sub>x</sub>' (cm⁴)</div><div className="text-sm font-medium text-blue-900">{fmt(steiner.Ix)}</div></div>
-                      <div className="p-3 bg-blue-50 rounded-lg"><div className="text-xs text-blue-500">I<sub>y</sub>' (cm⁴)</div><div className="text-sm font-medium text-blue-900">{fmt(steiner.Iy)}</div></div>
+                      <div className="p-3 bg-blue-50 rounded-lg"><div className="text-xs text-blue-500">I<sub>x</sub>′ (cm⁴)</div><div className="text-sm font-medium text-blue-900">{fmt(steiner.Ix)}</div></div>
+                      <div className="p-3 bg-blue-50 rounded-lg"><div className="text-xs text-blue-500">I<sub>y</sub>′ (cm⁴)</div><div className="text-sm font-medium text-blue-900">{fmt(steiner.Iy)}</div></div>
                     </div>
                   )}
                 </div>
               )}
 
-              {/* Cargar en módulo */}
               {resultado && (
                 <div className="bg-white border border-gray-200 rounded-xl p-5">
                   <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">CARGAR EN MÓDULO</div>
