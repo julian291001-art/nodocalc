@@ -41,9 +41,11 @@ export default function Sidebar() {
           </a>
         ))}
         <div className="text-blue-500 text-xs uppercase tracking-widest px-2 py-2 mt-3">Cuenta</div>
-        <div className="flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer text-sm mb-0.5 text-blue-300 hover:bg-blue-800">
-          <span>⚙</span><span>Ajustes</span>
-        </div>
+        <a href="/ajustes">
+        <div className={`flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer text-sm mb-0.5 ${pathname === "/ajustes" ? "bg-blue-700 text-blue-100" : "text-blue-300 hover:bg-blue-800"}`}>
+         <span>⚙</span><span>Ajustes</span>
+          </div>
+        </a>
       </div>
       <div className="p-2 border-t border-blue-800">
         <div className="flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-blue-800 cursor-pointer">
