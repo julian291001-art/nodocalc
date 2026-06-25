@@ -35,7 +35,7 @@ export default function Herramientas() {
           </div>
           <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">CONVERSIONES Y MATERIALES</div>
           <div className="grid grid-cols-2 gap-4">
-            <HerramientaCard nombre="Conversión de unidades" desc="Convierte entre sistemas SI, métrico y americano para fuerza, longitud, presión y momento." tag="Utilidades" />
+            <a href="/herramientas/unidades"><HerramientaCard nombre="Conversión de unidades" desc="Convierte entre sistemas SI, métrico y americano para fuerza, longitud, presión y momento." tag="Utilidades" /></a>
             <HerramientaCard nombre="Propiedades de materiales" desc="Módulo de elasticidad, resistencia y peso específico para acero, concreto y madera." tag="Utilidades" />
           </div>
         </div>
