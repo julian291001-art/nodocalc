@@ -32,35 +32,72 @@ function circlePoints(cx: number, cy: number, r: number, n = 64): Poligono {
 }
 
 function getPoligonos(plantilla: Plantilla, p: Params): { pts: Poligono; signo: number }[] {
-  const { b = 0, h = 0, t = 0, r = 0,
+  const {
+    b = 0, h = 0, t = 0, r = 0,
     bf_sup = 0, tf_sup = 0, bf_inf = 0, tf_inf = 0,
-    hw = 0, tw = 0, t_sup = 0, t_inf = 0, t_izq = 0, t_der = 0,
-    b_sup = 0, b_inf = 0, bf = 0, tf = 0 } = p
+    hw = 0, tw = 0,
+    t_sup = 0, t_inf = 0, t_izq = 0, t_der = 0,
+    b_sup = 0, b_inf = 0,
+    bf = 0, tf = 0,
+    x_alma = 0, x_sup = 0,
+  } = p
 
   switch (plantilla) {
     case "rectangular":
       return [{ pts: [{ x: 0, y: 0 }, { x: b, y: 0 }, { x: b, y: h }, { x: 0, y: h }], signo: 1 }]
+
     case "circular":
       return [{ pts: circlePoints(r, r, r), signo: 1 }]
+
     case "tubo":
-      return [{ pts: circlePoints(r, r, r), signo: 1 }, { pts: circlePoints(r, r, r - t), signo: -1 }]
-    case "I": {
-      const maxBf = Math.max(bf_sup, bf_inf)
       return [
-        { pts: [{ x: (maxBf - bf_inf) / 2, y: 0 }, { x: (maxBf + bf_inf) / 2, y: 0 }, { x: (maxBf + bf_inf) / 2, y: tf_inf }, { x: (maxBf - bf_inf) / 2, y: tf_inf }], signo: 1 },
-        { pts: [{ x: (maxBf - tw) / 2, y: tf_inf }, { x: (maxBf + tw) / 2, y: tf_inf }, { x: (maxBf + tw) / 2, y: tf_inf + hw }, { x: (maxBf - tw) / 2, y: tf_inf + hw }], signo: 1 },
-        { pts: [{ x: (maxBf - bf_sup) / 2, y: tf_inf + hw }, { x: (maxBf + bf_sup) / 2, y: tf_inf + hw }, { x: (maxBf + bf_sup) / 2, y: tf_inf + hw + tf_sup }, { x: (maxBf - bf_sup) / 2, y: tf_inf + hw + tf_sup }], signo: 1 },
+        { pts: circlePoints(r, r, r), signo: 1 },
+        { pts: circlePoints(r, r, r - t), signo: -1 },
+      ]
+
+    case "I": {
+      // ala inferior desde x=0
+      // alma desde x=x_alma
+      // ala superior desde x=x_sup
+      const hTotal = tf_inf + hw + tf_sup
+      return [
+        { pts: [{ x: 0, y: 0 }, { x: bf_inf, y: 0 }, { x: bf_inf, y: tf_inf }, { x: 0, y: tf_inf }], signo: 1 },
+        { pts: [{ x: x_alma, y: tf_inf }, { x: x_alma + tw, y: tf_inf }, { x: x_alma + tw, y: tf_inf + hw }, { x: x_alma, y: tf_inf + hw }], signo: 1 },
+        { pts: [{ x: x_sup, y: tf_inf + hw }, { x: x_sup + bf_sup, y: tf_inf + hw }, { x: x_sup + bf_sup, y: hTotal }, { x: x_sup, y: hTotal }], signo: 1 },
       ]
     }
-    case "T":
+
+    case "T": {
+      const xAlma = (bf - tw) / 2
       return [
-        { pts: [{ x: (bf - tw) / 2, y: 0 }, { x: (bf + tw) / 2, y: 0 }, { x: (bf + tw) / 2, y: hw }, { x: (bf - tw) / 2, y: hw }], signo: 1 },
+        { pts: [{ x: xAlma, y: 0 }, { x: xAlma + tw, y: 0 }, { x: xAlma + tw, y: hw }, { x: xAlma, y: hw }], signo: 1 },
         { pts: [{ x: 0, y: hw }, { x: bf, y: hw }, { x: bf, y: hw + tf }, { x: 0, y: hw + tf }], signo: 1 },
       ]
-    case "C":
-      return [{ pts: [{ x: 0, y: 0 }, { x: bf_inf, y: 0 }, { x: bf_inf, y: tf_inf }, { x: tw, y: tf_inf }, { x: tw, y: tf_inf + hw }, { x: bf_sup, y: tf_inf + hw }, { x: bf_sup, y: tf_inf + hw + tf_sup }, { x: 0, y: tf_inf + hw + tf_sup }], signo: 1 }]
+    }
+
+    case "C": {
+      // alma desde x=0, ala inferior desde x=0, ala superior desde x=x_sup
+      const hTotal = tf_inf + hw + tf_sup
+      return [{
+        pts: [
+          { x: 0, y: 0 }, { x: bf_inf, y: 0 }, { x: bf_inf, y: tf_inf },
+          { x: tw, y: tf_inf }, { x: tw, y: tf_inf + hw },
+          { x: x_sup + bf_sup, y: tf_inf + hw }, { x: x_sup + bf_sup, y: hTotal },
+          { x: x_sup, y: hTotal }, { x: x_sup, y: tf_inf + hw },
+          { x: tw, y: tf_inf + hw }, { x: tw, y: tf_inf },
+          { x: bf_inf, y: tf_inf }, { x: bf_inf, y: 0 },
+        ], signo: 1
+      }]
+    }
+
     case "L":
-      return [{ pts: [{ x: 0, y: 0 }, { x: b, y: 0 }, { x: b, y: t }, { x: t, y: t }, { x: t, y: h }, { x: 0, y: h }], signo: 1 }]
+      return [{
+        pts: [
+          { x: 0, y: 0 }, { x: b, y: 0 }, { x: b, y: t },
+          { x: t, y: t }, { x: t, y: h }, { x: 0, y: h },
+        ], signo: 1
+      }]
+
     case "cajon": {
       const bS = b_sup || b, bI = b_inf || b
       const tS = t_sup || t, tI = t_inf || t, tL = t_izq || t, tR = t_der || t
@@ -69,14 +106,36 @@ function getPoligonos(plantilla: Plantilla, p: Params): { pts: Poligono; signo: 
         { pts: [{ x: tL, y: tI }, { x: bI - tR, y: tI }, { x: bS - tR, y: h - tS }, { x: tL, y: h - tS }], signo: -1 },
       ]
     }
-    case "Z":
-      return [{ pts: [{ x: 0, y: 0 }, { x: bf_inf, y: 0 }, { x: bf_inf, y: tf_inf }, { x: tw, y: tf_inf }, { x: tw, y: tf_inf + hw }, { x: tw + bf_sup, y: tf_inf + hw }, { x: tw + bf_sup, y: tf_inf + hw + tf_sup }, { x: tw, y: tf_inf + hw + tf_sup }, { x: tw, y: tf_inf }, { x: bf_inf, y: tf_inf }, { x: bf_inf, y: 0 }], signo: 1 }]
+
+    case "Z": {
+      // Z correcta: ala inf a la izquierda, alma vertical, ala sup a la derecha
+      const hTotal = tf_inf + hw + tf_sup
+      return [{
+        pts: [
+          { x: 0, y: 0 },
+          { x: bf_inf, y: 0 },
+          { x: bf_inf, y: tf_inf },
+          { x: tw, y: tf_inf },
+          { x: tw, y: tf_inf + hw },
+          { x: tw + bf_sup, y: tf_inf + hw },
+          { x: tw + bf_sup, y: hTotal },
+          { x: 0, y: hTotal },
+          { x: 0, y: tf_inf + hw },
+          { x: tw, y: tf_inf + hw },
+          { x: tw, y: tf_inf },
+          { x: 0, y: tf_inf },
+        ], signo: 1
+      }]
+    }
+
     default: return []
   }
 }
 
 function offsetPoligonos(pols: { pts: Poligono; signo: number }[], x0: number, y0: number) {
-  return pols.map(({ pts, signo }) => ({ pts: pts.map(p => ({ x: p.x + x0, y: p.y + y0 })), signo }))
+  return pols.map(({ pts, signo }) => ({
+    pts: pts.map(p => ({ x: p.x + x0, y: p.y + y0 })), signo
+  }))
 }
 
 function propiedadesPoligono(pts: Poligono) {
@@ -111,83 +170,137 @@ function calcularSeccion(poligonos: { pts: Poligono; signo: number }[]): Resulta
   }
   let ymax = -Infinity, ymin = Infinity, xmaxD = -Infinity
   for (const { pts } of poligonos) for (const p of pts) {
-    if (p.y > ymax) ymax = p.y; if (p.y < ymin) ymin = p.y
+    if (p.y > ymax) ymax = p.y
+    if (p.y < ymin) ymin = p.y
     if (Math.abs(p.x - xc) > xmaxD) xmaxD = Math.abs(p.x - xc)
   }
   const Sx_top = Icx / (ymax - yc), Sx_bot = Icx / (yc - ymin), Sy = Icy / xmaxD
   const rx = Math.sqrt(Math.abs(Icx / A)), ry = Math.sqrt(Math.abs(Icy / A)), J = Icx + Icy
   const theta_p = 0.5 * Math.atan2(-2 * Icxy, Icx - Icy) * 180 / Math.PI
   const R = Math.sqrt(((Icx - Icy) / 2) ** 2 + Icxy ** 2)
-  return { A, xc, yc, Icx, Icy, Ixy: Icxy, Sx_top, Sx_bot, Sy, rx, ry, J, I1: (Icx + Icy) / 2 + R, I2: (Icx + Icy) / 2 - R, theta_p }
+  return {
+    A, xc, yc, Icx, Icy, Ixy: Icxy, Sx_top, Sx_bot, Sy, rx, ry, J,
+    I1: (Icx + Icy) / 2 + R, I2: (Icx + Icy) / 2 - R, theta_p
+  }
 }
 
 const plantillasConfig: Record<Plantilla, { label: string; campos: { key: string; labelHtml: string; default: number }[] }> = {
-  rectangular: { label: "Rectangular", campos: [{ key: "b", labelHtml: "Base <i>b</i> (cm)", default: 30 }, { key: "h", labelHtml: "Altura <i>h</i> (cm)", default: 50 }] },
-  circular: { label: "Circular", campos: [{ key: "r", labelHtml: "Radio <i>r</i> (cm)", default: 20 }] },
-  tubo: { label: "Tubo circular", campos: [{ key: "r", labelHtml: "Radio exterior <i>r</i> (cm)", default: 20 }, { key: "t", labelHtml: "Espesor <i>t</i> (cm)", default: 2 }] },
-  I: { label: "Perfil I asimétrico", campos: [
-    { key: "bf_sup", labelHtml: "Ancho ala superior b<sub>f,sup</sub> (cm)", default: 20 },
-    { key: "tf_sup", labelHtml: "Espesor ala superior t<sub>f,sup</sub> (cm)", default: 1.5 },
-    { key: "hw", labelHtml: "Alto alma h<sub>w</sub> (cm)", default: 30 },
-    { key: "tw", labelHtml: "Espesor alma t<sub>w</sub> (cm)", default: 1 },
-    { key: "bf_inf", labelHtml: "Ancho ala inferior b<sub>f,inf</sub> (cm)", default: 20 },
-    { key: "tf_inf", labelHtml: "Espesor ala inferior t<sub>f,inf</sub> (cm)", default: 1.5 },
-  ]},
-  T: { label: "Perfil T", campos: [
-    { key: "bf", labelHtml: "Ancho ala b<sub>f</sub> (cm)", default: 20 },
-    { key: "tf", labelHtml: "Espesor ala t<sub>f</sub> (cm)", default: 2 },
-    { key: "hw", labelHtml: "Alto alma h<sub>w</sub> (cm)", default: 20 },
-    { key: "tw", labelHtml: "Espesor alma t<sub>w</sub> (cm)", default: 1.5 },
-  ]},
-  L: { label: "Ángulo L", campos: [
-    { key: "b", labelHtml: "Ancho <i>b</i> (cm)", default: 10 },
-    { key: "h", labelHtml: "Alto <i>h</i> (cm)", default: 10 },
-    { key: "t", labelHtml: "Espesor <i>t</i> (cm)", default: 1 },
-  ]},
-  C: { label: "Canal C asimétrico", campos: [
-    { key: "bf_sup", labelHtml: "Ancho ala superior b<sub>f,sup</sub> (cm)", default: 10 },
-    { key: "tf_sup", labelHtml: "Espesor ala superior t<sub>f,sup</sub> (cm)", default: 1 },
-    { key: "hw", labelHtml: "Alto alma h<sub>w</sub> (cm)", default: 20 },
-    { key: "tw", labelHtml: "Espesor alma t<sub>w</sub> (cm)", default: 1 },
-    { key: "bf_inf", labelHtml: "Ancho ala inferior b<sub>f,inf</sub> (cm)", default: 8 },
-    { key: "tf_inf", labelHtml: "Espesor ala inferior t<sub>f,inf</sub> (cm)", default: 1 },
-  ]},
-  cajon: { label: "Cajón paramétrico", campos: [
-    { key: "b_sup", labelHtml: "Ancho superior b<sub>sup</sub> (cm)", default: 30 },
-    { key: "b_inf", labelHtml: "Ancho inferior b<sub>inf</sub> (cm)", default: 30 },
-    { key: "h", labelHtml: "Altura <i>h</i> (cm)", default: 50 },
-    { key: "t_sup", labelHtml: "Espesor superior t<sub>sup</sub> (cm)", default: 2 },
-    { key: "t_inf", labelHtml: "Espesor inferior t<sub>inf</sub> (cm)", default: 2 },
-    { key: "t_izq", labelHtml: "Espesor izquierdo t<sub>izq</sub> (cm)", default: 2 },
-    { key: "t_der", labelHtml: "Espesor derecho t<sub>der</sub> (cm)", default: 2 },
-  ]},
-  Z: { label: "Perfil Z", campos: [
-    { key: "bf_sup", labelHtml: "Ancho ala superior b<sub>f,sup</sub> (cm)", default: 10 },
-    { key: "tf_sup", labelHtml: "Espesor ala superior t<sub>f,sup</sub> (cm)", default: 1 },
-    { key: "hw", labelHtml: "Alto alma h<sub>w</sub> (cm)", default: 20 },
-    { key: "tw", labelHtml: "Espesor alma t<sub>w</sub> (cm)", default: 1 },
-    { key: "bf_inf", labelHtml: "Ancho ala inferior b<sub>f,inf</sub> (cm)", default: 10 },
-    { key: "tf_inf", labelHtml: "Espesor ala inferior t<sub>f,inf</sub> (cm)", default: 1 },
-  ]},
+  rectangular: {
+    label: "Rectangular",
+    campos: [
+      { key: "b", labelHtml: "Base <i>b</i> (cm)", default: 30 },
+      { key: "h", labelHtml: "Altura <i>h</i> (cm)", default: 50 },
+    ]
+  },
+  circular: {
+    label: "Circular",
+    campos: [{ key: "r", labelHtml: "Radio <i>r</i> (cm)", default: 20 }]
+  },
+  tubo: {
+    label: "Tubo circular",
+    campos: [
+      { key: "r", labelHtml: "Radio exterior <i>r</i> (cm)", default: 20 },
+      { key: "t", labelHtml: "Espesor <i>t</i> (cm)", default: 2 },
+    ]
+  },
+  I: {
+    label: "Perfil I asimétrico",
+    campos: [
+      { key: "bf_inf", labelHtml: "Ancho ala inferior b<sub>f,inf</sub> (cm)", default: 20 },
+      { key: "tf_inf", labelHtml: "Espesor ala inferior t<sub>f,inf</sub> (cm)", default: 1.5 },
+      { key: "x_alma", labelHtml: "Posición alma x<sub>alma</sub> desde borde izq. ala inf (cm)", default: 9.5 },
+      { key: "tw", labelHtml: "Espesor alma t<sub>w</sub> (cm)", default: 1 },
+      { key: "hw", labelHtml: "Alto alma h<sub>w</sub> (cm)", default: 30 },
+      { key: "x_sup", labelHtml: "Posición ala sup x<sub>sup</sub> desde borde izq. ala inf (cm)", default: 2 },
+      { key: "bf_sup", labelHtml: "Ancho ala superior b<sub>f,sup</sub> (cm)", default: 16 },
+      { key: "tf_sup", labelHtml: "Espesor ala superior t<sub>f,sup</sub> (cm)", default: 1.5 },
+    ]
+  },
+  T: {
+    label: "Perfil T",
+    campos: [
+      { key: "bf", labelHtml: "Ancho ala b<sub>f</sub> (cm)", default: 20 },
+      { key: "tf", labelHtml: "Espesor ala t<sub>f</sub> (cm)", default: 2 },
+      { key: "hw", labelHtml: "Alto alma h<sub>w</sub> (cm)", default: 20 },
+      { key: "tw", labelHtml: "Espesor alma t<sub>w</sub> (cm)", default: 1.5 },
+    ]
+  },
+  L: {
+    label: "Ángulo L",
+    campos: [
+      { key: "b", labelHtml: "Ancho <i>b</i> (cm)", default: 10 },
+      { key: "h", labelHtml: "Alto <i>h</i> (cm)", default: 10 },
+      { key: "t", labelHtml: "Espesor <i>t</i> (cm)", default: 1 },
+    ]
+  },
+  C: {
+    label: "Canal C asimétrico",
+    campos: [
+      { key: "bf_inf", labelHtml: "Ancho ala inferior b<sub>f,inf</sub> (cm)", default: 10 },
+      { key: "tf_inf", labelHtml: "Espesor ala inferior t<sub>f,inf</sub> (cm)", default: 1 },
+      { key: "tw", labelHtml: "Espesor alma t<sub>w</sub> (cm)", default: 1 },
+      { key: "hw", labelHtml: "Alto alma h<sub>w</sub> (cm)", default: 20 },
+      { key: "x_sup", labelHtml: "Posición ala sup x<sub>sup</sub> desde borde izq. alma (cm)", default: 0 },
+      { key: "bf_sup", labelHtml: "Ancho ala superior b<sub>f,sup</sub> (cm)", default: 8 },
+      { key: "tf_sup", labelHtml: "Espesor ala superior t<sub>f,sup</sub> (cm)", default: 1 },
+    ]
+  },
+  cajon: {
+    label: "Cajón paramétrico",
+    campos: [
+      { key: "b_sup", labelHtml: "Ancho superior b<sub>sup</sub> (cm)", default: 30 },
+      { key: "b_inf", labelHtml: "Ancho inferior b<sub>inf</sub> (cm)", default: 30 },
+      { key: "h", labelHtml: "Altura <i>h</i> (cm)", default: 50 },
+      { key: "t_sup", labelHtml: "Espesor superior t<sub>sup</sub> (cm)", default: 2 },
+      { key: "t_inf", labelHtml: "Espesor inferior t<sub>inf</sub> (cm)", default: 2 },
+      { key: "t_izq", labelHtml: "Espesor izquierdo t<sub>izq</sub> (cm)", default: 2 },
+      { key: "t_der", labelHtml: "Espesor derecho t<sub>der</sub> (cm)", default: 2 },
+    ]
+  },
+  Z: {
+    label: "Perfil Z",
+    campos: [
+      { key: "bf_inf", labelHtml: "Ancho ala inferior b<sub>f,inf</sub> (cm)", default: 10 },
+      { key: "tf_inf", labelHtml: "Espesor ala inferior t<sub>f,inf</sub> (cm)", default: 1 },
+      { key: "tw", labelHtml: "Espesor alma t<sub>w</sub> (cm)", default: 1 },
+      { key: "hw", labelHtml: "Alto alma h<sub>w</sub> (cm)", default: 20 },
+      { key: "bf_sup", labelHtml: "Ancho ala superior b<sub>f,sup</sub> (cm)", default: 10 },
+      { key: "tf_sup", labelHtml: "Espesor ala superior t<sub>f,sup</sub> (cm)", default: 1 },
+    ]
+  },
   coordenadas: { label: "Por coordenadas", campos: [] },
 }
 
-function Cota({ x1, y1, x2, y2, label, off = 14 }: { x1: number; y1: number; x2: number; y2: number; label: string; off?: number }) {
+// ── Componente de cota SVG ─────────────────────────────────────────────────
+function Cota({ x1, y1, x2, y2, label, off = 14 }: {
+  x1: number; y1: number; x2: number; y2: number; label: string; off?: number
+}) {
   const mx = (x1 + x2) / 2, my = (y1 + y2) / 2
   const horiz = Math.abs(y2 - y1) < 2
   return (
     <g>
       <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#1d4ed8" strokeWidth="0.8" />
       {horiz
-        ? <><line x1={x1} y1={y1 - 5} x2={x1} y2={y1 + 5} stroke="#1d4ed8" strokeWidth="0.8" /><line x1={x2} y1={y2 - 5} x2={x2} y2={y2 + 5} stroke="#1d4ed8" strokeWidth="0.8" /></>
-        : <><line x1={x1 - 5} y1={y1} x2={x1 + 5} y2={y1} stroke="#1d4ed8" strokeWidth="0.8" /><line x1={x2 - 5} y1={y2} x2={x2 + 5} y2={y2} stroke="#1d4ed8" strokeWidth="0.8" /></>
+        ? <>
+          <line x1={x1} y1={y1 - 5} x2={x1} y2={y1 + 5} stroke="#1d4ed8" strokeWidth="0.8" />
+          <line x1={x2} y1={y2 - 5} x2={x2} y2={y2 + 5} stroke="#1d4ed8" strokeWidth="0.8" />
+        </>
+        : <>
+          <line x1={x1 - 5} y1={y1} x2={x1 + 5} y2={y1} stroke="#1d4ed8" strokeWidth="0.8" />
+          <line x1={x2 - 5} y1={y2} x2={x2 + 5} y2={y2} stroke="#1d4ed8" strokeWidth="0.8" />
+        </>
       }
-      <text x={horiz ? mx : mx + off} y={horiz ? my - off / 2 : my + 4} textAnchor="middle" fontSize="9" fill="#1d4ed8" fontWeight="600"
-        dangerouslySetInnerHTML={{ __html: label }} />
+      <text
+        x={horiz ? mx : mx + off}
+        y={horiz ? my - off / 2 : my + 4}
+        textAnchor="middle" fontSize="9" fill="#1d4ed8" fontWeight="600"
+        dangerouslySetInnerHTML={{ __html: label }}
+      />
     </g>
   )
 }
 
+// ── Esquemas de referencia SVG ─────────────────────────────────────────────
 function EsquemaReferencia({ plantilla }: { plantilla: Plantilla }) {
   switch (plantilla) {
     case "rectangular": return (
@@ -197,6 +310,7 @@ function EsquemaReferencia({ plantilla }: { plantilla: Plantilla }) {
         <Cota x1={178} y1={20} x2={178} y2={130} label="h" off={14} />
       </svg>
     )
+
     case "circular": return (
       <svg viewBox="0 0 200 180" className="w-full h-40">
         <circle cx="100" cy="90" r="65" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
@@ -205,6 +319,7 @@ function EsquemaReferencia({ plantilla }: { plantilla: Plantilla }) {
         <text x="132" y="82" fontSize="11" fill="#dc2626" fontStyle="italic" fontWeight="600">r</text>
       </svg>
     )
+
     case "tubo": return (
       <svg viewBox="0 0 200 180" className="w-full h-40">
         <circle cx="100" cy="90" r="65" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
@@ -216,19 +331,36 @@ function EsquemaReferencia({ plantilla }: { plantilla: Plantilla }) {
         <text x="157" y="107" fontSize="10" fill="#e11d48" fontStyle="italic" fontWeight="600">t</text>
       </svg>
     )
+
     case "I": return (
-      <svg viewBox="0 0 260 240" className="w-full h-48">
-        <rect x="25" y="180" width="130" height="18" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
-        <rect x="62" y="55" width="20" height="125" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
-        <rect x="35" y="37" width="110" height="18" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
-        <Cota x1={35} y1={24} x2={145} y2={24} label="b<sub>f,sup</sub>" />
-        <Cota x1={25} y1={224} x2={155} y2={224} label="b<sub>f,inf</sub>" />
-        <Cota x1={168} y1={37} x2={168} y2={55} label="t<sub>f,sup</sub>" off={24} />
-        <Cota x1={168} y1={180} x2={168} y2={198} label="t<sub>f,inf</sub>" off={24} />
-        <Cota x1={188} y1={55} x2={188} y2={180} label="h<sub>w</sub>" off={14} />
-        <Cota x1={62} y1={145} x2={82} y2={145} label="t<sub>w</sub>" />
+      <svg viewBox="0 0 280 260" className="w-full h-52">
+        {/* ala inferior */}
+        <rect x="20" y="205" width="130" height="18" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
+        {/* alma — desplazada con x_alma */}
+        <rect x="55" y="80" width="18" height="125" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
+        {/* ala superior — desplazada con x_sup */}
+        <rect x="40" y="62" width="100" height="18" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
+
+        {/* cotas ala inferior */}
+        <Cota x1={20} y1={238} x2={150} y2={238} label="b<sub>f,inf</sub>" />
+        <Cota x1={165} y1={205} x2={165} y2={223} label="t<sub>f,inf</sub>" off={24} />
+
+        {/* cota x_alma */}
+        <Cota x1={20} y1={195} x2={55} y2={195} label="x<sub>alma</sub>" />
+
+        {/* cotas alma */}
+        <Cota x1={55} y1={145} x2={73} y2={145} label="t<sub>w</sub>" />
+        <Cota x1={190} y1={80} x2={190} y2={205} label="h<sub>w</sub>" off={14} />
+
+        {/* cota x_sup */}
+        <Cota x1={20} y1={72} x2={40} y2={72} label="x<sub>sup</sub>" />
+
+        {/* cotas ala superior */}
+        <Cota x1={40} y1={50} x2={140} y2={50} label="b<sub>f,sup</sub>" />
+        <Cota x1={165} y1={62} x2={165} y2={80} label="t<sub>f,sup</sub>" off={24} />
       </svg>
     )
+
     case "T": return (
       <svg viewBox="0 0 220 200" className="w-full h-40">
         <rect x="20" y="20" width="140" height="20" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
@@ -239,6 +371,7 @@ function EsquemaReferencia({ plantilla }: { plantilla: Plantilla }) {
         <Cota x1={72} y1={110} x2={98} y2={110} label="t<sub>w</sub>" />
       </svg>
     )
+
     case "L": return (
       <svg viewBox="0 0 200 200" className="w-full h-40">
         <polygon points="20,170 20,20 38,20 38,152 160,152 160,170" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
@@ -247,43 +380,73 @@ function EsquemaReferencia({ plantilla }: { plantilla: Plantilla }) {
         <Cota x1={20} y1={110} x2={38} y2={110} label="t" />
       </svg>
     )
+
     case "C": return (
-      <svg viewBox="0 0 250 240" className="w-full h-48">
-        <polygon points="20,210 20,15 130,15 130,33 38,33 38,177 115,177 115,195 20,195"
-          fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
-        <Cota x1={20} y1={4} x2={130} y2={4} label="b<sub>f,sup</sub>" />
-        <Cota x1={20} y1={226} x2={115} y2={226} label="b<sub>f,inf</sub>" />
-        <Cota x1={145} y1={15} x2={145} y2={33} label="t<sub>f,sup</sub>" off={26} />
-        <Cota x1={145} y1={177} x2={145} y2={195} label="t<sub>f,inf</sub>" off={26} />
-        <Cota x1={165} y1={33} x2={165} y2={177} label="h<sub>w</sub>" off={14} />
-        <Cota x1={20} y1={110} x2={38} y2={110} label="t<sub>w</sub>" />
+      <svg viewBox="0 0 270 260" className="w-full h-52">
+        {/* ala inferior */}
+        <rect x="20" y="210" width="90" height="16" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
+        {/* alma */}
+        <rect x="20" y="80" width="16" height="130" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
+        {/* ala superior desplazada con x_sup */}
+        <rect x="36" y="64" width="90" height="16" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
+
+        {/* cotas ala inferior */}
+        <Cota x1={20} y1={242} x2={110} y2={242} label="b<sub>f,inf</sub>" />
+        <Cota x1={125} y1={210} x2={125} y2={226} label="t<sub>f,inf</sub>" off={24} />
+
+        {/* cota alma */}
+        <Cota x1={20} y1={145} x2={36} y2={145} label="t<sub>w</sub>" />
+        <Cota x1={145} y1={80} x2={145} y2={210} label="h<sub>w</sub>" off={14} />
+
+        {/* cota x_sup */}
+        <Cota x1={20} y1={74} x2={36} y2={74} label="x<sub>sup</sub>" />
+
+        {/* cotas ala superior */}
+        <Cota x1={36} y1={52} x2={126} y2={52} label="b<sub>f,sup</sub>" />
+        <Cota x1={145} y1={64} x2={145} y2={80} label="t<sub>f,sup</sub>" off={24} />
       </svg>
     )
+
     case "cajon": return (
       <svg viewBox="0 0 260 230" className="w-full h-48">
         <polygon points="20,200 40,20 200,20 220,200" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
-        <polygon points="38,180 55,38 185,38 202,180" fill="white" stroke="#1d4ed8" strokeWidth="1.5" />
+        <polygon points="38,182 55,38 185,38 202,182" fill="white" stroke="#1d4ed8" strokeWidth="1.5" />
         <Cota x1={40} y1={8} x2={200} y2={8} label="b<sub>sup</sub>" />
         <Cota x1={20} y1={218} x2={220} y2={218} label="b<sub>inf</sub>" />
         <Cota x1={230} y1={20} x2={230} y2={200} label="h" off={14} />
         <Cota x1={20} y1={110} x2={38} y2={110} label="t<sub>izq</sub>" />
         <Cota x1={40} y1={20} x2={55} y2={38} label="t<sub>sup</sub>" />
         <Cota x1={185} y1={38} x2={202} y2={20} label="t<sub>der</sub>" />
-        <Cota x1={38} y1={180} x2={55} y2={200} label="t<sub>inf</sub>" />
+        <Cota x1={38} y1={182} x2={55} y2={200} label="t<sub>inf</sub>" />
       </svg>
     )
+
     case "Z": return (
-      <svg viewBox="0 0 240 230" className="w-full h-48">
-        <polygon points="20,200 20,182 90,182 90,38 20,38 20,20 60,20 60,38 108,38 108,182 60,182 60,200"
-          fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
-        <Cota x1={20} y1={8} x2={60} y2={8} label="b<sub>f,sup</sub>" />
-        <Cota x1={20} y1={218} x2={60} y2={218} label="b<sub>f,inf</sub>" />
-        <Cota x1={125} y1={38} x2={125} y2={182} label="h<sub>w</sub>" off={14} />
-        <Cota x1={60} y1={110} x2={90} y2={110} label="t<sub>w</sub>" />
-        <Cota x1={148} y1={20} x2={148} y2={38} label="t<sub>f,sup</sub>" off={26} />
-        <Cota x1={148} y1={182} x2={148} y2={200} label="t<sub>f,inf</sub>" off={26} />
+      <svg viewBox="0 0 260 260" className="w-full h-52">
+        {/* ala inferior izquierda */}
+        <rect x="20" y="205" width="90" height="16" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
+        {/* alma */}
+        <rect x="20" y="80" width="16" height="125" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
+        {/* ala superior derecha */}
+        <rect x="36" y="64" width="90" height="16" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
+
+        {/* cotas ala inferior */}
+        <Cota x1={20} y1={238} x2={110} y2={238} label="b<sub>f,inf</sub>" />
+        <Cota x1={125} y1={205} x2={125} y2={221} label="t<sub>f,inf</sub>" off={24} />
+
+        {/* cotas alma */}
+        <Cota x1={20} y1={142} x2={36} y2={142} label="t<sub>w</sub>" />
+        <Cota x1={145} y1={80} x2={145} y2={205} label="h<sub>w</sub>" off={14} />
+
+        {/* cotas ala superior */}
+        <Cota x1={36} y1={52} x2={126} y2={52} label="b<sub>f,sup</sub>" />
+        <Cota x1={145} y1={64} x2={145} y2={80} label="t<sub>f,sup</sub>" off={24} />
+
+        {/* flecha indicando Z */}
+        <text x="140" y="145" fontSize="28" fill="rgba(59,130,246,0.3)" fontWeight="bold">Z</text>
       </svg>
     )
+
     case "coordenadas": return (
       <svg viewBox="0 0 200 160" className="w-full h-32">
         <line x1="20" y1="140" x2="180" y2="140" stroke="#9ca3af" strokeWidth="1" />
@@ -300,10 +463,12 @@ function EsquemaReferencia({ plantilla }: { plantilla: Plantilla }) {
         <text x="75" y="113" fontSize="9" fill="#6b7280">↺ antihorario = hueco</text>
       </svg>
     )
+
     default: return null
   }
 }
 
+// ── Cuadrícula ─────────────────────────────────────────────────────────────
 function niceStep(range: number, targetTicks = 5): number {
   const raw = range / targetTicks
   const exp = Math.floor(Math.log10(raw || 1))
@@ -313,12 +478,16 @@ function niceStep(range: number, targetTicks = 5): number {
   return base
 }
 
-function dibujarCanvas(canvas: HTMLCanvasElement, elementos: Elemento[], resultado: ResultadoSeccion | null, coordPts: Poligono) {
+function dibujarCanvas(
+  canvas: HTMLCanvasElement,
+  elementos: Elemento[],
+  resultado: ResultadoSeccion | null,
+  coordPts: Poligono
+) {
   const ctx = canvas.getContext("2d")
   if (!ctx) return
   ctx.clearRect(0, 0, canvas.width, canvas.height)
 
-  // Recolectar todos los puntos incluyendo origen
   const todosLosPts: { x: number; y: number }[] = [{ x: 0, y: 0 }]
   for (const el of elementos) {
     if (el.plantilla === "coordenadas") { todosLosPts.push(...coordPts); continue }
@@ -332,74 +501,73 @@ function dibujarCanvas(canvas: HTMLCanvasElement, elementos: Elemento[], resulta
     if (p.y < ymin) ymin = p.y; if (p.y > ymax) ymax = p.y
   }
 
-  // Asegurar rango mínimo
   if (xmax - xmin < 1) { xmin -= 5; xmax += 5 }
   if (ymax - ymin < 1) { ymin -= 5; ymax += 5 }
 
-  const padLeft = 50, padRight = 20, padTop = 20, padBottom = 30
-  const W = canvas.width - padLeft - padRight
-  const H = canvas.height - padTop - padBottom
-  const margin = 0.15
-  const rangeX = (xmax - xmin) * (1 + margin * 2)
-  const rangeY = (ymax - ymin) * (1 + margin * 2)
-  const scale = Math.min(W / rangeX, H / rangeY)
+  const padL = 50, padR = 20, padT = 20, padB = 30
+  const W = canvas.width - padL - padR
+  const H = canvas.height - padT - padB
+  const mg = 0.15
+  const rX = (xmax - xmin) * (1 + mg * 2)
+  const rY = (ymax - ymin) * (1 + mg * 2)
+  const scale = Math.min(W / rX, H / rY)
 
-  const ox = padLeft + (-xmin + (xmax - xmin) * margin) * scale
-  const oy = canvas.height - padBottom - (-ymin + (ymax - ymin) * margin) * scale
+  const ox = padL + (-xmin + (xmax - xmin) * mg) * scale
+  const oy = canvas.height - padB - (-ymin + (ymax - ymin) * mg) * scale
 
   const tx = (x: number) => ox + x * scale
   const ty = (y: number) => oy - y * scale
 
-  // Paso de cuadrícula razonable
   const stepX = niceStep(xmax - xmin)
   const stepY = niceStep(ymax - ymin)
 
-  // Cuadrícula completa — desde fuera del canvas hasta fuera
+  // Cuadrícula completa — sin cortes
   ctx.strokeStyle = "#e5e7eb"; ctx.lineWidth = 0.5
 
-  const xGridStart = Math.floor((xmin - (xmax - xmin) * margin) / stepX) * stepX
-  const xGridEnd = xmax + (xmax - xmin) * margin + stepX
-  for (let gx = xGridStart; gx <= xGridEnd; gx = Math.round((gx + stepX) * 1e10) / 1e10) {
-    const px = tx(gx)
-    ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, canvas.height); ctx.stroke()
+  const x0g = Math.floor((xmin - (xmax - xmin) * mg) / stepX) * stepX
+  const x1g = xmax + (xmax - xmin) * mg + stepX * 2
+  for (let gx = x0g; gx <= x1g; gx = parseFloat((gx + stepX).toFixed(10))) {
+    ctx.beginPath(); ctx.moveTo(tx(gx), 0); ctx.lineTo(tx(gx), canvas.height); ctx.stroke()
   }
 
-  const yGridStart = Math.floor((ymin - (ymax - ymin) * margin) / stepY) * stepY
-  const yGridEnd = ymax + (ymax - ymin) * margin + stepY
-  for (let gy = yGridStart; gy <= yGridEnd; gy = Math.round((gy + stepY) * 1e10) / 1e10) {
-    const py = ty(gy)
-    ctx.beginPath(); ctx.moveTo(0, py); ctx.lineTo(canvas.width, py); ctx.stroke()
+  const y0g = Math.floor((ymin - (ymax - ymin) * mg) / stepY) * stepY
+  const y1g = ymax + (ymax - ymin) * mg + stepY * 2
+  for (let gy = y0g; gy <= y1g; gy = parseFloat((gy + stepY).toFixed(10))) {
+    ctx.beginPath(); ctx.moveTo(0, ty(gy)); ctx.lineTo(canvas.width, ty(gy)); ctx.stroke()
   }
 
-  // Etiquetas X — espaciado razonable
+  // Etiquetas X — saltar las que se enciman
   ctx.fillStyle = "#9ca3af"; ctx.font = "9px sans-serif"; ctx.textAlign = "center"
-  for (let gx = xGridStart; gx <= xGridEnd; gx = Math.round((gx + stepX) * 1e10) / 1e10) {
+  let lastLabelX = -Infinity
+  for (let gx = x0g; gx <= x1g; gx = parseFloat((gx + stepX).toFixed(10))) {
     const px = tx(gx)
-    if (px < padLeft || px > canvas.width - padRight) continue
-    const label = Number.isInteger(gx) ? `${gx}` : `${parseFloat(gx.toFixed(2))}`
-    ctx.fillText(label, px, canvas.height - 5)
+    if (px < padL || px > canvas.width - padR) continue
+    if (px - lastLabelX < 30) continue
+    lastLabelX = px
+    ctx.fillText(Number.isInteger(gx) ? `${gx}` : `${parseFloat(gx.toFixed(2))}`, px, canvas.height - 6)
   }
 
   // Etiquetas Y
   ctx.textAlign = "right"
-  for (let gy = yGridStart; gy <= yGridEnd; gy = Math.round((gy + stepY) * 1e10) / 1e10) {
+  let lastLabelY = Infinity
+  for (let gy = y0g; gy <= y1g; gy = parseFloat((gy + stepY).toFixed(10))) {
     const py = ty(gy)
-    if (py < padTop || py > canvas.height - padBottom) continue
-    const label = Number.isInteger(gy) ? `${gy}` : `${parseFloat(gy.toFixed(2))}`
-    ctx.fillText(label, padLeft - 4, py + 3)
+    if (py < padT || py > canvas.height - padB) continue
+    if (lastLabelY - py < 20) continue
+    lastLabelY = py
+    ctx.fillText(Number.isInteger(gy) ? `${gy}` : `${parseFloat(gy.toFixed(2))}`, padL - 4, py + 3)
   }
 
-  // Ejes principales
+  // Ejes
   ctx.strokeStyle = "#6b7280"; ctx.lineWidth = 1.2
   ctx.beginPath(); ctx.moveTo(0, oy); ctx.lineTo(canvas.width, oy); ctx.stroke()
   ctx.beginPath(); ctx.moveTo(ox, 0); ctx.lineTo(ox, canvas.height); ctx.stroke()
 
-  // Labels ejes
   ctx.fillStyle = "#374151"; ctx.font = "bold 10px sans-serif"
   ctx.textAlign = "left"; ctx.fillText("x (cm)", canvas.width - 38, oy - 4)
-  ctx.textAlign = "center"; ctx.fillText("y (cm)", ox + 4, padTop - 6)
+  ctx.textAlign = "center"; ctx.fillText("y (cm)", ox + 4, padT - 6)
 
-  // Colores elementos
+  // Elementos
   const fills = ["rgba(59,130,246,0.2)", "rgba(16,185,129,0.2)", "rgba(245,158,11,0.2)", "rgba(239,68,68,0.2)", "rgba(139,92,246,0.2)"]
   const strokes = ["#1d4ed8", "#059669", "#d97706", "#dc2626", "#7c3aed"]
 
@@ -443,6 +611,7 @@ function fmt(n: number, dec = 4) {
   return n.toFixed(dec)
 }
 
+// ── Componente principal ───────────────────────────────────────────────────
 export default function SectionBuilder() {
   const [elementos, setElementos] = useState<Elemento[]>([])
   const [editandoId, setEditandoId] = useState<number | null>(null)
@@ -515,7 +684,10 @@ export default function SectionBuilder() {
             const [x, y] = l.split(",").map(Number); return { x, y }
           })
           setCoordPts(pts)
-          const el: Elemento = { id: nextId.current++, plantilla: "coordenadas", params: {}, x0: 0, y0: 0, signo: signoActual, label: `Coord${nextId.current - 1}` }
+          const el: Elemento = {
+            id: nextId.current++, plantilla: "coordenadas", params: {},
+            x0: 0, y0: 0, signo: signoActual, label: `Coord${nextId.current - 1}`
+          }
           const nuevos = [...elementos, el]
           setElementos(nuevos)
           calcularConElementos(nuevos, pts)
@@ -595,7 +767,9 @@ export default function SectionBuilder() {
                         <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: colores[idx % colores.length] }} />
                         <span className="text-sm font-medium text-gray-800">{el.label}</span>
                         <span className="text-xs text-gray-500">{plantillasConfig[el.plantilla].label}</span>
-                        <span className={`text-xs px-1.5 py-0.5 rounded ${el.signo > 0 ? "bg-blue-100 text-blue-700" : "bg-red-100 text-red-700"}`}>{el.signo > 0 ? "+suma" : "−resta"}</span>
+                        <span className={`text-xs px-1.5 py-0.5 rounded ${el.signo > 0 ? "bg-blue-100 text-blue-700" : "bg-red-100 text-red-700"}`}>
+                          {el.signo > 0 ? "+suma" : "−resta"}
+                        </span>
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="text-xs text-gray-400">({el.x0},{el.y0})</span>
@@ -681,15 +855,31 @@ export default function SectionBuilder() {
               {resultado && (
                 <div className="bg-white border border-gray-200 rounded-xl p-5">
                   <div className="text-xs text-gray-400 font-medium tracking-wider mb-2">INERCIA EN PUNTO SOLICITADO</div>
-                  <div className="text-xs text-gray-500 mb-3">I<sub>x</sub>′ e I<sub>y</sub>′ respecto a ejes paralelos por (x,y) — Steiner</div>
+                  <div className="text-xs text-gray-500 mb-3">
+                    I<sub>x</sub>′ e I<sub>y</sub>′ respecto a ejes paralelos por (x,y) — Steiner
+                  </div>
                   <div className="grid grid-cols-2 gap-3 mb-3">
-                    <div><div className="text-xs text-gray-500 mb-1">x (cm)</div><input type="number" value={ptoX} onChange={e => setPtoX(e.target.value)} placeholder="0" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400" /></div>
-                    <div><div className="text-xs text-gray-500 mb-1">y (cm)</div><input type="number" value={ptoY} onChange={e => setPtoY(e.target.value)} placeholder="0" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400" /></div>
+                    <div>
+                      <div className="text-xs text-gray-500 mb-1">x (cm)</div>
+                      <input type="number" value={ptoX} onChange={e => setPtoX(e.target.value)} placeholder="0"
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400" />
+                    </div>
+                    <div>
+                      <div className="text-xs text-gray-500 mb-1">y (cm)</div>
+                      <input type="number" value={ptoY} onChange={e => setPtoY(e.target.value)} placeholder="0"
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400" />
+                    </div>
                   </div>
                   {steiner && (
                     <div className="grid grid-cols-2 gap-3">
-                      <div className="p-3 bg-blue-50 rounded-lg"><div className="text-xs text-blue-500">I<sub>x</sub>′ (cm⁴)</div><div className="text-sm font-medium text-blue-900">{fmt(steiner.Ix)}</div></div>
-                      <div className="p-3 bg-blue-50 rounded-lg"><div className="text-xs text-blue-500">I<sub>y</sub>′ (cm⁴)</div><div className="text-sm font-medium text-blue-900">{fmt(steiner.Iy)}</div></div>
+                      <div className="p-3 bg-blue-50 rounded-lg">
+                        <div className="text-xs text-blue-500">I<sub>x</sub>′ (cm⁴)</div>
+                        <div className="text-sm font-medium text-blue-900">{fmt(steiner.Ix)}</div>
+                      </div>
+                      <div className="p-3 bg-blue-50 rounded-lg">
+                        <div className="text-xs text-blue-500">I<sub>y</sub>′ (cm⁴)</div>
+                        <div className="text-sm font-medium text-blue-900">{fmt(steiner.Iy)}</div>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -699,8 +889,18 @@ export default function SectionBuilder() {
                 <div className="bg-white border border-gray-200 rounded-xl p-5">
                   <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">CARGAR EN MÓDULO</div>
                   <div className="flex flex-wrap gap-2">
-                    {[{ key: "vigas", label: "Vigas" }, { key: "porticos", label: "Pórticos" }, { key: "armaduras", label: "Armaduras" }, { key: "matricial", label: "Método Matricial" }, { key: "pandeo", label: "Pandeo" }, { key: "diseno", label: "Diseño Estructural" }].map(mod => (
-                      <button key={mod.key} onClick={() => cargarEnModulo(mod.key)} className="text-xs bg-blue-700 text-white px-3 py-1.5 rounded-lg hover:bg-blue-800">→ {mod.label}</button>
+                    {[
+                      { key: "vigas", label: "Vigas" },
+                      { key: "porticos", label: "Pórticos" },
+                      { key: "armaduras", label: "Armaduras" },
+                      { key: "matricial", label: "Método Matricial" },
+                      { key: "pandeo", label: "Pandeo" },
+                      { key: "diseno", label: "Diseño Estructural" },
+                    ].map(mod => (
+                      <button key={mod.key} onClick={() => cargarEnModulo(mod.key)}
+                        className="text-xs bg-blue-700 text-white px-3 py-1.5 rounded-lg hover:bg-blue-800">
+                        → {mod.label}
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -711,10 +911,15 @@ export default function SectionBuilder() {
             <div className="flex flex-col gap-4">
               <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">PLANO CARTESIANO</div>
-                <canvas ref={canvasRef} width={440} height={380} className="w-full border border-gray-100 rounded-lg bg-white" />
+                <canvas ref={canvasRef} width={440} height={380}
+                  className="w-full border border-gray-100 rounded-lg bg-white" />
                 <div className="mt-2 flex items-center gap-4 text-xs text-gray-400">
-                  <span className="flex items-center gap-1"><span className="w-3 h-3 bg-blue-200 border border-blue-600 inline-block rounded-sm" />Área +</span>
-                  <span className="flex items-center gap-1"><span className="w-3 h-3 bg-white border border-blue-600 inline-block rounded-sm" />Área − (hueco)</span>
+                  <span className="flex items-center gap-1">
+                    <span className="w-3 h-3 bg-blue-200 border border-blue-600 inline-block rounded-sm" />Área +
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="w-3 h-3 bg-white border border-blue-600 inline-block rounded-sm" />Área − (hueco)
+                  </span>
                   <span className="flex items-center gap-1 text-red-500 font-bold">⊕ C(x̄,ȳ)</span>
                 </div>
               </div>
