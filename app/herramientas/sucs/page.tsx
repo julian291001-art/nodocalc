@@ -208,7 +208,7 @@ function CurvaGranulometrica({
   const padL = 52, padR = 20, padT = 20, padB = 40
 
   // Escala log para eje X (diámetro): de 0.01 mm a 100 mm
-  const xMin = Math.log10(0.01), xMax = Math.log10(100)
+  const xMin = Math.log10(100), xMax = Math.log10(0.01)
   const yMin = 0, yMax = 100
 
   const sx = (W - padL - padR) / (xMax - xMin)
@@ -317,7 +317,7 @@ function CurvaGranulometrica({
             { label: "D₃₀ (mm)", val: D30, color: "text-amber-600" },
             { label: "D₆₀ (mm)", val: D60, color: "text-red-600" },
             { label: "Cᵤ",      val: Cu,  color: "text-gray-700" },
-            { label: "Cᶜ",      val: Cc,  color: "text-gray-700" },
+            { label: "C꜀",      val: Cc,  color: "text-gray-700" },
           ].map(({ label, val, color }) => (
             <div key={label} className="bg-blue-50 rounded-lg p-2 text-center">
               <div className="text-xs text-gray-400 mb-0.5">{label}</div>
@@ -770,7 +770,7 @@ export default function ClasificacionSUCS() {
                   CURVA GRANULOMÉTRICA
                   {CuCalc && CcCalc && (
                     <span className="ml-2 text-blue-600 normal-case font-normal">
-                      — Cᵤ = {CuCalc.toFixed(2)}, Cᶜ = {CcCalc.toFixed(2)}
+                      — Cᵤ = {CuCalc.toFixed(2)}, C꜀ = {CcCalc.toFixed(2)}
                     </span>
                   )}
                 </div>
