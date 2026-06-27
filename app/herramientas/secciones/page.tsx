@@ -25,6 +25,14 @@ type DatosPDF = {
   ingeniero: string; empresa: string; proyecto: string; descripcion: string; fecha: string
 }
 
+// ── Helpers globales ───────────────────────────────────────────────────────
+function f2(n: number) { return n.toFixed(2) }
+function fmt(n: number, dec = 4) {
+  if (Math.abs(n) >= 1e6 || (Math.abs(n) < 0.001 && n !== 0)) return n.toExponential(2)
+  return n.toFixed(dec)
+}
+
+// ── Geometría ──────────────────────────────────────────────────────────────
 function circlePoints(cx: number, cy: number, r: number, n = 128): Poligono {
   return Array.from({ length: n }, (_, i) => ({
     x: cx + r * Math.cos(2 * Math.PI * i / n),
@@ -47,10 +55,7 @@ function getPoligonos(plantilla: Plantilla, p: Params): PoligonoEntry[] {
     case "circular":
       return [{ pts: [], signo: 1, exacto: { cx: r, cy: r, r } }]
     case "tubo":
-      return [
-        { pts: [], signo: 1, exacto: { cx: r, cy: r, r } },
-        { pts: [], signo: -1, exacto: { cx: r, cy: r, r: r - t } },
-      ]
+      return [{ pts: [], signo: 1, exacto: { cx: r, cy: r, r } }, { pts: [], signo: -1, exacto: { cx: r, cy: r, r: r - t } }]
     case "I": {
       const hTotal = tf_inf + hw + tf_sup
       return [
@@ -437,38 +442,332 @@ function dibujarCanvas(canvas: HTMLCanvasElement, elementos: Elemento[], resulta
   }
 }
 
-function fmt(n: number, dec = 4) {
-  if (Math.abs(n) >= 1e6 || (Math.abs(n) < 0.001 && n !== 0)) return n.toExponential(2)
-  return n.toFixed(dec)
-}
-
-// ── Botón PDF con carga dinámica ───────────────────────────────────────────
+// ── Botón PDF ──────────────────────────────────────────────────────────────
 function PDFBoton({ elementos, resultado, datosPDF, canvasRef }: {
   elementos: Elemento[]
   resultado: ResultadoSeccion
   datosPDF: DatosPDF
   canvasRef: React.RefObject<HTMLCanvasElement | null>
 }) {
-  const [componentes, setComponentes] = useState<{
-    Link: any
-    Doc: any
-  } | null>(null)
+  const [estado, setEstado] = useState<"idle" | "preparando" | "listo" | "generando">("idle")
   const [imagenCanvas, setImagenCanvas] = useState<string>("")
-  const [loading, setLoading] = useState(false)
+  const [ecuacionesPNG, setEcuacionesPNG] = useState<Record<string, string>>({})
 
-  useEffect(() => {
-    Promise.all([
-      import("@react-pdf/renderer").then(m => m.PDFDownloadLink),
-      import("../../components/PDFSeccion").then(m => m.PDFSeccion),
-    ]).then(([Link, Doc]) => {
-      setComponentes({ Link, Doc })
-      if (canvasRef.current) setImagenCanvas(canvasRef.current.toDataURL("image/png"))
-    }).catch(err => console.error("Error cargando PDF:", err))
-  }, [])
+  const prepararPDF = async () => {
+    setEstado("preparando")
+    try {
+      const { renderizarEcuaciones } = await import("../../components/renderEcuacion")
+      const imgCanvas = canvasRef.current ? canvasRef.current.toDataURL("image/png") : ""
+      setImagenCanvas(imgCanvas)
+      const eqs: { key: string; latex: string; display?: boolean; altura?: number }[] = []
+      const R = Math.sqrt(Math.pow((resultado.Icx - resultado.Icy) / 2, 2) + Math.pow(resultado.Ixy, 2))
 
-  const handleDescargar = async () => {
-    if (!componentes) return
-    setLoading(true)
+      // Ecuaciones globales
+      eqs.push(
+        { key: "global_A_gen", latex: "A = \\sum_i \\left( \\text{signo}_i \\times A_i \\right)" },
+        { key: "global_A_res", latex: `A = ${fmt(resultado.A)} \\text{ cm}^2`, altura: 35 },
+        { key: "global_xc_gen", latex: "\\bar{x} = \\frac{\\sum_i \\left( \\text{signo}_i \\times A_i \\times \\bar{x}_i \\right)}{A}" },
+        { key: "global_xc_res", latex: `\\bar{x} = ${fmt(resultado.xc)} \\text{ cm}`, altura: 35 },
+        { key: "global_yc_gen", latex: "\\bar{y} = \\frac{\\sum_i \\left( \\text{signo}_i \\times A_i \\times \\bar{y}_i \\right)}{A}" },
+        { key: "global_yc_res", latex: `\\bar{y} = ${fmt(resultado.yc)} \\text{ cm}`, altura: 35 },
+        { key: "global_Icx_gen", latex: "I_{cx} = \\sum_i \\left[ \\text{signo}_i \\times \\left( I_{cx,i}^{\\text{propio}} + A_i \\cdot (\\bar{y}_i - \\bar{y})^2 \\right) \\right]" },
+        { key: "global_Icx_steiner", latex: "I_{cx,i}^{\\text{propio}} = I_{x,\\text{origen},i} - A_i \\cdot \\bar{y}_i^2" },
+        { key: "global_Icx_res", latex: `I_{cx} = ${fmt(resultado.Icx)} \\text{ cm}^4`, altura: 35 },
+        { key: "global_Icy_gen", latex: "I_{cy} = \\sum_i \\left[ \\text{signo}_i \\times \\left( I_{cy,i}^{\\text{propio}} + A_i \\cdot (\\bar{x}_i - \\bar{x})^2 \\right) \\right]" },
+        { key: "global_Icy_res", latex: `I_{cy} = ${fmt(resultado.Icy)} \\text{ cm}^4`, altura: 35 },
+        { key: "global_Ixy_gen", latex: "I_{xy} = \\sum_i \\left[ \\text{signo}_i \\times \\left( I_{xy,i}^{\\text{propio}} + A_i (\\bar{x}_i - \\bar{x})(\\bar{y}_i - \\bar{y}) \\right) \\right]" },
+        { key: "global_Ixy_res", latex: `I_{xy} = ${fmt(resultado.Ixy)} \\text{ cm}^4`, altura: 35 },
+        { key: "global_J_gen", latex: "J = I_{cx} + I_{cy}" },
+        { key: "global_J_sus", latex: `J = ${fmt(resultado.Icx)} + ${fmt(resultado.Icy)}` },
+        { key: "global_J_res", latex: `J = ${fmt(resultado.J)} \\text{ cm}^4`, altura: 35 },
+        { key: "mod_Sxp_gen", latex: "S_x^{+} = \\frac{I_{cx}}{y_{\\max} - \\bar{y}}" },
+        { key: "mod_Sxp_sus", latex: `S_x^{+} = \\frac{${fmt(resultado.Icx)}}{y_{\\max} - ${fmt(resultado.yc)}}` },
+        { key: "mod_Sxp_res", latex: `S_x^{+} = ${fmt(resultado.Sx_top)} \\text{ cm}^3`, altura: 35 },
+        { key: "mod_Sxm_gen", latex: "S_x^{-} = \\frac{I_{cx}}{\\bar{y} - y_{\\min}}" },
+        { key: "mod_Sxm_sus", latex: `S_x^{-} = \\frac{${fmt(resultado.Icx)}}{${fmt(resultado.yc)} - y_{\\min}}` },
+        { key: "mod_Sxm_res", latex: `S_x^{-} = ${fmt(resultado.Sx_bot)} \\text{ cm}^3`, altura: 35 },
+        { key: "mod_Sy_gen", latex: "S_y = \\frac{I_{cy}}{x_{\\max}}" },
+        { key: "mod_Sy_sus", latex: `S_y = \\frac{${fmt(resultado.Icy)}}{x_{\\max}}` },
+        { key: "mod_Sy_res", latex: `S_y = ${fmt(resultado.Sy)} \\text{ cm}^3`, altura: 35 },
+        { key: "mod_rx_gen", latex: "r_x = \\sqrt{\\frac{I_{cx}}{A}}" },
+        { key: "mod_rx_sus", latex: `r_x = \\sqrt{\\frac{${fmt(resultado.Icx)}}{${fmt(resultado.A)}}}` },
+        { key: "mod_rx_int", latex: `r_x = \\sqrt{${fmt(resultado.Icx / resultado.A)}}` },
+        { key: "mod_rx_res", latex: `r_x = ${fmt(resultado.rx)} \\text{ cm}`, altura: 35 },
+        { key: "mod_ry_gen", latex: "r_y = \\sqrt{\\frac{I_{cy}}{A}}" },
+        { key: "mod_ry_sus", latex: `r_y = \\sqrt{\\frac{${fmt(resultado.Icy)}}{${fmt(resultado.A)}}}` },
+        { key: "mod_ry_int", latex: `r_y = \\sqrt{${fmt(resultado.Icy / resultado.A)}}` },
+        { key: "mod_ry_res", latex: `r_y = ${fmt(resultado.ry)} \\text{ cm}`, altura: 35 },
+        { key: "ejes_R_gen", latex: "R = \\sqrt{\\left(\\frac{I_{cx} - I_{cy}}{2}\\right)^2 + I_{xy}^2}" },
+        { key: "ejes_R_sus", latex: `R = \\sqrt{\\left(\\frac{${fmt(resultado.Icx)} - ${fmt(resultado.Icy)}}{2}\\right)^2 + ${fmt(resultado.Ixy)}^2}` },
+        { key: "ejes_R_res", latex: `R = ${fmt(R)} \\text{ cm}^4`, altura: 35 },
+        { key: "ejes_I1_gen", latex: "I_1 = \\frac{I_{cx} + I_{cy}}{2} + R" },
+        { key: "ejes_I1_sus", latex: `I_1 = \\frac{${fmt(resultado.Icx)} + ${fmt(resultado.Icy)}}{2} + ${fmt(R)}` },
+        { key: "ejes_I1_res", latex: `I_1 = ${fmt(resultado.I1)} \\text{ cm}^4`, altura: 35 },
+        { key: "ejes_I2_gen", latex: "I_2 = \\frac{I_{cx} + I_{cy}}{2} - R" },
+        { key: "ejes_I2_sus", latex: `I_2 = \\frac{${fmt(resultado.Icx)} + ${fmt(resultado.Icy)}}{2} - ${fmt(R)}` },
+        { key: "ejes_I2_res", latex: `I_2 = ${fmt(resultado.I2)} \\text{ cm}^4`, altura: 35 },
+        { key: "ejes_tp_gen", latex: "\\theta_p = \\frac{1}{2} \\arctan\\left(\\frac{-2 I_{xy}}{I_{cx} - I_{cy}}\\right)" },
+        { key: "ejes_tp_sus", latex: `\\theta_p = \\frac{1}{2} \\arctan\\left(\\frac{-2 \\times ${fmt(resultado.Ixy)}}{${fmt(resultado.Icx)} - ${fmt(resultado.Icy)}}\\right)` },
+        { key: "ejes_tp_res", latex: `\\theta_p = ${resultado.theta_p.toFixed(2)}^\\circ`, altura: 35 },
+      )
+
+      // Ecuaciones por elemento
+      for (const el of elementos) {
+        const pre = `el_${el.id}_`
+        const p = el.params
+
+        if (el.plantilla === "rectangular") {
+          const A = p.b * p.h
+          const xc = p.b / 2 + el.x0
+          const yc = p.h / 2 + el.y0
+          const Icx = p.b * Math.pow(p.h, 3) / 12
+          const Icy = p.h * Math.pow(p.b, 3) / 12
+          eqs.push(
+            { key: `${pre}A_gen`, latex: "A = b \\times h" },
+            { key: `${pre}A_sus`, latex: `A = ${f2(p.b)} \\times ${f2(p.h)}` },
+            { key: `${pre}A_res`, latex: `A = ${fmt(A)} \\text{ cm}^2`, altura: 35 },
+            { key: `${pre}xc_gen`, latex: "\\bar{x} = \\frac{b}{2} + x_0" },
+            { key: `${pre}xc_sus`, latex: `\\bar{x} = \\frac{${f2(p.b)}}{2} + ${f2(el.x0)}` },
+            { key: `${pre}xc_res`, latex: `\\bar{x} = ${fmt(xc)} \\text{ cm}`, altura: 35 },
+            { key: `${pre}yc_gen`, latex: "\\bar{y} = \\frac{h}{2} + y_0" },
+            { key: `${pre}yc_sus`, latex: `\\bar{y} = \\frac{${f2(p.h)}}{2} + ${f2(el.y0)}` },
+            { key: `${pre}yc_res`, latex: `\\bar{y} = ${fmt(yc)} \\text{ cm}`, altura: 35 },
+            { key: `${pre}Icx_gen`, latex: "I_{cx} = \\frac{b \\cdot h^3}{12}" },
+            { key: `${pre}Icx_sus`, latex: `I_{cx} = \\frac{${f2(p.b)} \\times ${f2(p.h)}^3}{12}` },
+            { key: `${pre}Icx_int`, latex: `I_{cx} = \\frac{${f2(p.b)} \\times ${f2(Math.pow(p.h, 3))}}{12}` },
+            { key: `${pre}Icx_res`, latex: `I_{cx} = ${fmt(Icx)} \\text{ cm}^4`, altura: 35 },
+            { key: `${pre}Icy_gen`, latex: "I_{cy} = \\frac{h \\cdot b^3}{12}" },
+            { key: `${pre}Icy_sus`, latex: `I_{cy} = \\frac{${f2(p.h)} \\times ${f2(p.b)}^3}{12}` },
+            { key: `${pre}Icy_int`, latex: `I_{cy} = \\frac{${f2(p.h)} \\times ${f2(Math.pow(p.b, 3))}}{12}` },
+            { key: `${pre}Icy_res`, latex: `I_{cy} = ${fmt(Icy)} \\text{ cm}^4`, altura: 35 },
+          )
+        }
+
+        if (el.plantilla === "circular") {
+          const A = Math.PI * p.r * p.r
+          const xc = p.r + el.x0
+          const yc = p.r + el.y0
+          const Ic = Math.PI * Math.pow(p.r, 4) / 4
+          eqs.push(
+            { key: `${pre}A_gen`, latex: "A = \\pi r^2" },
+            { key: `${pre}A_sus`, latex: `A = \\pi \\times ${f2(p.r)}^2` },
+            { key: `${pre}A_res`, latex: `A = ${fmt(A)} \\text{ cm}^2`, altura: 35 },
+            { key: `${pre}cc_gen`, latex: "(\\bar{x}, \\bar{y}) = (r + x_0,\\; r + y_0)" },
+            { key: `${pre}cc_res`, latex: `(\\bar{x}, \\bar{y}) = (${fmt(xc)},\\; ${fmt(yc)}) \\text{ cm}`, altura: 35 },
+            { key: `${pre}Ic_gen`, latex: "I_c = \\frac{\\pi r^4}{4}" },
+            { key: `${pre}Ic_sus`, latex: `I_c = \\frac{\\pi \\times ${f2(p.r)}^4}{4}` },
+            { key: `${pre}Ic_res`, latex: `I_{cx} = I_{cy} = ${fmt(Ic)} \\text{ cm}^4`, altura: 35 },
+          )
+        }
+
+        if (el.plantilla === "tubo") {
+          const ri = p.r - p.t
+          const A = Math.PI * (p.r * p.r - ri * ri)
+          const Ic = Math.PI * (Math.pow(p.r, 4) - Math.pow(ri, 4)) / 4
+          eqs.push(
+            { key: `${pre}ri_gen`, latex: "r_i = r - t" },
+            { key: `${pre}ri_res`, latex: `r_i = ${f2(p.r)} - ${f2(p.t)} = ${fmt(ri)} \\text{ cm}`, altura: 35 },
+            { key: `${pre}A_gen`, latex: "A = \\pi (r^2 - r_i^2)" },
+            { key: `${pre}A_sus`, latex: `A = \\pi (${f2(p.r)}^2 - ${f2(ri)}^2)` },
+            { key: `${pre}A_res`, latex: `A = ${fmt(A)} \\text{ cm}^2`, altura: 35 },
+            { key: `${pre}Ic_gen`, latex: "I_c = \\frac{\\pi (r^4 - r_i^4)}{4}" },
+            { key: `${pre}Ic_sus`, latex: `I_c = \\frac{\\pi (${f2(p.r)}^4 - ${f2(ri)}^4)}{4}` },
+            { key: `${pre}Ic_res`, latex: `I_{cx} = I_{cy} = ${fmt(Ic)} \\text{ cm}^4`, altura: 35 },
+          )
+        }
+
+        if (el.plantilla === "I") {
+          const A1 = p.bf_inf * p.tf_inf
+          const A2 = p.tw * p.hw
+          const A3 = p.bf_sup * p.tf_sup
+          const y1 = p.tf_inf / 2 + el.y0
+          const y2 = p.tf_inf + p.hw / 2 + el.y0
+          const y3 = p.tf_inf + p.hw + p.tf_sup / 2 + el.y0
+          const A = A1 + A2 + A3
+          const yc = (A1 * y1 + A2 * y2 + A3 * y3) / A
+          const Ic1 = p.bf_inf * Math.pow(p.tf_inf, 3) / 12
+          const Ic2 = p.tw * Math.pow(p.hw, 3) / 12
+          const Ic3 = p.bf_sup * Math.pow(p.tf_sup, 3) / 12
+          const Ics1 = Ic1 + A1 * Math.pow(y1 - yc, 2)
+          const Ics2 = Ic2 + A2 * Math.pow(y2 - yc, 2)
+          const Ics3 = Ic3 + A3 * Math.pow(y3 - yc, 2)
+          const Icx = Ics1 + Ics2 + Ics3
+          eqs.push(
+            { key: `${pre}A1_gen`, latex: "A_1 = b_{f,inf} \\times t_{f,inf}" },
+            { key: `${pre}A1_res`, latex: `A_1 = ${f2(p.bf_inf)} \\times ${f2(p.tf_inf)} = ${fmt(A1)} \\text{ cm}^2`, altura: 35 },
+            { key: `${pre}y1_gen`, latex: "\\bar{y}_1 = \\frac{t_{f,inf}}{2} + y_0" },
+            { key: `${pre}y1_res`, latex: `\\bar{y}_1 = ${fmt(y1)} \\text{ cm}`, altura: 35 },
+            { key: `${pre}A2_gen`, latex: "A_2 = t_w \\times h_w" },
+            { key: `${pre}A2_res`, latex: `A_2 = ${f2(p.tw)} \\times ${f2(p.hw)} = ${fmt(A2)} \\text{ cm}^2`, altura: 35 },
+            { key: `${pre}y2_gen`, latex: "\\bar{y}_2 = t_{f,inf} + \\frac{h_w}{2} + y_0" },
+            { key: `${pre}y2_res`, latex: `\\bar{y}_2 = ${fmt(y2)} \\text{ cm}`, altura: 35 },
+            { key: `${pre}A3_gen`, latex: "A_3 = b_{f,sup} \\times t_{f,sup}" },
+            { key: `${pre}A3_res`, latex: `A_3 = ${f2(p.bf_sup)} \\times ${f2(p.tf_sup)} = ${fmt(A3)} \\text{ cm}^2`, altura: 35 },
+            { key: `${pre}y3_gen`, latex: "\\bar{y}_3 = t_{f,inf} + h_w + \\frac{t_{f,sup}}{2} + y_0" },
+            { key: `${pre}y3_res`, latex: `\\bar{y}_3 = ${fmt(y3)} \\text{ cm}`, altura: 35 },
+            { key: `${pre}A_gen`, latex: "A = A_1 + A_2 + A_3" },
+            { key: `${pre}A_res`, latex: `A = ${f2(A1)} + ${f2(A2)} + ${f2(A3)} = ${fmt(A)} \\text{ cm}^2`, altura: 35 },
+            { key: `${pre}yc_gen`, latex: "\\bar{y} = \\frac{A_1 \\bar{y}_1 + A_2 \\bar{y}_2 + A_3 \\bar{y}_3}{A}" },
+            { key: `${pre}yc_sus`, latex: `\\bar{y} = \\frac{${f2(A1)} \\times ${f2(y1)} + ${f2(A2)} \\times ${f2(y2)} + ${f2(A3)} \\times ${f2(y3)}}{${f2(A)}}` },
+            { key: `${pre}yc_res`, latex: `\\bar{y} = ${fmt(yc)} \\text{ cm}`, altura: 35 },
+            { key: `${pre}Ics1_gen`, latex: "I_{cs,1} = \\frac{b_{f,inf} \\cdot t_{f,inf}^3}{12} + A_1(\\bar{y}_1 - \\bar{y})^2" },
+            { key: `${pre}Ics1_sus`, latex: `I_{cs,1} = \\frac{${f2(p.bf_inf)} \\times ${f2(p.tf_inf)}^3}{12} + ${f2(A1)}(${f2(y1)} - ${f2(yc)})^2` },
+            { key: `${pre}Ics1_res`, latex: `I_{cs,1} = ${fmt(Ic1)} + ${fmt(A1 * Math.pow(y1 - yc, 2))} = ${fmt(Ics1)} \\text{ cm}^4`, altura: 35 },
+            { key: `${pre}Ics2_gen`, latex: "I_{cs,2} = \\frac{t_w \\cdot h_w^3}{12} + A_2(\\bar{y}_2 - \\bar{y})^2" },
+            { key: `${pre}Ics2_sus`, latex: `I_{cs,2} = \\frac{${f2(p.tw)} \\times ${f2(p.hw)}^3}{12} + ${f2(A2)}(${f2(y2)} - ${f2(yc)})^2` },
+            { key: `${pre}Ics2_res`, latex: `I_{cs,2} = ${fmt(Ic2)} + ${fmt(A2 * Math.pow(y2 - yc, 2))} = ${fmt(Ics2)} \\text{ cm}^4`, altura: 35 },
+            { key: `${pre}Ics3_gen`, latex: "I_{cs,3} = \\frac{b_{f,sup} \\cdot t_{f,sup}^3}{12} + A_3(\\bar{y}_3 - \\bar{y})^2" },
+            { key: `${pre}Ics3_sus`, latex: `I_{cs,3} = \\frac{${f2(p.bf_sup)} \\times ${f2(p.tf_sup)}^3}{12} + ${f2(A3)}(${f2(y3)} - ${f2(yc)})^2` },
+            { key: `${pre}Ics3_res`, latex: `I_{cs,3} = ${fmt(Ic3)} + ${fmt(A3 * Math.pow(y3 - yc, 2))} = ${fmt(Ics3)} \\text{ cm}^4`, altura: 35 },
+            { key: `${pre}Icx_gen`, latex: "I_{cx} = I_{cs,1} + I_{cs,2} + I_{cs,3}" },
+            { key: `${pre}Icx_sus`, latex: `I_{cx} = ${fmt(Ics1)} + ${fmt(Ics2)} + ${fmt(Ics3)}` },
+            { key: `${pre}Icx_res`, latex: `I_{cx} = ${fmt(Icx)} \\text{ cm}^4`, altura: 35 },
+          )
+        }
+
+        if (el.plantilla === "T") {
+          const A1 = p.tw * p.hw
+          const A2 = p.bf * p.tf
+          const y1 = p.hw / 2 + el.y0
+          const y2 = p.hw + p.tf / 2 + el.y0
+          const A = A1 + A2
+          const yc = (A1 * y1 + A2 * y2) / A
+          const Ic1 = p.tw * Math.pow(p.hw, 3) / 12
+          const Ic2 = p.bf * Math.pow(p.tf, 3) / 12
+          const Ics1 = Ic1 + A1 * Math.pow(y1 - yc, 2)
+          const Ics2 = Ic2 + A2 * Math.pow(y2 - yc, 2)
+          const Icx = Ics1 + Ics2
+          eqs.push(
+            { key: `${pre}A1_gen`, latex: "A_1 = t_w \\times h_w" },
+            { key: `${pre}A1_res`, latex: `A_1 = ${fmt(A1)} \\text{ cm}^2`, altura: 35 },
+            { key: `${pre}y1_gen`, latex: "\\bar{y}_1 = \\frac{h_w}{2} + y_0" },
+            { key: `${pre}y1_res`, latex: `\\bar{y}_1 = ${fmt(y1)} \\text{ cm}`, altura: 35 },
+            { key: `${pre}A2_gen`, latex: "A_2 = b_f \\times t_f" },
+            { key: `${pre}A2_res`, latex: `A_2 = ${fmt(A2)} \\text{ cm}^2`, altura: 35 },
+            { key: `${pre}y2_gen`, latex: "\\bar{y}_2 = h_w + \\frac{t_f}{2} + y_0" },
+            { key: `${pre}y2_res`, latex: `\\bar{y}_2 = ${fmt(y2)} \\text{ cm}`, altura: 35 },
+            { key: `${pre}A_gen`, latex: "A = A_1 + A_2" },
+            { key: `${pre}A_res`, latex: `A = ${fmt(A)} \\text{ cm}^2`, altura: 35 },
+            { key: `${pre}yc_gen`, latex: "\\bar{y} = \\frac{A_1 \\bar{y}_1 + A_2 \\bar{y}_2}{A}" },
+            { key: `${pre}yc_sus`, latex: `\\bar{y} = \\frac{${f2(A1)} \\times ${f2(y1)} + ${f2(A2)} \\times ${f2(y2)}}{${f2(A)}}` },
+            { key: `${pre}yc_res`, latex: `\\bar{y} = ${fmt(yc)} \\text{ cm}`, altura: 35 },
+            { key: `${pre}Ics1_gen`, latex: "I_{cs,1} = \\frac{t_w h_w^3}{12} + A_1(\\bar{y}_1 - \\bar{y})^2" },
+            { key: `${pre}Ics1_sus`, latex: `I_{cs,1} = \\frac{${f2(p.tw)} \\times ${f2(p.hw)}^3}{12} + ${f2(A1)}(${f2(y1)} - ${f2(yc)})^2` },
+            { key: `${pre}Ics1_res`, latex: `I_{cs,1} = ${fmt(Ics1)} \\text{ cm}^4`, altura: 35 },
+            { key: `${pre}Ics2_gen`, latex: "I_{cs,2} = \\frac{b_f t_f^3}{12} + A_2(\\bar{y}_2 - \\bar{y})^2" },
+            { key: `${pre}Ics2_sus`, latex: `I_{cs,2} = \\frac{${f2(p.bf)} \\times ${f2(p.tf)}^3}{12} + ${f2(A2)}(${f2(y2)} - ${f2(yc)})^2` },
+            { key: `${pre}Ics2_res`, latex: `I_{cs,2} = ${fmt(Ics2)} \\text{ cm}^4`, altura: 35 },
+            { key: `${pre}Icx_gen`, latex: "I_{cx} = I_{cs,1} + I_{cs,2}" },
+            { key: `${pre}Icx_sus`, latex: `I_{cx} = ${fmt(Ics1)} + ${fmt(Ics2)}` },
+            { key: `${pre}Icx_res`, latex: `I_{cx} = ${fmt(Icx)} \\text{ cm}^4`, altura: 35 },
+          )
+        }
+
+        if (el.plantilla === "L") {
+          const A1 = p.b * p.t
+          const A2 = p.t * (p.h - p.t)
+          const A = A1 + A2
+          const xc1 = p.b / 2 + el.x0
+          const yc1 = p.t / 2 + el.y0
+          const xc2 = p.t / 2 + el.x0
+          const yc2 = p.t + (p.h - p.t) / 2 + el.y0
+          const xcG = (A1 * xc1 + A2 * xc2) / A
+          const ycG = (A1 * yc1 + A2 * yc2) / A
+          eqs.push(
+            { key: `${pre}A1_gen`, latex: "A_1 = b \\times t" },
+            { key: `${pre}A1_res`, latex: `A_1 = ${fmt(A1)} \\text{ cm}^2`, altura: 35 },
+            { key: `${pre}A2_gen`, latex: "A_2 = t \\times (h - t)" },
+            { key: `${pre}A2_res`, latex: `A_2 = ${fmt(A2)} \\text{ cm}^2`, altura: 35 },
+            { key: `${pre}A_gen`, latex: "A = A_1 + A_2" },
+            { key: `${pre}A_res`, latex: `A = ${fmt(A)} \\text{ cm}^2`, altura: 35 },
+            { key: `${pre}xc_gen`, latex: "\\bar{x} = \\frac{A_1 \\bar{x}_1 + A_2 \\bar{x}_2}{A}" },
+            { key: `${pre}xc_sus`, latex: `\\bar{x} = \\frac{${f2(A1)} \\times ${f2(xc1)} + ${f2(A2)} \\times ${f2(xc2)}}{${f2(A)}}` },
+            { key: `${pre}xc_res`, latex: `\\bar{x} = ${fmt(xcG)} \\text{ cm}`, altura: 35 },
+            { key: `${pre}yc_gen`, latex: "\\bar{y} = \\frac{A_1 \\bar{y}_1 + A_2 \\bar{y}_2}{A}" },
+            { key: `${pre}yc_sus`, latex: `\\bar{y} = \\frac{${f2(A1)} \\times ${f2(yc1)} + ${f2(A2)} \\times ${f2(yc2)}}{${f2(A)}}` },
+            { key: `${pre}yc_res`, latex: `\\bar{y} = ${fmt(ycG)} \\text{ cm}`, altura: 35 },
+          )
+        }
+
+        if (el.plantilla === "C") {
+          const A1 = p.bf_inf * p.tf_inf
+          const A2 = p.tw * p.hw
+          const A3 = p.bf_sup * p.tf_sup
+          const y1 = p.tf_inf / 2 + el.y0
+          const y2 = p.tf_inf + p.hw / 2 + el.y0
+          const y3 = p.tf_inf + p.hw + p.tf_sup / 2 + el.y0
+          const A = A1 + A2 + A3
+          const yc = (A1 * y1 + A2 * y2 + A3 * y3) / A
+          const Ic1 = p.bf_inf * Math.pow(p.tf_inf, 3) / 12
+          const Ic2 = p.tw * Math.pow(p.hw, 3) / 12
+          const Ic3 = p.bf_sup * Math.pow(p.tf_sup, 3) / 12
+          const Ics1 = Ic1 + A1 * Math.pow(y1 - yc, 2)
+          const Ics2 = Ic2 + A2 * Math.pow(y2 - yc, 2)
+          const Ics3 = Ic3 + A3 * Math.pow(y3 - yc, 2)
+          const Icx = Ics1 + Ics2 + Ics3
+          eqs.push(
+            { key: `${pre}A1_gen`, latex: "A_1 = b_{f,inf} \\times t_{f,inf}" },
+            { key: `${pre}A1_res`, latex: `A_1 = ${fmt(A1)} \\text{ cm}^2`, altura: 35 },
+            { key: `${pre}A2_gen`, latex: "A_2 = t_w \\times h_w" },
+            { key: `${pre}A2_res`, latex: `A_2 = ${fmt(A2)} \\text{ cm}^2`, altura: 35 },
+            { key: `${pre}A3_gen`, latex: "A_3 = b_{f,sup} \\times t_{f,sup}" },
+            { key: `${pre}A3_res`, latex: `A_3 = ${fmt(A3)} \\text{ cm}^2`, altura: 35 },
+            { key: `${pre}A_gen`, latex: "A = A_1 + A_2 + A_3" },
+            { key: `${pre}A_res`, latex: `A = ${fmt(A)} \\text{ cm}^2`, altura: 35 },
+            { key: `${pre}yc_gen`, latex: "\\bar{y} = \\frac{A_1 \\bar{y}_1 + A_2 \\bar{y}_2 + A_3 \\bar{y}_3}{A}" },
+            { key: `${pre}yc_sus`, latex: `\\bar{y} = \\frac{${f2(A1)} \\times ${f2(y1)} + ${f2(A2)} \\times ${f2(y2)} + ${f2(A3)} \\times ${f2(y3)}}{${f2(A)}}` },
+            { key: `${pre}yc_res`, latex: `\\bar{y} = ${fmt(yc)} \\text{ cm}`, altura: 35 },
+            { key: `${pre}Icx_gen`, latex: "I_{cx} = I_{cs,1} + I_{cs,2} + I_{cs,3}" },
+            { key: `${pre}Icx_sus`, latex: `I_{cx} = ${fmt(Ics1)} + ${fmt(Ics2)} + ${fmt(Ics3)}` },
+            { key: `${pre}Icx_res`, latex: `I_{cx} = ${fmt(Icx)} \\text{ cm}^4`, altura: 35 },
+          )
+        }
+
+        if (el.plantilla === "cajon") {
+          const bI = p.b_inf || p.b
+          const tS = p.t_sup || p.t, tI = p.t_inf || p.t
+          const tL = p.t_izq || p.t, tR = p.t_der || p.t
+          const Aext = bI * p.h
+          const bint = bI - tL - tR
+          const hint = p.h - tS - tI
+          const Aint = bint * hint
+          const A = Aext - Aint
+          const Icx_ext = bI * Math.pow(p.h, 3) / 12
+          const Icx_int = bint * Math.pow(hint, 3) / 12
+          eqs.push(
+            { key: `${pre}Aext_gen`, latex: "A_{ext} = b_{inf} \\times h" },
+            { key: `${pre}Aext_res`, latex: `A_{ext} = ${f2(bI)} \\times ${f2(p.h)} = ${fmt(Aext)} \\text{ cm}^2`, altura: 35 },
+            { key: `${pre}Aint_gen`, latex: "A_{int} = (b_{inf} - t_{izq} - t_{der})(h - t_{sup} - t_{inf})" },
+            { key: `${pre}Aint_res`, latex: `A_{int} = ${f2(bint)} \\times ${f2(hint)} = ${fmt(Aint)} \\text{ cm}^2`, altura: 35 },
+            { key: `${pre}A_gen`, latex: "A = A_{ext} - A_{int}" },
+            { key: `${pre}A_res`, latex: `A = ${fmt(Aext)} - ${fmt(Aint)} = ${fmt(A)} \\text{ cm}^2`, altura: 35 },
+            { key: `${pre}Icx_gen`, latex: "I_{cx,ext} = \\frac{b_{inf} h^3}{12} \\qquad I_{cx,int} = \\frac{b_{int} h_{int}^3}{12}" },
+            { key: `${pre}Icx_sus`, latex: `I_{cx,ext} = ${fmt(Icx_ext)} \\text{ cm}^4 \\qquad I_{cx,int} = ${fmt(Icx_int)} \\text{ cm}^4` },
+            { key: `${pre}Icx_res`, latex: `I_{cx} \\approx ${fmt(Icx_ext - Icx_int)} \\text{ cm}^4`, altura: 35 },
+          )
+        }
+
+        if (el.plantilla === "coordenadas") {
+          eqs.push(
+            { key: `${pre}gauss_A`, latex: "A = \\frac{1}{2} \\left| \\sum_{i=0}^{n-1} (x_i y_{i+1} - x_{i+1} y_i) \\right|", altura: 75 },
+            { key: `${pre}gauss_xc`, latex: "\\bar{x} = \\frac{1}{6A} \\sum_{i=0}^{n-1} (x_i + x_{i+1})(x_i y_{i+1} - x_{i+1} y_i)", altura: 75 },
+            { key: `${pre}gauss_yc`, latex: "\\bar{y} = \\frac{1}{6A} \\sum_{i=0}^{n-1} (y_i + y_{i+1})(x_i y_{i+1} - x_{i+1} y_i)", altura: 75 },
+            { key: `${pre}gauss_Ix`, latex: "I_x = \\frac{1}{12} \\sum_{i=0}^{n-1} (y_i^2 + y_i y_{i+1} + y_{i+1}^2)(x_i y_{i+1} - x_{i+1} y_i)", altura: 75 },
+          )
+        }
+      }
+
+      const pngs = await renderizarEcuaciones(eqs)
+      setEcuacionesPNG(pngs)
+      setEstado("listo")
+    } catch (err) {
+      console.error("Error preparando PDF:", err)
+      setEstado("idle")
+    }
+  }
+
+  const descargar = async () => {
+    setEstado("generando")
     try {
       const { pdf } = await import("@react-pdf/renderer")
       const { PDFSeccion: PDFComp } = await import("../../components/PDFSeccion")
@@ -476,8 +775,9 @@ function PDFBoton({ elementos, resultado, datosPDF, canvasRef }: {
         <PDFComp
           elementos={elementos}
           resultado={resultado}
-          datosUsuario={datosPDF}
+          datosUsuario={{ ...datosPDF, fecha: new Date().toLocaleDateString("es-CO") }}
           imagenCanvas={imagenCanvas}
+          ecuacionesPNG={ecuacionesPNG}
         />
       ).toBlob()
       const url = URL.createObjectURL(blob)
@@ -489,22 +789,34 @@ function PDFBoton({ elementos, resultado, datosPDF, canvasRef }: {
     } catch (err) {
       console.error(err)
     }
-    setLoading(false)
+    setEstado("listo")
   }
 
-  if (!componentes) {
-    return <div className="text-xs text-gray-400 text-center py-2 animate-pulse">Preparando generador PDF...</div>
-  }
-
-  return (
-    <button onClick={handleDescargar}
-      className="w-full text-sm bg-red-600 text-white py-2.5 rounded-lg hover:bg-red-700 transition-colors">
-      {loading ? "⏳ Generando PDF..." : "⬇ Descargar memoria de cálculo"}
+  if (estado === "idle") return (
+    <button onClick={prepararPDF} className="w-full text-sm bg-red-600 text-white py-2.5 rounded-lg hover:bg-red-700 transition-colors">
+      📄 Preparar memoria de cálculo
     </button>
   )
+  if (estado === "preparando") return (
+    <div className="text-xs text-gray-500 text-center py-3 animate-pulse">⏳ Renderizando ecuaciones KaTeX...</div>
+  )
+  if (estado === "generando") return (
+    <div className="text-xs text-gray-500 text-center py-3 animate-pulse">⏳ Generando PDF...</div>
+  )
+  return (
+    <div className="flex flex-col gap-2">
+      <button onClick={descargar} className="w-full text-sm bg-red-600 text-white py-2.5 rounded-lg hover:bg-red-700 transition-colors">
+        ⬇ Descargar memoria de cálculo PDF
+      </button>
+      <button onClick={() => setEstado("idle")} className="text-xs text-gray-400 hover:underline text-center">
+        Regenerar ecuaciones
+      </button>
+    </div>
+  )
 }
+
 // ── Componente principal ───────────────────────────────────────────────────
-export default function SectionBuilder(): import("react").JSX.Element {
+export default function SectionBuilder() {
   const [elementos, setElementos] = useState<Elemento[]>([])
   const [editandoId, setEditandoId] = useState<number | null>(null)
   const [plantillaActual, setPlantillaActual] = useState<Plantilla>("rectangular")
@@ -621,8 +933,6 @@ export default function SectionBuilder(): import("react").JSX.Element {
         </div>
         <div className="flex-1 overflow-y-auto p-6">
           <div className="grid grid-cols-2 gap-6">
-
-            {/* Panel izquierdo */}
             <div className="flex flex-col gap-4">
               <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="flex items-center justify-between mb-3">
@@ -746,13 +1056,11 @@ export default function SectionBuilder(): import("react").JSX.Element {
                 </div>
               )}
 
-              {/* PDF */}
               {resultado && (
                 <div className="bg-white border border-gray-200 rounded-xl p-5">
                   <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">MEMORIA DE CÁLCULO PDF</div>
                   {!mostrarModalPDF ? (
-                    <button onClick={() => setMostrarModalPDF(true)}
-                      className="w-full text-sm bg-red-600 text-white py-2.5 rounded-lg hover:bg-red-700 transition-colors">
+                    <button onClick={() => setMostrarModalPDF(true)} className="w-full text-sm bg-red-600 text-white py-2.5 rounded-lg hover:bg-red-700 transition-colors">
                       📄 Generar memoria de cálculo
                     </button>
                   ) : (
@@ -779,7 +1087,6 @@ export default function SectionBuilder(): import("react").JSX.Element {
               )}
             </div>
 
-            {/* Panel derecho */}
             <div className="flex flex-col gap-4">
               <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">PLANO CARTESIANO</div>

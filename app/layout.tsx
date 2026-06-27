@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
 // @ts-ignore: CSS imports require type declarations in this setup
 import "./globals.css";
+// @ts-ignore: CSS imports require type declarations in this setup
+import "katex/dist/katex.min.css";
 
 export const metadata: Metadata = {
   title: "NodoCalc",
