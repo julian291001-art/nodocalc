@@ -22,7 +22,7 @@ type ResultadoSeccion = {
 }
 
 type DatosPDF = {
-  ingeniero: string; empresa: string; proyecto: string; descripcion: string
+  ingeniero: string; empresa: string; proyecto: string; descripcion: string; fecha: string
 }
 
 function circlePoints(cx: number, cy: number, r: number, n = 128): Poligono {
@@ -518,7 +518,7 @@ export default function SectionBuilder(): import("react").JSX.Element {
   const [ptoY, setPtoY] = useState("")
   const [mostrarAgregar, setMostrarAgregar] = useState(false)
   const [mostrarModalPDF, setMostrarModalPDF] = useState(false)
-  const [datosPDF, setDatosPDF] = useState<DatosPDF>({ ingeniero: "", empresa: "", proyecto: "", descripcion: "" })
+  const [datosPDF, setDatosPDF] = useState<DatosPDF>({ ingeniero: "", empresa: "", proyecto: "", descripcion: "", fecha: "" })
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const setSeccion = useSeccionStore((s) => s.setSeccion)
   const router = useRouter()
