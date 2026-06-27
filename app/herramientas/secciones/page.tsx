@@ -444,8 +444,8 @@ function fmt(n: number, dec = 4) {
 
 // ── Botón PDF con carga dinámica ───────────────────────────────────────────
 function PDFBoton({ elementos, resultado, datosPDF, canvasRef }: {
-  elementos: Elemento[]; resultado: ResultadoSeccion; datosPDF: DatosPDF; canvasRef: React.RefObject<HTMLCanvasElement>
-}) {
+  elementos: Elemento[]; resultado: ResultadoSeccion; datosPDF: DatosPDF; canvasRef: React.RefObject<HTMLCanvasElement | null>
+})
   const [PDFDownloadLink, setPDFDownloadLink] = useState<any>(null)
   const [PDFSeccionComp, setPDFSeccionComp] = useState<any>(null)
   const [imagenCanvas, setImagenCanvas] = useState<string>("")
@@ -479,7 +479,7 @@ function PDFBoton({ elementos, resultado, datosPDF, canvasRef }: {
 }
 
 // ── Componente principal ───────────────────────────────────────────────────
-export default function SectionBuilder() {
+export default function SectionBuilder(): import("react").JSX.Element {
   const [elementos, setElementos] = useState<Elemento[]>([])
   const [editandoId, setEditandoId] = useState<number | null>(null)
   const [plantillaActual, setPlantillaActual] = useState<Plantilla>("rectangular")
