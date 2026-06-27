@@ -304,7 +304,7 @@ function CurvaGranulometrica({
         {/* Labels Dx */}
         {dRefs.map(({ d, label, color }) => {
           const xPos = px(d as number) - 3
-          const yPos = H - padB - 10
+          const yPos = H - padB - 15
           return (
             <text
               key={`lbl-${label}`}
