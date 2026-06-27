@@ -1,45 +1,56 @@
 import katex from "katex"
+import html2canvas from "html2canvas"
 
 export async function ecuacionAPNG(latex: string, display = true, altura = 70): Promise<string> {
-  const html = katex.renderToString(latex, {
+  // Crear contenedor invisible en el DOM
+  const container = document.createElement("div")
+  container.style.cssText = `
+    position: fixed;
+    top: -9999px;
+    left: -9999px;
+    background: white;
+    padding: 8px 20px;
+    width: 620px;
+    min-height: ${altura}px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: KaTeX_Math, serif;
+    box-sizing: border-box;
+  `
+
+  // Renderizar KaTeX dentro del div
+  container.innerHTML = katex.renderToString(latex, {
     displayMode: display,
     throwOnError: false,
-    output: "mathml",
+    output: "html",
   })
 
-  const W = 600
-  const H = altura
-  const scale = 2
+  document.body.appendChild(container)
 
-  const canvas = document.createElement("canvas")
-  canvas.width = W * scale
-  canvas.height = H * scale
-  const ctx = canvas.getContext("2d")!
-  ctx.scale(scale, scale)
-  ctx.fillStyle = "white"
-  ctx.fillRect(0, 0, W, H)
-  ctx.fillStyle = "#1e293b"
-  ctx.font = `${display ? 15 : 13}px serif`
-  ctx.textAlign = "center"
-  ctx.textBaseline = "middle"
-
-  // Extraer texto plano del MathML para renderizar con canvas
-  const tmp = document.createElement("div")
-  tmp.innerHTML = html
-  const texto = tmp.textContent || latex.replace(/\\/g, "").replace(/\{|\}/g, "")
-  ctx.fillText(texto, W / 2, H / 2)
-
-  return canvas.toDataURL("image/png")
+  try {
+    const canvas = await html2canvas(container, {
+      backgroundColor: "#ffffff",
+      scale: 2,
+      logging: false,
+      useCORS: true,
+      allowTaint: false,
+      width: 620,
+      height: altura,
+    })
+    return canvas.toDataURL("image/png")
+  } finally {
+    document.body.removeChild(container)
+  }
 }
 
 export async function renderizarEcuaciones(
   ecuaciones: { key: string; latex: string; display?: boolean; altura?: number }[]
 ): Promise<Record<string, string>> {
-  const results = await Promise.all(
-    ecuaciones.map(async ({ key, latex, display = true, altura = 70 }) => ({
-      key,
-      png: await ecuacionAPNG(latex, display, altura),
-    }))
-  )
+  const results: { key: string; png: string }[] = []
+  for (const { key, latex, display = true, altura = 70 } of ecuaciones) {
+    const png = await ecuacionAPNG(latex, display, altura)
+    results.push({ key, png })
+  }
   return Object.fromEntries(results.map(({ key, png }) => [key, png]))
 }
