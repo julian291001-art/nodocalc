@@ -4,13 +4,14 @@ import { useRouter } from "next/navigation"
 import Sidebar from "../../components/Sidebar"
 import { useSeccionStore } from "../../store/useSeccionStore"
 
-type Plantilla = "rectangular" | "circular" | "tubo" | "I" | "T" | "L" | "C" | "cajon" | "Z" | "coordenadas"
+type Plantilla = "rectangular" | "circular" | "tubo" | "I" | "T" | "L" | "C" | "cajon" | "coordenadas"
 type Params = Record<string, number>
 type Poligono = { x: number; y: number }[]
 
 type Elemento = {
   id: number; plantilla: Plantilla; params: Params
   x0: number; y0: number; signo: 1 | -1; label: string
+  coordPts?: Poligono
 }
 
 type ResultadoSeccion = {
@@ -19,7 +20,7 @@ type ResultadoSeccion = {
   J: number; I1: number; I2: number; theta_p: number
 }
 
-function circlePoints(cx: number, cy: number, r: number, n = 64): Poligono {
+function circlePoints(cx: number, cy: number, r: number, n = 512): Poligono {
   return Array.from({ length: n }, (_, i) => ({
     x: cx + r * Math.cos(2 * Math.PI * i / n),
     y: cy + r * Math.sin(2 * Math.PI * i / n),
@@ -52,7 +53,6 @@ function getPoligonos(plantilla: Plantilla, p: Params): { pts: Poligono; signo: 
       ]
     }
     case "C": {
-      // Canal C completamente asimétrico — bf_sup y bf_inf independientes
       const hTotal = tf_inf + hw + tf_sup
       return [{
         pts: [
@@ -71,19 +71,6 @@ function getPoligonos(plantilla: Plantilla, p: Params): { pts: Poligono; signo: 
         { pts: [{ x: 0, y: 0 }, { x: bI, y: 0 }, { x: bS, y: h }, { x: 0, y: h }], signo: 1 },
         { pts: [{ x: tL, y: tI }, { x: bI - tR, y: tI }, { x: bS - tR, y: h - tS }, { x: tL, y: h - tS }], signo: -1 },
       ]
-    }
-    case "Z": {
-      // Z correcta: ala inf izquierda, alma vertical, ala sup derecha
-      const hTotal = tf_inf + hw + tf_sup
-      return [{
-        pts: [
-          { x: 0, y: 0 }, { x: bf_inf, y: 0 }, { x: bf_inf, y: tf_inf },
-          { x: tw, y: tf_inf }, { x: tw, y: tf_inf + hw },
-          { x: tw + bf_sup, y: tf_inf + hw }, { x: tw + bf_sup, y: hTotal },
-          { x: 0, y: hTotal }, { x: 0, y: tf_inf + hw },
-          { x: tw, y: tf_inf + hw }, { x: tw, y: tf_inf }, { x: 0, y: tf_inf },
-        ], signo: 1
-      }]
     }
     default: return []
   }
@@ -106,7 +93,6 @@ function propiedadesPoligono(pts: Poligono) {
     Ixy += (xi * yj + 2 * xi * yi + 2 * xj * yj + xj * yi) * c
   }
   A /= 2; Cx /= (6 * A); Cy /= (6 * A)
-  // Ix e Iy son respecto al ORIGEN
   return { A: Math.abs(A), Cx, Cy, Ix: Math.abs(Ix) / 12, Iy: Math.abs(Iy) / 12, Ixy: Ixy / 24 }
 }
 
@@ -117,30 +103,21 @@ function calcularSeccion(poligonos: { pts: Poligono; signo: number }[]): Resulta
     A += signo * p.A; AxC += signo * p.A * p.Cx; AyC += signo * p.A * p.Cy
   }
   const xc = AxC / A, yc = AyC / A
-
-  // Inercias centroidales correctas:
-  // Icx = Ix_origen - A*Cy² (traslado al centroide propio)
-  // luego Steiner al centroide global: + A*(Cy - yc)²
-  // = Ix_origen - A*Cy² + A*(Cy-yc)²
   let Icx = 0, Icy = 0, Icxy = 0
   for (const { pts, signo } of poligonos) {
     const p = propiedadesPoligono(pts)
-    // Inercia centroidal propia de cada polígono
     const Icx_propio = p.Ix - p.A * p.Cy * p.Cy
     const Icy_propio = p.Iy - p.A * p.Cx * p.Cx
     const Icxy_propio = p.Ixy - p.A * p.Cx * p.Cy
-    // Steiner al centroide global
     Icx += signo * (Icx_propio + p.A * (p.Cy - yc) ** 2)
     Icy += signo * (Icy_propio + p.A * (p.Cx - xc) ** 2)
     Icxy += signo * (Icxy_propio + p.A * (p.Cx - xc) * (p.Cy - yc))
   }
-
   let ymax = -Infinity, ymin = Infinity, xmaxD = -Infinity
   for (const { pts } of poligonos) for (const p of pts) {
     if (p.y > ymax) ymax = p.y; if (p.y < ymin) ymin = p.y
     if (Math.abs(p.x - xc) > xmaxD) xmaxD = Math.abs(p.x - xc)
   }
-
   const Sx_top = Icx / (ymax - yc), Sx_bot = Icx / (yc - ymin), Sy = Icy / xmaxD
   const rx = Math.sqrt(Math.abs(Icx / A)), ry = Math.sqrt(Math.abs(Icy / A)), J = Icx + Icy
   const theta_p = 0.5 * Math.atan2(-2 * Icxy, Icx - Icy) * 180 / Math.PI
@@ -190,18 +167,9 @@ const plantillasConfig: Record<Plantilla, { label: string; campos: { key: string
     { key: "t_izq", labelHtml: "Espesor izquierdo t<sub>izq</sub> (cm)", default: 2 },
     { key: "t_der", labelHtml: "Espesor derecho t<sub>der</sub> (cm)", default: 2 },
   ]},
-  Z: { label: "Perfil Z", campos: [
-    { key: "bf_inf", labelHtml: "Ancho ala inferior b<sub>f,inf</sub> (cm)", default: 10 },
-    { key: "tf_inf", labelHtml: "Espesor ala inferior t<sub>f,inf</sub> (cm)", default: 1 },
-    { key: "tw", labelHtml: "Espesor alma t<sub>w</sub> (cm)", default: 1 },
-    { key: "hw", labelHtml: "Alto alma h<sub>w</sub> (cm)", default: 20 },
-    { key: "bf_sup", labelHtml: "Ancho ala superior b<sub>f,sup</sub> (cm)", default: 10 },
-    { key: "tf_sup", labelHtml: "Espesor ala superior t<sub>f,sup</sub> (cm)", default: 1 },
-  ]},
   coordenadas: { label: "Por coordenadas", campos: [] },
 }
 
-// ── SVG subíndices con tspan ───────────────────────────────────────────────
 type LabelPart = { text: string; sub?: boolean }
 
 function SvgLabel({ x, y, parts }: { x: number; y: number; parts: LabelPart[] }) {
@@ -238,7 +206,6 @@ function lbl(main: string, sub?: string): LabelPart[] {
   return [{ text: main }, { text: sub, sub: true }]
 }
 
-// ── Esquemas SVG con subíndices reales ─────────────────────────────────────
 function EsquemaReferencia({ plantilla }: { plantilla: Plantilla }) {
   switch (plantilla) {
     case "rectangular": return (
@@ -304,11 +271,8 @@ function EsquemaReferencia({ plantilla }: { plantilla: Plantilla }) {
     )
     case "C": return (
       <svg viewBox="0 0 270 270" className="w-full h-56">
-        {/* ala superior — bf_sup independiente */}
         <rect x="20" y="20" width="120" height="18" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
-        {/* alma */}
         <rect x="20" y="38" width="16" height="155" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
-        {/* ala inferior — bf_inf independiente */}
         <rect x="20" y="193" width="100" height="18" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
         <Cota x1={20} y1={8} x2={140} y2={8} parts={lbl("b", "f,sup")} />
         <Cota x1={155} y1={20} x2={155} y2={38} parts={lbl("t", "f,sup")} off={26} />
@@ -329,41 +293,27 @@ function EsquemaReferencia({ plantilla }: { plantilla: Plantilla }) {
         <Cota x1={182} y1={110} x2={200} y2={110} parts={lbl("t", "der")} />
         <Cota x1={110} y1={182} x2={110} y2={200} parts={lbl("t", "inf")} off={18} />
         <text x="110" y="232" textAnchor="middle" fontSize="8" fill="#6b7280">
-          <tspan fontStyle="italic">b</tspan><tspan fontSize="6" dy="2">inf</tspan><tspan dy="-2"> independiente</tspan>
+          <tspan fontStyle="italic">b</tspan>
+          <tspan fontSize="6" dy="2">inf</tspan>
+          <tspan dy="-2"> independiente</tspan>
         </text>
       </svg>
     )
-    case "Z": return (
-      <svg viewBox="0 0 280 290" className="w-full h-56">
-        {/* Z correcta: ala inf izquierda, alma vertical, ala sup derecha */}
-        {/* ala inferior izquierda */}
-        <rect x="20" y="225" width="110" height="18" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
-        {/* alma */}
-        <rect x="20" y="68" width="16" height="157" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
-        {/* ala superior derecha */}
-        <rect x="36" y="50" width="110" height="18" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
-        <Cota x1={20} y1={258} x2={130} y2={258} parts={lbl("b", "f,inf")} />
-        <Cota x1={155} y1={225} x2={155} y2={243} parts={lbl("t", "f,inf")} off={26} />
-        <Cota x1={20} y1={146} x2={36} y2={146} parts={lbl("t", "w")} />
-        <Cota x1={155} y1={68} x2={155} y2={225} parts={lbl("h", "w")} off={14} />
-        <Cota x1={36} y1={38} x2={146} y2={38} parts={lbl("b", "f,sup")} />
-        <Cota x1={175} y1={50} x2={175} y2={68} parts={lbl("t", "f,sup")} off={26} />
-      </svg>
-    )
     case "coordenadas": return (
-      <svg viewBox="0 0 200 160" className="w-full h-32">
-        <line x1="20" y1="140" x2="180" y2="140" stroke="#9ca3af" strokeWidth="1" />
-        <line x1="20" y1="140" x2="20" y2="10" stroke="#9ca3af" strokeWidth="1" />
-        <text x="183" y="143" fontSize="10" fill="#9ca3af">x</text>
+      <svg viewBox="0 0 220 180" className="w-full h-36">
+        <line x1="20" y1="155" x2="200" y2="155" stroke="#9ca3af" strokeWidth="1" />
+        <line x1="20" y1="155" x2="20" y2="10" stroke="#9ca3af" strokeWidth="1" />
+        <text x="203" y="158" fontSize="10" fill="#9ca3af">x</text>
         <text x="14" y="8" fontSize="10" fill="#9ca3af">y</text>
-        <polygon points="55,120 140,120 155,60 75,45 40,80" fill="rgba(59,130,246,0.12)" stroke="#1d4ed8" strokeWidth="1.5" strokeDasharray="5,3" />
-        <text x="47" y="125" fontSize="8" fill="#1d4ed8">P₁↻</text>
-        <text x="138" y="125" fontSize="8" fill="#1d4ed8">P₂</text>
-        <text x="153" y="58" fontSize="8" fill="#1d4ed8">P₃</text>
-        <text x="70" y="42" fontSize="8" fill="#1d4ed8">P₄</text>
-        <text x="25" y="78" fontSize="8" fill="#1d4ed8">P₅</text>
-        <text x="75" y="100" fontSize="9" fill="#6b7280">↻ horario = área +</text>
-        <text x="75" y="113" fontSize="9" fill="#6b7280">↺ antihorario = hueco</text>
+        <polygon points="60,130 150,130 170,60 80,40 45,90"
+          fill="rgba(59,130,246,0.12)" stroke="#1d4ed8" strokeWidth="1.5" strokeDasharray="5,3" />
+        <text x="52" y="136" fontSize="8" fill="#1d4ed8">P₁</text>
+        <text x="148" y="136" fontSize="8" fill="#1d4ed8">P₂</text>
+        <text x="168" y="58" fontSize="8" fill="#1d4ed8">P₃</text>
+        <text x="74" y="38" fontSize="8" fill="#1d4ed8">P₄</text>
+        <text x="28" y="88" fontSize="8" fill="#1d4ed8">P₅</text>
+        <text x="110" y="115" fontSize="8" fill="#6b7280">sentido horario → área +</text>
+        <text x="110" y="127" fontSize="8" fill="#6b7280">usar − Resta para huecos</text>
       </svg>
     )
     default: return null
@@ -379,14 +329,17 @@ function niceStep(range: number, targetTicks = 5): number {
   return base
 }
 
-function dibujarCanvas(canvas: HTMLCanvasElement, elementos: Elemento[], resultado: ResultadoSeccion | null, coordPts: Poligono) {
+function dibujarCanvas(canvas: HTMLCanvasElement, elementos: Elemento[], resultado: ResultadoSeccion | null) {
   const ctx = canvas.getContext("2d")
   if (!ctx) return
   ctx.clearRect(0, 0, canvas.width, canvas.height)
 
   const todosLosPts: { x: number; y: number }[] = [{ x: 0, y: 0 }]
   for (const el of elementos) {
-    if (el.plantilla === "coordenadas") { todosLosPts.push(...coordPts); continue }
+    if (el.plantilla === "coordenadas") {
+      if (el.coordPts) todosLosPts.push(...el.coordPts)
+      continue
+    }
     const pols = offsetPoligonos(getPoligonos(el.plantilla, el.params), el.x0, el.y0)
     for (const { pts } of pols) todosLosPts.push(...pts)
   }
@@ -411,7 +364,6 @@ function dibujarCanvas(canvas: HTMLCanvasElement, elementos: Elemento[], resulta
   const stepX = niceStep(xmax - xmin)
   const stepY = niceStep(ymax - ymin)
 
-  // Cuadrícula completa
   ctx.strokeStyle = "#e5e7eb"; ctx.lineWidth = 0.5
   const x0g = Math.floor((xmin - (xmax - xmin) * mg) / stepX) * stepX
   const x1g = xmax + (xmax - xmin) * mg + stepX * 2
@@ -424,7 +376,6 @@ function dibujarCanvas(canvas: HTMLCanvasElement, elementos: Elemento[], resulta
     ctx.beginPath(); ctx.moveTo(0, ty(gy)); ctx.lineTo(canvas.width, ty(gy)); ctx.stroke()
   }
 
-  // Etiquetas X
   ctx.fillStyle = "#9ca3af"; ctx.font = "9px sans-serif"; ctx.textAlign = "center"
   let lastLX = -Infinity
   for (let gx = x0g; gx <= x1g; gx = parseFloat((gx + stepX).toFixed(10))) {
@@ -433,8 +384,6 @@ function dibujarCanvas(canvas: HTMLCanvasElement, elementos: Elemento[], resulta
     lastLX = px
     ctx.fillText(Number.isInteger(gx) ? `${gx}` : `${parseFloat(gx.toFixed(2))}`, px, canvas.height - 6)
   }
-
-  // Etiquetas Y
   ctx.textAlign = "right"
   let lastLY = Infinity
   for (let gy = y0g; gy <= y1g; gy = parseFloat((gy + stepY).toFixed(10))) {
@@ -444,7 +393,6 @@ function dibujarCanvas(canvas: HTMLCanvasElement, elementos: Elemento[], resulta
     ctx.fillText(Number.isInteger(gy) ? `${gy}` : `${parseFloat(gy.toFixed(2))}`, padL - 4, py + 3)
   }
 
-  // Ejes
   ctx.strokeStyle = "#6b7280"; ctx.lineWidth = 1.2
   ctx.beginPath(); ctx.moveTo(0, oy); ctx.lineTo(canvas.width, oy); ctx.stroke()
   ctx.beginPath(); ctx.moveTo(ox, 0); ctx.lineTo(ox, canvas.height); ctx.stroke()
@@ -457,7 +405,7 @@ function dibujarCanvas(canvas: HTMLCanvasElement, elementos: Elemento[], resulta
 
   elementos.forEach((el, idx) => {
     const pols = el.plantilla === "coordenadas"
-      ? [{ pts: coordPts, signo: 1 as const }]
+      ? [{ pts: el.coordPts || [], signo: 1 as const }]
       : offsetPoligonos(getPoligonos(el.plantilla, el.params), el.x0, el.y0)
     const fill = fills[idx % fills.length]
     const stroke = strokes[idx % strokes.length]
@@ -504,7 +452,6 @@ export default function SectionBuilder() {
   const [signoActual, setSignoActual] = useState<1 | -1>(1)
   const [resultado, setResultado] = useState<ResultadoSeccion | null>(null)
   const [coordInput, setCoordInput] = useState("")
-  const [coordPts, setCoordPts] = useState<Poligono>([])
   const [ptoX, setPtoX] = useState("")
   const [ptoY, setPtoY] = useState("")
   const [mostrarAgregar, setMostrarAgregar] = useState(false)
@@ -514,14 +461,17 @@ export default function SectionBuilder() {
   const nextId = useRef(1)
 
   useEffect(() => {
-    if (canvasRef.current) dibujarCanvas(canvasRef.current, elementos, resultado, coordPts)
-  }, [elementos, resultado, coordPts])
+    if (canvasRef.current) dibujarCanvas(canvasRef.current, elementos, resultado)
+  }, [elementos, resultado])
 
-  const calcularConElementos = (els: Elemento[], cPts = coordPts) => {
+  const calcularConElementos = (els: Elemento[]) => {
     if (els.length === 0) { setResultado(null); return }
     const pols: { pts: Poligono; signo: number }[] = []
     for (const el of els) {
-      if (el.plantilla === "coordenadas") { pols.push({ pts: cPts, signo: el.signo }); continue }
+      if (el.plantilla === "coordenadas") {
+        if (el.coordPts && el.coordPts.length > 2) pols.push({ pts: el.coordPts, signo: el.signo })
+        continue
+      }
       const p = offsetPoligonos(getPoligonos(el.plantilla, el.params), el.x0, el.y0)
       pols.push(...p.map(q => ({ ...q, signo: q.signo * el.signo })))
     }
@@ -539,20 +489,30 @@ export default function SectionBuilder() {
   const abrirNuevo = () => {
     setEditandoId(null); setPlantillaActual("rectangular")
     setParamsActuales({ b: 30, h: 50 }); setX0("0"); setY0("0"); setSignoActual(1)
-    setMostrarAgregar(true)
+    setCoordInput(""); setMostrarAgregar(true)
   }
 
   const abrirEditar = (el: Elemento) => {
     setEditandoId(el.id); setPlantillaActual(el.plantilla)
     setParamsActuales({ ...el.params }); setX0(String(el.x0)); setY0(String(el.y0)); setSignoActual(el.signo)
+    if (el.coordPts) setCoordInput(el.coordPts.map(p => `${p.x},${p.y}`).join("\n"))
     setMostrarAgregar(true)
   }
 
   const guardar = () => {
     if (editandoId !== null) {
-      const nuevos = elementos.map(e => e.id === editandoId
-        ? { ...e, plantilla: plantillaActual, params: { ...paramsActuales }, x0: parseFloat(x0) || 0, y0: parseFloat(y0) || 0, signo: signoActual }
-        : e)
+      const nuevos = elementos.map(e => {
+        if (e.id !== editandoId) return e
+        if (plantillaActual === "coordenadas") {
+          try {
+            const pts: Poligono = coordInput.trim().split("\n").filter(l => l.trim()).map(l => {
+              const [x, y] = l.split(",").map(Number); return { x, y }
+            })
+            return { ...e, plantilla: plantillaActual, params: {}, x0: 0, y0: 0, signo: signoActual, coordPts: pts }
+          } catch { alert("Error en coordenadas"); return e }
+        }
+        return { ...e, plantilla: plantillaActual, params: { ...paramsActuales }, x0: parseFloat(x0) || 0, y0: parseFloat(y0) || 0, signo: signoActual }
+      })
       setElementos(nuevos); calcularConElementos(nuevos)
     } else {
       if (plantillaActual === "coordenadas") {
@@ -560,16 +520,15 @@ export default function SectionBuilder() {
           const pts: Poligono = coordInput.trim().split("\n").filter(l => l.trim()).map(l => {
             const [x, y] = l.split(",").map(Number); return { x, y }
           })
-          setCoordPts(pts)
-          const el: Elemento = { id: nextId.current++, plantilla: "coordenadas", params: {}, x0: 0, y0: 0, signo: signoActual, label: `Coord${nextId.current - 1}` }
-          const nuevos = [...elementos, el]; setElementos(nuevos); calcularConElementos(nuevos, pts)
+          const el: Elemento = { id: nextId.current++, plantilla: "coordenadas", params: {}, x0: 0, y0: 0, signo: signoActual, label: `Coord${nextId.current - 1}`, coordPts: pts }
+          const nuevos = [...elementos, el]; setElementos(nuevos); calcularConElementos(nuevos)
         } catch { alert("Error en coordenadas"); return }
       } else {
         const el: Elemento = { id: nextId.current++, plantilla: plantillaActual, params: { ...paramsActuales }, x0: parseFloat(x0) || 0, y0: parseFloat(y0) || 0, signo: signoActual, label: `E${nextId.current - 1}` }
         const nuevos = [...elementos, el]; setElementos(nuevos); calcularConElementos(nuevos)
       }
     }
-    setMostrarAgregar(false); setEditandoId(null)
+    setMostrarAgregar(false); setEditandoId(null); setCoordInput("")
   }
 
   const eliminar = (id: number) => {
@@ -628,6 +587,7 @@ export default function SectionBuilder() {
                     </div>
                   ))}
                 </div>
+
                 {mostrarAgregar && (
                   <div className="p-4 bg-blue-50 rounded-xl border border-blue-200">
                     <div className="text-xs text-blue-700 font-medium mb-3">
@@ -647,10 +607,11 @@ export default function SectionBuilder() {
                     </div>
                     {plantillaActual === "coordenadas" ? (
                       <div className="mb-3">
-                        <div className="text-xs text-gray-500 mb-1">Coordenadas (x,y) una por línea</div>
+                        <div className="text-xs text-gray-500 mb-1">Coordenadas (x,y) una por línea — sentido horario</div>
                         <textarea value={coordInput} onChange={e => setCoordInput(e.target.value)}
-                          placeholder={"0,0\n30,0\n30,50\n0,50"} rows={5}
+                          placeholder={"0,0\n30,0\n30,50\n0,50"} rows={6}
                           className="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:border-blue-400" />
+                        <div className="text-xs text-gray-400 mt-1">Para huecos: agrega un segundo elemento con operación − Resta</div>
                       </div>
                     ) : (
                       <div className="grid grid-cols-2 gap-2 mb-3">
@@ -664,28 +625,39 @@ export default function SectionBuilder() {
                         ))}
                       </div>
                     )}
-                    <div className="grid grid-cols-3 gap-2 mb-3">
-                      <div>
-                        <div className="text-xs text-gray-500 mb-0.5">x₀ (cm)</div>
-                        <input type="number" value={x0} onChange={e => setX0(e.target.value)} className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400" />
+                    {plantillaActual !== "coordenadas" && (
+                      <div className="grid grid-cols-3 gap-2 mb-3">
+                        <div>
+                          <div className="text-xs text-gray-500 mb-0.5">x₀ (cm)</div>
+                          <input type="number" value={x0} onChange={e => setX0(e.target.value)} className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400" />
+                        </div>
+                        <div>
+                          <div className="text-xs text-gray-500 mb-0.5">y₀ (cm)</div>
+                          <input type="number" value={y0} onChange={e => setY0(e.target.value)} className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400" />
+                        </div>
+                        <div>
+                          <div className="text-xs text-gray-500 mb-0.5">Operación</div>
+                          <select value={signoActual} onChange={e => setSignoActual(parseInt(e.target.value) as 1 | -1)} className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400">
+                            <option value={1}>+ Suma</option>
+                            <option value={-1}>− Resta</option>
+                          </select>
+                        </div>
                       </div>
-                      <div>
-                        <div className="text-xs text-gray-500 mb-0.5">y₀ (cm)</div>
-                        <input type="number" value={y0} onChange={e => setY0(e.target.value)} className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400" />
-                      </div>
-                      <div>
+                    )}
+                    {plantillaActual === "coordenadas" && (
+                      <div className="mb-3">
                         <div className="text-xs text-gray-500 mb-0.5">Operación</div>
                         <select value={signoActual} onChange={e => setSignoActual(parseInt(e.target.value) as 1 | -1)} className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400">
                           <option value={1}>+ Suma</option>
                           <option value={-1}>− Resta</option>
                         </select>
                       </div>
-                    </div>
+                    )}
                     <div className="flex gap-2">
                       <button onClick={guardar} className="text-xs bg-blue-700 text-white px-4 py-2 rounded-lg hover:bg-blue-800">
                         {editandoId !== null ? "Guardar cambios" : "Agregar a la sección"}
                       </button>
-                      <button onClick={() => { setMostrarAgregar(false); setEditandoId(null) }} className="text-xs text-gray-500 px-4 py-2 rounded-lg hover:bg-gray-100">Cancelar</button>
+                      <button onClick={() => { setMostrarAgregar(false); setEditandoId(null); setCoordInput("") }} className="text-xs text-gray-500 px-4 py-2 rounded-lg hover:bg-gray-100">Cancelar</button>
                     </div>
                   </div>
                 )}
