@@ -27,32 +27,16 @@ function circlePoints(cx: number, cy: number, r: number, n = 64): Poligono {
 }
 
 function getPoligonos(plantilla: Plantilla, p: Params): { pts: Poligono; signo: number }[] {
-  const {
-    b = 0, h = 0, t = 0, r = 0,
-    bf_sup = 0, tf_sup = 0, bf_inf = 0, tf_inf = 0,
-    hw = 0, tw = 0,
-    t_sup = 0, t_inf = 0, t_izq = 0, t_der = 0,
-    b_sup = 0, b_inf = 0,
-    bf = 0, tf = 0,
-    x_alma = 0, x_sup = 0,
-  } = p
+  const { b = 0, h = 0, t = 0, r = 0, bf_sup = 0, tf_sup = 0, bf_inf = 0, tf_inf = 0, hw = 0, tw = 0, t_sup = 0, t_inf = 0, t_izq = 0, t_der = 0, b_sup = 0, b_inf = 0, bf = 0, tf = 0, x_alma = 0, x_sup = 0 } = p
 
   switch (plantilla) {
     case "rectangular":
       return [{ pts: [{ x: 0, y: 0 }, { x: b, y: 0 }, { x: b, y: h }, { x: 0, y: h }], signo: 1 }]
-
     case "circular":
       return [{ pts: circlePoints(r, r, r), signo: 1 }]
-
     case "tubo":
-      return [
-        { pts: circlePoints(r, r, r), signo: 1 },
-        { pts: circlePoints(r, r, r - t), signo: -1 },
-      ]
-
+      return [{ pts: circlePoints(r, r, r), signo: 1 }, { pts: circlePoints(r, r, r - t), signo: -1 }]
     case "I": {
-      // ala inf desde x=0, alma desde x=x_alma, ala sup desde x=x_sup
-      // todos con anchos y espesores independientes
       const hTotal = tf_inf + hw + tf_sup
       return [
         { pts: [{ x: 0, y: 0 }, { x: bf_inf, y: 0 }, { x: bf_inf, y: tf_inf }, { x: 0, y: tf_inf }], signo: 1 },
@@ -60,46 +44,27 @@ function getPoligonos(plantilla: Plantilla, p: Params): { pts: Poligono; signo: 
         { pts: [{ x: x_sup, y: tf_inf + hw }, { x: x_sup + bf_sup, y: tf_inf + hw }, { x: x_sup + bf_sup, y: hTotal }, { x: x_sup, y: hTotal }], signo: 1 },
       ]
     }
-
     case "T": {
-      // alma centrada respecto al ala
       const xA = (bf - tw) / 2
       return [
         { pts: [{ x: xA, y: 0 }, { x: xA + tw, y: 0 }, { x: xA + tw, y: hw }, { x: xA, y: hw }], signo: 1 },
         { pts: [{ x: 0, y: hw }, { x: bf, y: hw }, { x: bf, y: hw + tf }, { x: 0, y: hw + tf }], signo: 1 },
       ]
     }
-
     case "C": {
-      // Canal C completamente asimétrico
-      // alma desde x=0 hasta x=tw
-      // ala inferior desde x=0 hasta x=bf_inf, altura tf_inf
-      // ala superior desde x=0 hasta x=bf_sup, altura tf_sup
+      // Canal C completamente asimétrico — bf_sup y bf_inf independientes
       const hTotal = tf_inf + hw + tf_sup
       return [{
         pts: [
-          { x: 0, y: 0 },
-          { x: bf_inf, y: 0 },
-          { x: bf_inf, y: tf_inf },
-          { x: tw, y: tf_inf },
-          { x: tw, y: tf_inf + hw },
-          { x: bf_sup, y: tf_inf + hw },
-          { x: bf_sup, y: hTotal },
-          { x: 0, y: hTotal },
+          { x: 0, y: 0 }, { x: bf_inf, y: 0 }, { x: bf_inf, y: tf_inf },
+          { x: tw, y: tf_inf }, { x: tw, y: tf_inf + hw },
+          { x: bf_sup, y: tf_inf + hw }, { x: bf_sup, y: hTotal }, { x: 0, y: hTotal },
         ], signo: 1
       }]
     }
-
     case "L":
-      return [{
-        pts: [
-          { x: 0, y: 0 }, { x: b, y: 0 }, { x: b, y: t },
-          { x: t, y: t }, { x: t, y: h }, { x: 0, y: h },
-        ], signo: 1
-      }]
-
+      return [{ pts: [{ x: 0, y: 0 }, { x: b, y: 0 }, { x: b, y: t }, { x: t, y: t }, { x: t, y: h }, { x: 0, y: h }], signo: 1 }]
     case "cajon": {
-      // cajón con todos los espesores independientes y anchos sup/inf independientes
       const bS = b_sup || b, bI = b_inf || b
       const tS = t_sup || t, tI = t_inf || t, tL = t_izq || t, tR = t_der || t
       return [
@@ -107,30 +72,19 @@ function getPoligonos(plantilla: Plantilla, p: Params): { pts: Poligono; signo: 
         { pts: [{ x: tL, y: tI }, { x: bI - tR, y: tI }, { x: bS - tR, y: h - tS }, { x: tL, y: h - tS }], signo: -1 },
       ]
     }
-
     case "Z": {
-      // Z: ala inf a la izquierda (x=0 a x=bf_inf)
-      // alma desde x=0 a x=tw, de y=tf_inf a y=tf_inf+hw
-      // ala sup a la derecha (x=tw a x=tw+bf_sup)
+      // Z correcta: ala inf izquierda, alma vertical, ala sup derecha
       const hTotal = tf_inf + hw + tf_sup
       return [{
         pts: [
-          { x: 0, y: 0 },
-          { x: bf_inf, y: 0 },
-          { x: bf_inf, y: tf_inf },
-          { x: tw, y: tf_inf },
-          { x: tw, y: tf_inf + hw },
-          { x: tw + bf_sup, y: tf_inf + hw },
-          { x: tw + bf_sup, y: hTotal },
-          { x: 0, y: hTotal },
-          { x: 0, y: tf_inf + hw },
-          { x: tw, y: tf_inf + hw },
-          { x: tw, y: tf_inf },
-          { x: 0, y: tf_inf },
+          { x: 0, y: 0 }, { x: bf_inf, y: 0 }, { x: bf_inf, y: tf_inf },
+          { x: tw, y: tf_inf }, { x: tw, y: tf_inf + hw },
+          { x: tw + bf_sup, y: tf_inf + hw }, { x: tw + bf_sup, y: hTotal },
+          { x: 0, y: hTotal }, { x: 0, y: tf_inf + hw },
+          { x: tw, y: tf_inf + hw }, { x: tw, y: tf_inf }, { x: 0, y: tf_inf },
         ], signo: 1
       }]
     }
-
     default: return []
   }
 }
@@ -152,6 +106,7 @@ function propiedadesPoligono(pts: Poligono) {
     Ixy += (xi * yj + 2 * xi * yi + 2 * xj * yj + xj * yi) * c
   }
   A /= 2; Cx /= (6 * A); Cy /= (6 * A)
+  // Ix e Iy son respecto al ORIGEN
   return { A: Math.abs(A), Cx, Cy, Ix: Math.abs(Ix) / 12, Iy: Math.abs(Iy) / 12, Ixy: Ixy / 24 }
 }
 
@@ -162,18 +117,30 @@ function calcularSeccion(poligonos: { pts: Poligono; signo: number }[]): Resulta
     A += signo * p.A; AxC += signo * p.A * p.Cx; AyC += signo * p.A * p.Cy
   }
   const xc = AxC / A, yc = AyC / A
+
+  // Inercias centroidales correctas:
+  // Icx = Ix_origen - A*Cy² (traslado al centroide propio)
+  // luego Steiner al centroide global: + A*(Cy - yc)²
+  // = Ix_origen - A*Cy² + A*(Cy-yc)²
   let Icx = 0, Icy = 0, Icxy = 0
   for (const { pts, signo } of poligonos) {
     const p = propiedadesPoligono(pts)
-    Icx += signo * (p.Ix + p.A * (p.Cy - yc) ** 2)
-    Icy += signo * (p.Iy + p.A * (p.Cx - xc) ** 2)
-    Icxy += signo * (p.Ixy + p.A * (p.Cx - xc) * (p.Cy - yc))
+    // Inercia centroidal propia de cada polígono
+    const Icx_propio = p.Ix - p.A * p.Cy * p.Cy
+    const Icy_propio = p.Iy - p.A * p.Cx * p.Cx
+    const Icxy_propio = p.Ixy - p.A * p.Cx * p.Cy
+    // Steiner al centroide global
+    Icx += signo * (Icx_propio + p.A * (p.Cy - yc) ** 2)
+    Icy += signo * (Icy_propio + p.A * (p.Cx - xc) ** 2)
+    Icxy += signo * (Icxy_propio + p.A * (p.Cx - xc) * (p.Cy - yc))
   }
+
   let ymax = -Infinity, ymin = Infinity, xmaxD = -Infinity
   for (const { pts } of poligonos) for (const p of pts) {
     if (p.y > ymax) ymax = p.y; if (p.y < ymin) ymin = p.y
     if (Math.abs(p.x - xc) > xmaxD) xmaxD = Math.abs(p.x - xc)
   }
+
   const Sx_top = Icx / (ymax - yc), Sx_bot = Icx / (yc - ymin), Sy = Icy / xmaxD
   const rx = Math.sqrt(Math.abs(Icx / A)), ry = Math.sqrt(Math.abs(Icy / A)), J = Icx + Icy
   const theta_p = 0.5 * Math.atan2(-2 * Icxy, Icx - Icy) * 180 / Math.PI
@@ -234,6 +201,7 @@ const plantillasConfig: Record<Plantilla, { label: string; campos: { key: string
   coordenadas: { label: "Por coordenadas", campos: [] },
 }
 
+// ── SVG subíndices con tspan ───────────────────────────────────────────────
 type LabelPart = { text: string; sub?: boolean }
 
 function SvgLabel({ x, y, parts }: { x: number; y: number; parts: LabelPart[] }) {
@@ -270,6 +238,7 @@ function lbl(main: string, sub?: string): LabelPart[] {
   return [{ text: main }, { text: sub, sub: true }]
 }
 
+// ── Esquemas SVG con subíndices reales ─────────────────────────────────────
 function EsquemaReferencia({ plantilla }: { plantilla: Plantilla }) {
   switch (plantilla) {
     case "rectangular": return (
@@ -335,11 +304,11 @@ function EsquemaReferencia({ plantilla }: { plantilla: Plantilla }) {
     )
     case "C": return (
       <svg viewBox="0 0 270 270" className="w-full h-56">
-        {/* ala superior — ancho bf_sup independiente */}
+        {/* ala superior — bf_sup independiente */}
         <rect x="20" y="20" width="120" height="18" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
         {/* alma */}
         <rect x="20" y="38" width="16" height="155" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
-        {/* ala inferior — ancho bf_inf independiente */}
+        {/* ala inferior — bf_inf independiente */}
         <rect x="20" y="193" width="100" height="18" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
         <Cota x1={20} y1={8} x2={140} y2={8} parts={lbl("b", "f,sup")} />
         <Cota x1={155} y1={20} x2={155} y2={38} parts={lbl("t", "f,sup")} off={26} />
@@ -347,12 +316,6 @@ function EsquemaReferencia({ plantilla }: { plantilla: Plantilla }) {
         <Cota x1={155} y1={38} x2={155} y2={193} parts={lbl("h", "w")} off={14} />
         <Cota x1={20} y1={228} x2={120} y2={228} parts={lbl("b", "f,inf")} />
         <Cota x1={155} y1={193} x2={155} y2={211} parts={lbl("t", "f,inf")} off={26} />
-        {/* nota de asimetría */}
-        <text x="135" y="120" fontSize="8" fill="#6b7280" fontStyle="italic">b</text>
-        <text x="143" y="122" fontSize="6" fill="#6b7280">f,sup</text>
-        <text x="155" y="120" fontSize="8" fill="#6b7280">≠</text>
-        <text x="163" y="120" fontSize="8" fill="#6b7280" fontStyle="italic">b</text>
-        <text x="171" y="122" fontSize="6" fill="#6b7280">f,inf</text>
       </svg>
     )
     case "cajon": return (
@@ -372,6 +335,7 @@ function EsquemaReferencia({ plantilla }: { plantilla: Plantilla }) {
     )
     case "Z": return (
       <svg viewBox="0 0 280 290" className="w-full h-56">
+        {/* Z correcta: ala inf izquierda, alma vertical, ala sup derecha */}
         {/* ala inferior izquierda */}
         <rect x="20" y="225" width="110" height="18" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
         {/* alma */}
@@ -447,6 +411,7 @@ function dibujarCanvas(canvas: HTMLCanvasElement, elementos: Elemento[], resulta
   const stepX = niceStep(xmax - xmin)
   const stepY = niceStep(ymax - ymin)
 
+  // Cuadrícula completa
   ctx.strokeStyle = "#e5e7eb"; ctx.lineWidth = 0.5
   const x0g = Math.floor((xmin - (xmax - xmin) * mg) / stepX) * stepX
   const x1g = xmax + (xmax - xmin) * mg + stepX * 2
@@ -459,6 +424,7 @@ function dibujarCanvas(canvas: HTMLCanvasElement, elementos: Elemento[], resulta
     ctx.beginPath(); ctx.moveTo(0, ty(gy)); ctx.lineTo(canvas.width, ty(gy)); ctx.stroke()
   }
 
+  // Etiquetas X
   ctx.fillStyle = "#9ca3af"; ctx.font = "9px sans-serif"; ctx.textAlign = "center"
   let lastLX = -Infinity
   for (let gx = x0g; gx <= x1g; gx = parseFloat((gx + stepX).toFixed(10))) {
@@ -467,6 +433,8 @@ function dibujarCanvas(canvas: HTMLCanvasElement, elementos: Elemento[], resulta
     lastLX = px
     ctx.fillText(Number.isInteger(gx) ? `${gx}` : `${parseFloat(gx.toFixed(2))}`, px, canvas.height - 6)
   }
+
+  // Etiquetas Y
   ctx.textAlign = "right"
   let lastLY = Infinity
   for (let gy = y0g; gy <= y1g; gy = parseFloat((gy + stepY).toFixed(10))) {
@@ -476,6 +444,7 @@ function dibujarCanvas(canvas: HTMLCanvasElement, elementos: Elemento[], resulta
     ctx.fillText(Number.isInteger(gy) ? `${gy}` : `${parseFloat(gy.toFixed(2))}`, padL - 4, py + 3)
   }
 
+  // Ejes
   ctx.strokeStyle = "#6b7280"; ctx.lineWidth = 1.2
   ctx.beginPath(); ctx.moveTo(0, oy); ctx.lineTo(canvas.width, oy); ctx.stroke()
   ctx.beginPath(); ctx.moveTo(ox, 0); ctx.lineTo(ox, canvas.height); ctx.stroke()
