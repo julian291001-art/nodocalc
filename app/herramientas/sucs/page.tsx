@@ -204,7 +204,7 @@ function CurvaGranulometrica({
   Cu: number | null
   Cc: number | null
 }) {
-  const W = 460, H = 300
+  const W = 600, H = 400
   const padL = 52, padR = 20, padT = 20, padB = 40
 
   // Escala log para eje X (diámetro): de 0.01 mm a 100 mm
@@ -235,7 +235,7 @@ function CurvaGranulometrica({
   return (
     <div>
       <svg viewBox={`0 0 ${W} ${H}`} width="100%"
-        className="border border-gray-100 rounded-lg bg-white" style={{ maxHeight: 300 }}>
+        className="border border-gray-100 rounded-lg bg-white" style={{ maxHeight: 400 }}>
 
         {/* Cuadrícula Y */}
         {marcasY.map(p => (
