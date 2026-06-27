@@ -444,40 +444,65 @@ function fmt(n: number, dec = 4) {
 
 // ── Botón PDF con carga dinámica ───────────────────────────────────────────
 function PDFBoton({ elementos, resultado, datosPDF, canvasRef }: {
-  elementos: Elemento[]; resultado: ResultadoSeccion; datosPDF: DatosPDF; canvasRef: React.RefObject<HTMLCanvasElement | null>
-})
-  const [PDFDownloadLink, setPDFDownloadLink] = useState<any>(null)
-  const [PDFSeccionComp, setPDFSeccionComp] = useState<any>(null)
+  elementos: Elemento[]
+  resultado: ResultadoSeccion
+  datosPDF: DatosPDF
+  canvasRef: React.RefObject<HTMLCanvasElement | null>
+}) {
+  const [componentes, setComponentes] = useState<{
+    Link: any
+    Doc: any
+  } | null>(null)
   const [imagenCanvas, setImagenCanvas] = useState<string>("")
-  const [listo, setListo] = useState(false)
+  const [loading, setLoading] = useState(false)
 
   useEffect(() => {
     Promise.all([
       import("@react-pdf/renderer").then(m => m.PDFDownloadLink),
       import("../../components/PDFSeccion").then(m => m.PDFSeccion),
-    ]).then(([link, comp]) => {
-      setPDFDownloadLink(() => link)
-      setPDFSeccionComp(() => comp)
+    ]).then(([Link, Doc]) => {
+      setComponentes({ Link, Doc })
       if (canvasRef.current) setImagenCanvas(canvasRef.current.toDataURL("image/png"))
-      setListo(true)
     }).catch(err => console.error("Error cargando PDF:", err))
   }, [])
 
-  if (!listo) return <div className="text-xs text-gray-400 text-center py-2 animate-pulse">Preparando generador PDF...</div>
+  const handleDescargar = async () => {
+    if (!componentes) return
+    setLoading(true)
+    try {
+      const { pdf } = await import("@react-pdf/renderer")
+      const { PDFSeccion: PDFComp } = await import("../../components/PDFSeccion")
+      const blob = await pdf(
+        <PDFComp
+          elementos={elementos}
+          resultado={resultado}
+          datosUsuario={datosPDF}
+          imagenCanvas={imagenCanvas}
+        />
+      ).toBlob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `NodoCalc_Seccion_${datosPDF.proyecto || "memoria"}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error(err)
+    }
+    setLoading(false)
+  }
+
+  if (!componentes) {
+    return <div className="text-xs text-gray-400 text-center py-2 animate-pulse">Preparando generador PDF...</div>
+  }
 
   return (
-    <PDFDownloadLink
-      document={<PDFSeccionComp elementos={elementos} resultado={resultado} datosUsuario={datosPDF} imagenCanvas={imagenCanvas} />}
-      fileName={`NodoCalc_Seccion_${datosPDF.proyecto || "memoria"}.pdf`}>
-      {({ loading }: { loading: boolean }) => (
-        <button className="w-full text-sm bg-red-600 text-white py-2.5 rounded-lg hover:bg-red-700 transition-colors">
-          {loading ? "⏳ Generando PDF..." : "⬇ Descargar memoria de cálculo"}
-        </button>
-      )}
-    </PDFDownloadLink>
+    <button onClick={handleDescargar}
+      className="w-full text-sm bg-red-600 text-white py-2.5 rounded-lg hover:bg-red-700 transition-colors">
+      {loading ? "⏳ Generando PDF..." : "⬇ Descargar memoria de cálculo"}
+    </button>
   )
 }
-
 // ── Componente principal ───────────────────────────────────────────────────
 export default function SectionBuilder(): import("react").JSX.Element {
   const [elementos, setElementos] = useState<Elemento[]>([])
