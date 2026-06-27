@@ -1,5 +1,4 @@
 import katex from "katex"
-import html2canvas from "html2canvas"
 
 export async function ecuacionAPNG(latex: string, display = true, altura = 70): Promise<string> {
   const container = document.createElement("div")
@@ -26,11 +25,9 @@ export async function ecuacionAPNG(latex: string, display = true, altura = 70): 
   document.body.appendChild(container)
 
   try {
-    const canvas = await html2canvas(container, {
-      scale: 2,
-      logging: false,
-      useCORS: true,
-    })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const h2c = (await import("html2canvas")).default as any
+    const canvas = await h2c(container, { scale: 2, logging: false, useCORS: true })
     return canvas.toDataURL("image/png")
   } finally {
     document.body.removeChild(container)
