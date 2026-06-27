@@ -7,6 +7,7 @@ import { useSeccionStore } from "../../store/useSeccionStore"
 type Plantilla = "rectangular" | "circular" | "tubo" | "I" | "T" | "L" | "C" | "cajon" | "coordenadas"
 type Params = Record<string, number>
 type Poligono = { x: number; y: number }[]
+type PoligonoEntry = { pts: Poligono; signo: number; exacto?: { cx: number; cy: number; r: number } }
 
 type Elemento = {
   id: number; plantilla: Plantilla; params: Params
@@ -20,23 +21,33 @@ type ResultadoSeccion = {
   J: number; I1: number; I2: number; theta_p: number
 }
 
-function circlePoints(cx: number, cy: number, r: number, n = 512): Poligono {
+function circlePoints(cx: number, cy: number, r: number, n = 128): Poligono {
   return Array.from({ length: n }, (_, i) => ({
     x: cx + r * Math.cos(2 * Math.PI * i / n),
     y: cy + r * Math.sin(2 * Math.PI * i / n),
   }))
 }
 
-function getPoligonos(plantilla: Plantilla, p: Params): { pts: Poligono; signo: number }[] {
+function propiedadesCirculoExacto(cx: number, cy: number, r: number) {
+  const A = Math.PI * r * r
+  const Ix = Math.PI * r * r * r * r / 4 + A * cy * cy
+  const Iy = Math.PI * r * r * r * r / 4 + A * cx * cx
+  return { A, Cx: cx, Cy: cy, Ix, Iy, Ixy: 0 }
+}
+
+function getPoligonos(plantilla: Plantilla, p: Params): PoligonoEntry[] {
   const { b = 0, h = 0, t = 0, r = 0, bf_sup = 0, tf_sup = 0, bf_inf = 0, tf_inf = 0, hw = 0, tw = 0, t_sup = 0, t_inf = 0, t_izq = 0, t_der = 0, b_sup = 0, b_inf = 0, bf = 0, tf = 0, x_alma = 0, x_sup = 0 } = p
 
   switch (plantilla) {
     case "rectangular":
       return [{ pts: [{ x: 0, y: 0 }, { x: b, y: 0 }, { x: b, y: h }, { x: 0, y: h }], signo: 1 }]
     case "circular":
-      return [{ pts: circlePoints(r, r, r), signo: 1 }]
+      return [{ pts: [], signo: 1, exacto: { cx: r, cy: r, r } }]
     case "tubo":
-      return [{ pts: circlePoints(r, r, r), signo: 1 }, { pts: circlePoints(r, r, r - t), signo: -1 }]
+      return [
+        { pts: [], signo: 1, exacto: { cx: r, cy: r, r } },
+        { pts: [], signo: -1, exacto: { cx: r, cy: r, r: r - t } },
+      ]
     case "I": {
       const hTotal = tf_inf + hw + tf_sup
       return [
@@ -54,13 +65,7 @@ function getPoligonos(plantilla: Plantilla, p: Params): { pts: Poligono; signo: 
     }
     case "C": {
       const hTotal = tf_inf + hw + tf_sup
-      return [{
-        pts: [
-          { x: 0, y: 0 }, { x: bf_inf, y: 0 }, { x: bf_inf, y: tf_inf },
-          { x: tw, y: tf_inf }, { x: tw, y: tf_inf + hw },
-          { x: bf_sup, y: tf_inf + hw }, { x: bf_sup, y: hTotal }, { x: 0, y: hTotal },
-        ], signo: 1
-      }]
+      return [{ pts: [{ x: 0, y: 0 }, { x: bf_inf, y: 0 }, { x: bf_inf, y: tf_inf }, { x: tw, y: tf_inf }, { x: tw, y: tf_inf + hw }, { x: bf_sup, y: tf_inf + hw }, { x: bf_sup, y: hTotal }, { x: 0, y: hTotal }], signo: 1 }]
     }
     case "L":
       return [{ pts: [{ x: 0, y: 0 }, { x: b, y: 0 }, { x: b, y: t }, { x: t, y: t }, { x: t, y: h }, { x: 0, y: h }], signo: 1 }]
@@ -76,8 +81,12 @@ function getPoligonos(plantilla: Plantilla, p: Params): { pts: Poligono; signo: 
   }
 }
 
-function offsetPoligonos(pols: { pts: Poligono; signo: number }[], x0: number, y0: number) {
-  return pols.map(({ pts, signo }) => ({ pts: pts.map(p => ({ x: p.x + x0, y: p.y + y0 })), signo }))
+function offsetPoligonos(pols: PoligonoEntry[], x0: number, y0: number): PoligonoEntry[] {
+  return pols.map(({ pts, signo, exacto }) => ({
+    pts: pts.map(p => ({ x: p.x + x0, y: p.y + y0 })),
+    signo,
+    exacto: exacto ? { cx: exacto.cx + x0, cy: exacto.cy + y0, r: exacto.r } : undefined,
+  }))
 }
 
 function propiedadesPoligono(pts: Poligono) {
@@ -96,16 +105,16 @@ function propiedadesPoligono(pts: Poligono) {
   return { A: Math.abs(A), Cx, Cy, Ix: Math.abs(Ix) / 12, Iy: Math.abs(Iy) / 12, Ixy: Ixy / 24 }
 }
 
-function calcularSeccion(poligonos: { pts: Poligono; signo: number }[]): ResultadoSeccion {
+function calcularSeccion(poligonos: PoligonoEntry[]): ResultadoSeccion {
   let A = 0, AxC = 0, AyC = 0
-  for (const { pts, signo } of poligonos) {
-    const p = propiedadesPoligono(pts)
+  for (const { pts, signo, exacto } of poligonos) {
+    const p = exacto ? propiedadesCirculoExacto(exacto.cx, exacto.cy, exacto.r) : propiedadesPoligono(pts)
     A += signo * p.A; AxC += signo * p.A * p.Cx; AyC += signo * p.A * p.Cy
   }
   const xc = AxC / A, yc = AyC / A
   let Icx = 0, Icy = 0, Icxy = 0
-  for (const { pts, signo } of poligonos) {
-    const p = propiedadesPoligono(pts)
+  for (const { pts, signo, exacto } of poligonos) {
+    const p = exacto ? propiedadesCirculoExacto(exacto.cx, exacto.cy, exacto.r) : propiedadesPoligono(pts)
     const Icx_propio = p.Ix - p.A * p.Cy * p.Cy
     const Icy_propio = p.Iy - p.A * p.Cx * p.Cx
     const Icxy_propio = p.Ixy - p.A * p.Cx * p.Cy
@@ -114,9 +123,12 @@ function calcularSeccion(poligonos: { pts: Poligono; signo: number }[]): Resulta
     Icxy += signo * (Icxy_propio + p.A * (p.Cx - xc) * (p.Cy - yc))
   }
   let ymax = -Infinity, ymin = Infinity, xmaxD = -Infinity
-  for (const { pts } of poligonos) for (const p of pts) {
-    if (p.y > ymax) ymax = p.y; if (p.y < ymin) ymin = p.y
-    if (Math.abs(p.x - xc) > xmaxD) xmaxD = Math.abs(p.x - xc)
+  for (const { pts, exacto } of poligonos) {
+    const ptsEval = exacto ? circlePoints(exacto.cx, exacto.cy, exacto.r, 64) : pts
+    for (const p of ptsEval) {
+      if (p.y > ymax) ymax = p.y; if (p.y < ymin) ymin = p.y
+      if (Math.abs(p.x - xc) > xmaxD) xmaxD = Math.abs(p.x - xc)
+    }
   }
   const Sx_top = Icx / (ymax - yc), Sx_bot = Icx / (yc - ymin), Sy = Icy / xmaxD
   const rx = Math.sqrt(Math.abs(Icx / A)), ry = Math.sqrt(Math.abs(Icy / A)), J = Icx + Icy
@@ -305,8 +317,7 @@ function EsquemaReferencia({ plantilla }: { plantilla: Plantilla }) {
         <line x1="20" y1="155" x2="20" y2="10" stroke="#9ca3af" strokeWidth="1" />
         <text x="203" y="158" fontSize="10" fill="#9ca3af">x</text>
         <text x="14" y="8" fontSize="10" fill="#9ca3af">y</text>
-        <polygon points="60,130 150,130 170,60 80,40 45,90"
-          fill="rgba(59,130,246,0.12)" stroke="#1d4ed8" strokeWidth="1.5" strokeDasharray="5,3" />
+        <polygon points="60,130 150,130 170,60 80,40 45,90" fill="rgba(59,130,246,0.12)" stroke="#1d4ed8" strokeWidth="1.5" strokeDasharray="5,3" />
         <text x="52" y="136" fontSize="8" fill="#1d4ed8">P₁</text>
         <text x="148" y="136" fontSize="8" fill="#1d4ed8">P₂</text>
         <text x="168" y="58" fontSize="8" fill="#1d4ed8">P₃</text>
@@ -341,7 +352,10 @@ function dibujarCanvas(canvas: HTMLCanvasElement, elementos: Elemento[], resulta
       continue
     }
     const pols = offsetPoligonos(getPoligonos(el.plantilla, el.params), el.x0, el.y0)
-    for (const { pts } of pols) todosLosPts.push(...pts)
+    for (const { pts, exacto } of pols) {
+      if (exacto) todosLosPts.push(...circlePoints(exacto.cx, exacto.cy, exacto.r, 32))
+      else todosLosPts.push(...pts)
+    }
   }
 
   let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity
@@ -404,25 +418,37 @@ function dibujarCanvas(canvas: HTMLCanvasElement, elementos: Elemento[], resulta
   const strokes = ["#1d4ed8", "#059669", "#d97706", "#dc2626", "#7c3aed"]
 
   elementos.forEach((el, idx) => {
-    const pols = el.plantilla === "coordenadas"
-      ? [{ pts: el.coordPts || [], signo: 1 as const }]
-      : offsetPoligonos(getPoligonos(el.plantilla, el.params), el.x0, el.y0)
     const fill = fills[idx % fills.length]
     const stroke = strokes[idx % strokes.length]
-    for (const { pts, signo } of pols) {
-      if (pts.length < 2) continue
+
+    if (el.plantilla === "coordenadas") {
+      const pts = el.coordPts || []
+      if (pts.length < 2) return
       ctx.beginPath()
       ctx.moveTo(tx(pts[0].x), ty(pts[0].y))
       for (const p of pts) ctx.lineTo(tx(p.x), ty(p.y))
+      ctx.closePath()
+      ctx.fillStyle = el.signo > 0 ? fill : "rgba(255,255,255,0.95)"
+      ctx.strokeStyle = stroke; ctx.lineWidth = 1.8
+      ctx.fill(); ctx.stroke()
+      return
+    }
+
+    const pols = offsetPoligonos(getPoligonos(el.plantilla, el.params), el.x0, el.y0)
+    for (const { pts, signo, exacto } of pols) {
+      const drawPts = exacto ? circlePoints(exacto.cx, exacto.cy, exacto.r, 128) : pts
+      if (drawPts.length < 2) continue
+      ctx.beginPath()
+      ctx.moveTo(tx(drawPts[0].x), ty(drawPts[0].y))
+      for (const p of drawPts) ctx.lineTo(tx(p.x), ty(p.y))
       ctx.closePath()
       ctx.fillStyle = el.signo > 0 && signo > 0 ? fill : "rgba(255,255,255,0.95)"
       ctx.strokeStyle = stroke; ctx.lineWidth = 1.8
       ctx.fill(); ctx.stroke()
     }
-    if (el.plantilla !== "coordenadas") {
-      ctx.fillStyle = stroke; ctx.font = "bold 10px sans-serif"; ctx.textAlign = "center"
-      ctx.fillText(el.label, tx(el.x0 + 3), ty(el.y0 + 3))
-    }
+
+    ctx.fillStyle = stroke; ctx.font = "bold 10px sans-serif"; ctx.textAlign = "center"
+    ctx.fillText(el.label, tx(el.x0 + 3), ty(el.y0 + 3))
   })
 
   if (resultado) {
@@ -466,7 +492,7 @@ export default function SectionBuilder() {
 
   const calcularConElementos = (els: Elemento[]) => {
     if (els.length === 0) { setResultado(null); return }
-    const pols: { pts: Poligono; signo: number }[] = []
+    const pols: PoligonoEntry[] = []
     for (const el of els) {
       if (el.plantilla === "coordenadas") {
         if (el.coordPts && el.coordPts.length > 2) pols.push({ pts: el.coordPts, signo: el.signo })
@@ -475,7 +501,7 @@ export default function SectionBuilder() {
       const p = offsetPoligonos(getPoligonos(el.plantilla, el.params), el.x0, el.y0)
       pols.push(...p.map(q => ({ ...q, signo: q.signo * el.signo })))
     }
-    if (pols.length === 0 || pols.every(p => p.pts.length < 3)) return
+    if (pols.length === 0) return
     setResultado(calcularSeccion(pols))
   }
 
@@ -611,7 +637,7 @@ export default function SectionBuilder() {
                         <textarea value={coordInput} onChange={e => setCoordInput(e.target.value)}
                           placeholder={"0,0\n30,0\n30,50\n0,50"} rows={6}
                           className="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:border-blue-400" />
-                        <div className="text-xs text-gray-400 mt-1">Para huecos: agrega un segundo elemento con operación − Resta</div>
+                        <div className="text-xs text-gray-400 mt-1">Para huecos agrega otro elemento con − Resta</div>
                       </div>
                     ) : (
                       <div className="grid grid-cols-2 gap-2 mb-3">
@@ -625,34 +651,27 @@ export default function SectionBuilder() {
                         ))}
                       </div>
                     )}
-                    {plantillaActual !== "coordenadas" && (
-                      <div className="grid grid-cols-3 gap-2 mb-3">
-                        <div>
-                          <div className="text-xs text-gray-500 mb-0.5">x₀ (cm)</div>
-                          <input type="number" value={x0} onChange={e => setX0(e.target.value)} className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400" />
-                        </div>
-                        <div>
-                          <div className="text-xs text-gray-500 mb-0.5">y₀ (cm)</div>
-                          <input type="number" value={y0} onChange={e => setY0(e.target.value)} className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400" />
-                        </div>
-                        <div>
-                          <div className="text-xs text-gray-500 mb-0.5">Operación</div>
-                          <select value={signoActual} onChange={e => setSignoActual(parseInt(e.target.value) as 1 | -1)} className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400">
-                            <option value={1}>+ Suma</option>
-                            <option value={-1}>− Resta</option>
-                          </select>
-                        </div>
-                      </div>
-                    )}
-                    {plantillaActual === "coordenadas" && (
-                      <div className="mb-3">
+                    <div className="grid grid-cols-3 gap-2 mb-3">
+                      {plantillaActual !== "coordenadas" && (
+                        <>
+                          <div>
+                            <div className="text-xs text-gray-500 mb-0.5">x₀ (cm)</div>
+                            <input type="number" value={x0} onChange={e => setX0(e.target.value)} className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400" />
+                          </div>
+                          <div>
+                            <div className="text-xs text-gray-500 mb-0.5">y₀ (cm)</div>
+                            <input type="number" value={y0} onChange={e => setY0(e.target.value)} className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400" />
+                          </div>
+                        </>
+                      )}
+                      <div className={plantillaActual === "coordenadas" ? "col-span-3" : ""}>
                         <div className="text-xs text-gray-500 mb-0.5">Operación</div>
                         <select value={signoActual} onChange={e => setSignoActual(parseInt(e.target.value) as 1 | -1)} className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400">
                           <option value={1}>+ Suma</option>
                           <option value={-1}>− Resta</option>
                         </select>
                       </div>
-                    )}
+                    </div>
                     <div className="flex gap-2">
                       <button onClick={guardar} className="text-xs bg-blue-700 text-white px-4 py-2 rounded-lg hover:bg-blue-800">
                         {editandoId !== null ? "Guardar cambios" : "Agregar a la sección"}
