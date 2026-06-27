@@ -301,12 +301,25 @@ function CurvaGranulometrica({
           <circle key={i} cx={px(p.mm)} cy={py(p.pasa)} r="3.5"
             fill="#1d4ed8" stroke="white" strokeWidth="1.2" />
         ))}
-
         {/* Labels Dx */}
-        {dRefs.map(({ d, label, color }) => d && (
-          <text key={label} x={px(d) + 3} y={padT + 10}
-            fontSize="8" fill={color} fontWeight="600">{label}</text>
-        ))}
+        {dRefs.map(({ d, label, color }) => {
+          const xPos = px(d as number) - 3
+          const yPos = H - padB - 5
+          return (
+            <text
+              key={`lbl-${label}`}
+              x={xPos}
+              y={yPos}
+              fontSize="8"
+              fill={color}
+              fontWeight="600"
+              textAnchor="end"
+              transform={`rotate(-90, ${xPos}, ${yPos})`}
+            >
+              {label}
+            </text>
+          )
+        })}
       </svg>
 
       {/* Tabla D10 D30 D60 Cu Cc */}
