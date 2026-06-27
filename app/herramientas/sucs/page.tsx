@@ -285,7 +285,6 @@ function CurvaGranulometrica({
           transform={`rotate(-90, 12, ${H / 2})`}>% que pasa</text>
 
         {/* Zonas textuales */}
-        {/* Zonas textuales */}
         <text x={(px(4.75) + px(0.075)) / 2} y={padT + 12} textAnchor="middle"
           fontSize="8" fill="#9ca3af">Arena</text>
         <text x={(px(0.075) + padL) / 2} y={padT + 12} textAnchor="middle"
