@@ -21,6 +21,10 @@ type ResultadoSeccion = {
   J: number; I1: number; I2: number; theta_p: number
 }
 
+type DatosPDF = {
+  ingeniero: string; empresa: string; proyecto: string; descripcion: string
+}
+
 function circlePoints(cx: number, cy: number, r: number, n = 128): Poligono {
   return Array.from({ length: n }, (_, i) => ({
     x: cx + r * Math.cos(2 * Math.PI * i / n),
@@ -37,7 +41,6 @@ function propiedadesCirculoExacto(cx: number, cy: number, r: number) {
 
 function getPoligonos(plantilla: Plantilla, p: Params): PoligonoEntry[] {
   const { b = 0, h = 0, t = 0, r = 0, bf_sup = 0, tf_sup = 0, bf_inf = 0, tf_inf = 0, hw = 0, tw = 0, t_sup = 0, t_inf = 0, t_izq = 0, t_der = 0, b_sup = 0, b_inf = 0, bf = 0, tf = 0, x_alma = 0, x_sup = 0 } = p
-
   switch (plantilla) {
     case "rectangular":
       return [{ pts: [{ x: 0, y: 0 }, { x: b, y: 0 }, { x: b, y: h }, { x: 0, y: h }], signo: 1 }]
@@ -304,11 +307,6 @@ function EsquemaReferencia({ plantilla }: { plantilla: Plantilla }) {
         <Cota x1={110} y1={20} x2={110} y2={38} parts={lbl("t", "sup")} off={18} />
         <Cota x1={182} y1={110} x2={200} y2={110} parts={lbl("t", "der")} />
         <Cota x1={110} y1={182} x2={110} y2={200} parts={lbl("t", "inf")} off={18} />
-        <text x="110" y="232" textAnchor="middle" fontSize="8" fill="#6b7280">
-          <tspan fontStyle="italic">b</tspan>
-          <tspan fontSize="6" dy="2">inf</tspan>
-          <tspan dy="-2"> independiente</tspan>
-        </text>
       </svg>
     )
     case "coordenadas": return (
@@ -344,20 +342,15 @@ function dibujarCanvas(canvas: HTMLCanvasElement, elementos: Elemento[], resulta
   const ctx = canvas.getContext("2d")
   if (!ctx) return
   ctx.clearRect(0, 0, canvas.width, canvas.height)
-
   const todosLosPts: { x: number; y: number }[] = [{ x: 0, y: 0 }]
   for (const el of elementos) {
-    if (el.plantilla === "coordenadas") {
-      if (el.coordPts) todosLosPts.push(...el.coordPts)
-      continue
-    }
+    if (el.plantilla === "coordenadas") { if (el.coordPts) todosLosPts.push(...el.coordPts); continue }
     const pols = offsetPoligonos(getPoligonos(el.plantilla, el.params), el.x0, el.y0)
     for (const { pts, exacto } of pols) {
       if (exacto) todosLosPts.push(...circlePoints(exacto.cx, exacto.cy, exacto.r, 32))
       else todosLosPts.push(...pts)
     }
   }
-
   let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity
   for (const p of todosLosPts) {
     if (p.x < xmin) xmin = p.x; if (p.x > xmax) xmax = p.x
@@ -365,19 +358,15 @@ function dibujarCanvas(canvas: HTMLCanvasElement, elementos: Elemento[], resulta
   }
   if (xmax - xmin < 1) { xmin -= 5; xmax += 5 }
   if (ymax - ymin < 1) { ymin -= 5; ymax += 5 }
-
   const padL = 50, padR = 20, padT = 20, padB = 30
-  const W = canvas.width - padL - padR
-  const H = canvas.height - padT - padB
+  const W = canvas.width - padL - padR, H = canvas.height - padT - padB
   const mg = 0.15
   const scale = Math.min(W / ((xmax - xmin) * (1 + mg * 2)), H / ((ymax - ymin) * (1 + mg * 2)))
   const ox = padL + (-xmin + (xmax - xmin) * mg) * scale
   const oy = canvas.height - padB - (-ymin + (ymax - ymin) * mg) * scale
   const tx = (x: number) => ox + x * scale
   const ty = (y: number) => oy - y * scale
-  const stepX = niceStep(xmax - xmin)
-  const stepY = niceStep(ymax - ymin)
-
+  const stepX = niceStep(xmax - xmin), stepY = niceStep(ymax - ymin)
   ctx.strokeStyle = "#e5e7eb"; ctx.lineWidth = 0.5
   const x0g = Math.floor((xmin - (xmax - xmin) * mg) / stepX) * stepX
   const x1g = xmax + (xmax - xmin) * mg + stepX * 2
@@ -389,7 +378,6 @@ function dibujarCanvas(canvas: HTMLCanvasElement, elementos: Elemento[], resulta
   for (let gy = y0g; gy <= y1g; gy = parseFloat((gy + stepY).toFixed(10))) {
     ctx.beginPath(); ctx.moveTo(0, ty(gy)); ctx.lineTo(canvas.width, ty(gy)); ctx.stroke()
   }
-
   ctx.fillStyle = "#9ca3af"; ctx.font = "9px sans-serif"; ctx.textAlign = "center"
   let lastLX = -Infinity
   for (let gx = x0g; gx <= x1g; gx = parseFloat((gx + stepX).toFixed(10))) {
@@ -406,51 +394,37 @@ function dibujarCanvas(canvas: HTMLCanvasElement, elementos: Elemento[], resulta
     lastLY = py
     ctx.fillText(Number.isInteger(gy) ? `${gy}` : `${parseFloat(gy.toFixed(2))}`, padL - 4, py + 3)
   }
-
   ctx.strokeStyle = "#6b7280"; ctx.lineWidth = 1.2
   ctx.beginPath(); ctx.moveTo(0, oy); ctx.lineTo(canvas.width, oy); ctx.stroke()
   ctx.beginPath(); ctx.moveTo(ox, 0); ctx.lineTo(ox, canvas.height); ctx.stroke()
   ctx.fillStyle = "#374151"; ctx.font = "bold 10px sans-serif"
   ctx.textAlign = "left"; ctx.fillText("x (cm)", canvas.width - 38, oy - 4)
   ctx.textAlign = "center"; ctx.fillText("y (cm)", ox + 4, padT - 6)
-
   const fills = ["rgba(59,130,246,0.2)", "rgba(16,185,129,0.2)", "rgba(245,158,11,0.2)", "rgba(239,68,68,0.2)", "rgba(139,92,246,0.2)"]
   const strokes = ["#1d4ed8", "#059669", "#d97706", "#dc2626", "#7c3aed"]
-
   elementos.forEach((el, idx) => {
-    const fill = fills[idx % fills.length]
-    const stroke = strokes[idx % strokes.length]
-
+    const fill = fills[idx % fills.length], stroke = strokes[idx % strokes.length]
     if (el.plantilla === "coordenadas") {
-      const pts = el.coordPts || []
-      if (pts.length < 2) return
-      ctx.beginPath()
-      ctx.moveTo(tx(pts[0].x), ty(pts[0].y))
+      const pts = el.coordPts || []; if (pts.length < 2) return
+      ctx.beginPath(); ctx.moveTo(tx(pts[0].x), ty(pts[0].y))
       for (const p of pts) ctx.lineTo(tx(p.x), ty(p.y))
       ctx.closePath()
       ctx.fillStyle = el.signo > 0 ? fill : "rgba(255,255,255,0.95)"
-      ctx.strokeStyle = stroke; ctx.lineWidth = 1.8
-      ctx.fill(); ctx.stroke()
-      return
+      ctx.strokeStyle = stroke; ctx.lineWidth = 1.8; ctx.fill(); ctx.stroke(); return
     }
-
     const pols = offsetPoligonos(getPoligonos(el.plantilla, el.params), el.x0, el.y0)
     for (const { pts, signo, exacto } of pols) {
       const drawPts = exacto ? circlePoints(exacto.cx, exacto.cy, exacto.r, 128) : pts
       if (drawPts.length < 2) continue
-      ctx.beginPath()
-      ctx.moveTo(tx(drawPts[0].x), ty(drawPts[0].y))
+      ctx.beginPath(); ctx.moveTo(tx(drawPts[0].x), ty(drawPts[0].y))
       for (const p of drawPts) ctx.lineTo(tx(p.x), ty(p.y))
       ctx.closePath()
       ctx.fillStyle = el.signo > 0 && signo > 0 ? fill : "rgba(255,255,255,0.95)"
-      ctx.strokeStyle = stroke; ctx.lineWidth = 1.8
-      ctx.fill(); ctx.stroke()
+      ctx.strokeStyle = stroke; ctx.lineWidth = 1.8; ctx.fill(); ctx.stroke()
     }
-
     ctx.fillStyle = stroke; ctx.font = "bold 10px sans-serif"; ctx.textAlign = "center"
     ctx.fillText(el.label, tx(el.x0 + 3), ty(el.y0 + 3))
   })
-
   if (resultado) {
     const cx = tx(resultado.xc), cy = ty(resultado.yc)
     ctx.strokeStyle = "#dc2626"; ctx.lineWidth = 2
@@ -468,6 +442,43 @@ function fmt(n: number, dec = 4) {
   return n.toFixed(dec)
 }
 
+// ── Botón PDF con carga dinámica ───────────────────────────────────────────
+function PDFBoton({ elementos, resultado, datosPDF, canvasRef }: {
+  elementos: Elemento[]; resultado: ResultadoSeccion; datosPDF: DatosPDF; canvasRef: React.RefObject<HTMLCanvasElement>
+}) {
+  const [PDFDownloadLink, setPDFDownloadLink] = useState<any>(null)
+  const [PDFSeccionComp, setPDFSeccionComp] = useState<any>(null)
+  const [imagenCanvas, setImagenCanvas] = useState<string>("")
+  const [listo, setListo] = useState(false)
+
+  useEffect(() => {
+    Promise.all([
+      import("@react-pdf/renderer").then(m => m.PDFDownloadLink),
+      import("../../components/PDFSeccion").then(m => m.PDFSeccion),
+    ]).then(([link, comp]) => {
+      setPDFDownloadLink(() => link)
+      setPDFSeccionComp(() => comp)
+      if (canvasRef.current) setImagenCanvas(canvasRef.current.toDataURL("image/png"))
+      setListo(true)
+    }).catch(err => console.error("Error cargando PDF:", err))
+  }, [])
+
+  if (!listo) return <div className="text-xs text-gray-400 text-center py-2 animate-pulse">Preparando generador PDF...</div>
+
+  return (
+    <PDFDownloadLink
+      document={<PDFSeccionComp elementos={elementos} resultado={resultado} datosUsuario={datosPDF} imagenCanvas={imagenCanvas} />}
+      fileName={`NodoCalc_Seccion_${datosPDF.proyecto || "memoria"}.pdf`}>
+      {({ loading }: { loading: boolean }) => (
+        <button className="w-full text-sm bg-red-600 text-white py-2.5 rounded-lg hover:bg-red-700 transition-colors">
+          {loading ? "⏳ Generando PDF..." : "⬇ Descargar memoria de cálculo"}
+        </button>
+      )}
+    </PDFDownloadLink>
+  )
+}
+
+// ── Componente principal ───────────────────────────────────────────────────
 export default function SectionBuilder() {
   const [elementos, setElementos] = useState<Elemento[]>([])
   const [editandoId, setEditandoId] = useState<number | null>(null)
@@ -481,6 +492,8 @@ export default function SectionBuilder() {
   const [ptoX, setPtoX] = useState("")
   const [ptoY, setPtoY] = useState("")
   const [mostrarAgregar, setMostrarAgregar] = useState(false)
+  const [mostrarModalPDF, setMostrarModalPDF] = useState(false)
+  const [datosPDF, setDatosPDF] = useState<DatosPDF>({ ingeniero: "", empresa: "", proyecto: "", descripcion: "" })
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const setSeccion = useSeccionStore((s) => s.setSeccion)
   const router = useRouter()
@@ -531,9 +544,7 @@ export default function SectionBuilder() {
         if (e.id !== editandoId) return e
         if (plantillaActual === "coordenadas") {
           try {
-            const pts: Poligono = coordInput.trim().split("\n").filter(l => l.trim()).map(l => {
-              const [x, y] = l.split(",").map(Number); return { x, y }
-            })
+            const pts: Poligono = coordInput.trim().split("\n").filter(l => l.trim()).map(l => { const [x, y] = l.split(",").map(Number); return { x, y } })
             return { ...e, plantilla: plantillaActual, params: {}, x0: 0, y0: 0, signo: signoActual, coordPts: pts }
           } catch { alert("Error en coordenadas"); return e }
         }
@@ -543,9 +554,7 @@ export default function SectionBuilder() {
     } else {
       if (plantillaActual === "coordenadas") {
         try {
-          const pts: Poligono = coordInput.trim().split("\n").filter(l => l.trim()).map(l => {
-            const [x, y] = l.split(",").map(Number); return { x, y }
-          })
+          const pts: Poligono = coordInput.trim().split("\n").filter(l => l.trim()).map(l => { const [x, y] = l.split(",").map(Number); return { x, y } })
           const el: Elemento = { id: nextId.current++, plantilla: "coordenadas", params: {}, x0: 0, y0: 0, signo: signoActual, label: `Coord${nextId.current - 1}`, coordPts: pts }
           const nuevos = [...elementos, el]; setElementos(nuevos); calcularConElementos(nuevos)
         } catch { alert("Error en coordenadas"); return }
@@ -587,6 +596,8 @@ export default function SectionBuilder() {
         </div>
         <div className="flex-1 overflow-y-auto p-6">
           <div className="grid grid-cols-2 gap-6">
+
+            {/* Panel izquierdo */}
             <div className="flex flex-col gap-4">
               <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="flex items-center justify-between mb-3">
@@ -709,8 +720,41 @@ export default function SectionBuilder() {
                   </div>
                 </div>
               )}
+
+              {/* PDF */}
+              {resultado && (
+                <div className="bg-white border border-gray-200 rounded-xl p-5">
+                  <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">MEMORIA DE CÁLCULO PDF</div>
+                  {!mostrarModalPDF ? (
+                    <button onClick={() => setMostrarModalPDF(true)}
+                      className="w-full text-sm bg-red-600 text-white py-2.5 rounded-lg hover:bg-red-700 transition-colors">
+                      📄 Generar memoria de cálculo
+                    </button>
+                  ) : (
+                    <div className="flex flex-col gap-3">
+                      <div className="text-xs text-gray-500">Datos para el encabezado del reporte</div>
+                      {([
+                        { key: "ingeniero", label: "Nombre del ingeniero" },
+                        { key: "proyecto", label: "Nombre del proyecto" },
+                        { key: "empresa", label: "Empresa / Universidad" },
+                        { key: "descripcion", label: "Descripción de la sección" },
+                      ] as { key: keyof DatosPDF; label: string }[]).map(f => (
+                        <div key={f.key}>
+                          <div className="text-xs text-gray-500 mb-0.5">{f.label}</div>
+                          <input type="text" value={datosPDF[f.key]}
+                            onChange={e => setDatosPDF({ ...datosPDF, [f.key]: e.target.value })}
+                            className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-red-400" />
+                        </div>
+                      ))}
+                      <PDFBoton elementos={elementos} resultado={resultado} datosPDF={datosPDF} canvasRef={canvasRef} />
+                      <button onClick={() => setMostrarModalPDF(false)} className="text-xs text-gray-400 hover:underline text-center">Cancelar</button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
+            {/* Panel derecho */}
             <div className="flex flex-col gap-4">
               <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">PLANO CARTESIANO</div>
