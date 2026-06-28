@@ -1,92 +1,56 @@
 import katex from "katex"
 
 export async function ecuacionAPNG(latex: string, display = true, altura = 100): Promise<string> {
-  // Renderizar KaTeX a HTML
-  const html = katex.renderToString(latex, {
+  const wrapper = document.createElement("div")
+  wrapper.style.cssText = `
+    position: fixed;
+    top: -9999px;
+    left: -9999px;
+    background-color: white;
+    width: 620px;
+    box-sizing: border-box;
+  `
+
+  const inner = document.createElement("div")
+  inner.style.cssText = `
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: ${altura}px;
+    background-color: white;
+  `
+
+  inner.innerHTML = katex.renderToString(latex, {
     displayMode: display,
     throwOnError: false,
     output: "html",
   })
 
-  // Crear elemento temporal para medir tamaño real
-  const medidor = document.createElement("div")
-  medidor.style.cssText = `
-    position: fixed;
-    top: -9999px;
-    left: -9999px;
-    width: 580px;
-    padding: 16px;
-    background: white;
-    font-size: 16px;
-    visibility: hidden;
-  `
-  medidor.innerHTML = html
-  document.body.appendChild(medidor)
+  wrapper.appendChild(inner)
+  document.body.appendChild(wrapper)
+
+  // Esperar dos frames para que KaTeX termine de renderizar
   await new Promise(r => requestAnimationFrame(r))
   await new Promise(r => requestAnimationFrame(r))
-  const alturaReal = Math.max(medidor.offsetHeight + 32, altura)
-  const anchoReal = 620
-  document.body.removeChild(medidor)
 
-  // Crear canvas con las dimensiones correctas
-  const canvas = document.createElement("canvas")
-  const scale = 3
-  canvas.width = anchoReal * scale
-  canvas.height = alturaReal * scale
-  const ctx = canvas.getContext("2d")!
-  ctx.scale(scale, scale)
-  ctx.fillStyle = "white"
-  ctx.fillRect(0, 0, anchoReal, alturaReal)
+  // Medir altura real del contenido
+  const alturaReal = Math.max(inner.getBoundingClientRect().height + 8, altura)
 
-  // Crear imagen desde SVG foreignObject con el HTML de KaTeX
-  const svgContent = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="${anchoReal}" height="${alturaReal}">
-      <foreignObject width="${anchoReal}" height="${alturaReal}">
-        <div xmlns="http://www.w3.org/1999/xhtml"
-          style="
-            width: ${anchoReal}px;
-            height: ${alturaReal}px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: white;
-            padding: 8px 16px;
-            box-sizing: border-box;
-            font-size: 16px;
-          ">
-          ${html}
-        </div>
-      </foreignObject>
-    </svg>
-  `
-
-  // Inline todas las fuentes de KaTeX como base64
-  return new Promise((resolve) => {
-    const img = new Image()
-    const blob = new Blob(
-      [`<?xml version="1.0" encoding="UTF-8"?>`, svgContent],
-      { type: "image/svg+xml;charset=utf-8" }
-    )
-    const url = URL.createObjectURL(blob)
-
-    img.onload = () => {
-      ctx.drawImage(img, 0, 0, anchoReal, alturaReal)
-      URL.revokeObjectURL(url)
-      resolve(canvas.toDataURL("image/png"))
-    }
-
-    img.onerror = () => {
-      URL.revokeObjectURL(url)
-      // Fallback: texto simple centrado
-      ctx.fillStyle = "#1e293b"
-      ctx.font = "14px serif"
-      ctx.textAlign = "center"
-      ctx.fillText(latex.replace(/\\[a-z]+/g, "").replace(/[{}]/g, ""), anchoReal / 2, alturaReal / 2)
-      resolve(canvas.toDataURL("image/png"))
-    }
-
-    img.src = url
-  })
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const h2c = (await import("html2canvas")).default as any
+    const canvas = await h2c(inner, {
+      scale: 2,
+      logging: false,
+      useCORS: true,
+      width: 620,
+      height: alturaReal,
+    })
+    return canvas.toDataURL("image/png")
+  } finally {
+    document.body.removeChild(wrapper)
+  }
 }
 
 export async function renderizarEcuaciones(
