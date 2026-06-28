@@ -73,96 +73,113 @@ function interpolarD(
 // ─────────────────────────────────────────────────────────────────────────────
 // LÓGICA SUCS (ASTM D2487)
 // ─────────────────────────────────────────────────────────────────────────────
-function calcularSUCS(
-  P200: number, P4: number, wL: number, wP: number,
-  Cu: number, Cc: number, organico: boolean
-): ResultadoSUCS | null {
-  if (isNaN(P200) || isNaN(P4)) return null
-
-  const IP       = wL - wP
-  const lineaA   = 0.73 * (wL - 20)
-  const sobreA   = IP >= lineaA
-
-  // ── FINOS ────────────────────────────────────────────────────────────────
-  if (P200 > 50) {
-    if (isNaN(wL) || isNaN(wP)) return null
-
-    if (organico) {
-      if (wL < 50) return r("OL", "Arcilla orgánica / Limo orgánico de baja plasticidad",     "organico", "Suelo orgánico de baja plasticidad. Se identifica cuando wL(horno)/wL(orig) < 0.75.",  "Baja a muy baja", "Media a alta",   "Baja",      "No recomendado para cimentaciones. Requiere tratamiento o sustitución.")
-      return             r("OH", "Arcilla orgánica / Limo orgánico de alta plasticidad",        "organico", "Suelo orgánico de alta plasticidad. Alta compresibilidad y baja resistencia.",           "Muy baja",        "Muy alta",       "Muy baja",  "No apto para construcción sin mejoramiento significativo.")
-    }
-    if (wL < 50) {
-      if (sobreA && IP > 7) return r("CL",    "Arcilla inorgánica de baja plasticidad",         "arcilla", "Arcilla de baja plasticidad. Buena resistencia en seco, sensible al agua.",             "Baja",            "Media",          "Media a alta","Aceptable para subrasante, terraplenes y núcleos de presas con control de humedad.")
-      if (!sobreA && IP < 4) return r("ML",   "Limo inorgánico de baja plasticidad",            "limo",    "Limo de baja plasticidad. Sensible a cambios de humedad.",                              "Media a baja",    "Media a alta",   "Baja a media","Subrasante con control estricto de compactación y drenaje.")
-      return                        r("CL-ML","Arcilla limosa (frontera CL-ML)",                 "arcilla", "Suelo en la frontera CL/ML. Clasificación dual, requiere juicio ingenieril.",            "Baja",            "Media",          "Media",      "Evaluar caso por caso. Se recomienda ensayos adicionales.")
-    }
-    if (sobreA) return r("CH", "Arcilla inorgánica de alta plasticidad", "arcilla", "Arcilla gorda de alta plasticidad. Alta expansión con cambios de humedad.",     "Muy baja", "Alta a muy alta", "Baja",     "Problemático para cimentaciones. Requiere mejoramiento o sustitución.")
-    return             r("MH", "Limo inorgánico de alta plasticidad",    "limo",    "Limo elástico de alta plasticidad. Comportamiento similar a arcilla gorda.",    "Muy baja", "Alta",            "Baja",     "No recomendado sin mejoramiento. Sensible a variaciones de humedad.")
-  }
-
-  // ── GRUESOS ──────────────────────────────────────────────────────────────
-  const pGrava       = 100 - P4
-  const pArena       = P4 - P200
-  const fracGruesa   = pGrava + pArena
-  const esGrava      = fracGruesa > 0 && pGrava > fracGruesa / 2
-  const finos        = P200
-  const cuOk         = esGrava ? Cu >= 4 : Cu >= 6
-  const ccOk         = Cc >= 1 && Cc <= 3
-  const bienSurtido  = cuOk && ccOk
-  const hasCuCc      = !isNaN(Cu) && !isNaN(Cc) && Cu > 0
-
-  if (esGrava) {
-    if (finos < 5) {
-      if (!hasCuCc) return r("G?",  "Grava (Cu/Cc requeridos)",         "grava", "Ingresa Cu y Cc para distinguir GW de GP.",                                       "—","—","—","—")
-      if (bienSurtido) return r("GW","Grava bien gradada",              "grava", "Grava limpia bien gradada con mezcla de tamaños.",                                 "Alta",          "Muy baja","Alta",         "Excelente para bases, sub-bases, drenajes y rellenos estructurales.")
-      return                  r("GP","Grava mal gradada",               "grava", "Grava limpia mal gradada o de tamaño uniforme.",                                   "Alta",          "Muy baja","Alta",         "Buena para drenajes y rellenos. Menos adecuada para bases sin tratamiento.")
-    }
-    if (finos > 12) {
-      if (isNaN(wL) || isNaN(wP)) return r("G?","Grava (Atterberg requeridos)","grava","Ingresa wL y wP para distinguir GC de GM.","—","—","—","—")
-      if (sobreA && IP > 7) return r("GC","Grava arcillosa",            "grava", "Grava con finos plásticos (arcilla).",                                             "Baja a media",  "Baja",    "Media a alta", "Núcleos impermeables de presas, subrasante.")
-      return                  r("GM","Grava limosa",                    "grava", "Grava con finos no plásticos (limo).",                                             "Baja a media",  "Baja",    "Media a alta", "Terraplenes, subrasante. Susceptible a helada.")
-    }
-    // 5 ≤ finos ≤ 12 → doble símbolo
-    if (!hasCuCc) return r("G??","Grava doble símbolo (Cu/Cc requeridos)","grava","Ingresa Cu y Cc para determinar símbolo doble.","—","—","—","—")
-    if (!isNaN(wL) && !isNaN(wP)) {
-      if (bienSurtido && sobreA)  return r("GW-GC","Grava bien gradada con arcilla","grava","Grava bien gradada con 5–12 % finos plásticos.","Media","Baja","Alta",  "Bases y sub-bases con control de compactación.")
-      if (bienSurtido && !sobreA) return r("GW-GM","Grava bien gradada con limo",  "grava","Grava bien gradada con 5–12 % finos no plásticos.","Media a alta","Baja","Alta","Bases y sub-bases.")
-      if (!bienSurtido && sobreA) return r("GP-GC","Grava mal gradada con arcilla","grava","Grava mal gradada con 5–12 % finos plásticos.","Media","Baja","Media a alta","Rellenos con control.")
-      return                             r("GP-GM","Grava mal gradada con limo",   "grava","Grava mal gradada con 5–12 % finos no plásticos.","Media a alta","Baja","Media a alta","Rellenos y bases con tratamiento.")
-    }
-    if (bienSurtido) return r("GW-GM","Grava bien gradada con limo","grava","Grava bien gradada con 5–12 % finos (Atterberg no ingresados).","Media a alta","Baja","Alta","Bases y sub-bases.")
-    return                  r("GP-GM","Grava mal gradada con limo", "grava","Grava mal gradada con 5–12 % finos (Atterberg no ingresados).","Media a alta","Baja","Media a alta","Rellenos y bases.")
-  }
-
-  // Arenas
-  if (finos < 5) {
-    if (!hasCuCc) return r("S?",  "Arena (Cu/Cc requeridos)",          "arena", "Ingresa Cu y Cc para distinguir SW de SP.",                                       "—","—","—","—")
-    if (bienSurtido) return r("SW","Arena bien gradada",               "arena", "Arena limpia bien gradada. Buena distribución de tamaños.",                        "Alta",          "Muy baja",    "Media a alta","Excelente para bases, rellenos estructurales y concreto.")
-    return                  r("SP","Arena mal gradada",                "arena", "Arena limpia mal gradada o uniforme. Susceptible a licuación.",                    "Alta",          "Baja",        "Media",      "Rellenos no estructurales. Evaluar licuación en zonas sísmicas (NSR-10).")
-  }
-  if (finos > 12) {
-    if (isNaN(wL) || isNaN(wP)) return r("S?","Arena (Atterberg requeridos)","arena","Ingresa wL y wP para distinguir SC de SM.","—","—","—","—")
-    if (sobreA && IP > 7) return r("SC","Arena arcillosa",             "arena", "Arena con finos plásticos. Buena cohesión aparente.",                              "Baja a media",  "Media",       "Media",      "Subrasante y terraplenes con control de humedad.")
-    return                  r("SM","Arena limosa",                     "arena", "Arena con finos no plásticos. Susceptible a cambios de humedad.",                  "Media",         "Baja a media","Media",      "Subrasante. Evaluar compactación y drenaje.")
-  }
-  // 5 ≤ finos ≤ 12 → doble símbolo
-  if (!hasCuCc) return r("S??","Arena doble símbolo (Cu/Cc requeridos)","arena","Ingresa Cu y Cc para determinar símbolo doble.","—","—","—","—")
-  if (!isNaN(wL) && !isNaN(wP)) {
-    if (bienSurtido && sobreA)  return r("SW-SC","Arena bien gradada con arcilla","arena","Arena bien gradada con 5–12 % finos plásticos.","Media","Baja a media","Media a alta","Bases y rellenos con compactación controlada.")
-    if (bienSurtido && !sobreA) return r("SW-SM","Arena bien gradada con limo",  "arena","Arena bien gradada con 5–12 % finos no plásticos.","Media a alta","Baja","Media a alta","Rellenos y bases.")
-    if (!bienSurtido && sobreA) return r("SP-SC","Arena mal gradada con arcilla","arena","Arena mal gradada con 5–12 % finos plásticos.","Media","Media","Media","Rellenos con control.")
-    return                             r("SP-SM","Arena mal gradada con limo",   "arena","Arena mal gradada con 5–12 % finos no plásticos.","Media a alta","Baja","Media","Rellenos. Evaluar licuación.")
-  }
-  if (bienSurtido) return r("SW-SM","Arena bien gradada con limo","arena","Arena bien gradada 5–12 % finos (Atterberg no ingresados).","Media a alta","Baja","Media a alta","Rellenos y bases.")
-  return                  r("SP-SM","Arena mal gradada con limo", "arena","Arena mal gradada 5–12 % finos (Atterberg no ingresados).","Media a alta","Baja","Media","Rellenos. Evaluar licuación.")
-}
-
 function r(
   simbolo: string, nombre: string, tipo: TipoSuelo,
   descripcion: string, permeabilidad: string,
   compresibilidad: string, resistencia: string, uso: string
 ): ResultadoSUCS {
   return { simbolo, nombre, tipo, descripcion, permeabilidad, compresibilidad, resistencia, uso }
+}
+
+function calcularSUCS(
+  P200: number, P4: number, wL: number, wP: number,
+  Cu: number, Cc: number, organico: boolean
+): ResultadoSUCS | null {
+  if (isNaN(P200) || isNaN(P4)) return null
+
+  const IP     = wL - wP
+  const lineaA = 0.73 * (wL - 20)
+  const sobreA = IP >= lineaA
+
+  // FINOS
+  if (P200 > 50) {
+    if (isNaN(wL) || isNaN(wP)) return null
+    if (organico) {
+      if (wL < 50) return r("OL", "Arcilla organica / Limo organico de baja plasticidad",  "organico", "Suelo organico de baja plasticidad. Se identifica cuando wL(horno)/wL(orig) < 0.75.", "Baja a muy baja", "Media a alta",   "Baja",     "No recomendado para cimentaciones. Requiere tratamiento.")
+      return             r("OH", "Arcilla organica / Limo organico de alta plasticidad",   "organico", "Suelo organico de alta plasticidad. Alta compresibilidad y baja resistencia.",          "Muy baja",        "Muy alta",       "Muy baja", "No apto para construccion sin mejoramiento significativo.")
+    }
+    if (wL < 50) {
+      if (sobreA && IP > 7)  return r("CL",    "Arcilla inorganica de baja plasticidad", "arcilla", "Arcilla de baja plasticidad. Buena resistencia en seco, sensible al agua.",          "Baja",         "Media",        "Media a alta", "Aceptable para subrasante, terraplenes y nucleos de presas.")
+      if (!sobreA && IP < 4) return r("ML",    "Limo inorganico de baja plasticidad",    "limo",    "Limo de baja plasticidad. Sensible a cambios de humedad.",                           "Media a baja", "Media a alta", "Baja a media", "Subrasante con control estricto de compactacion y drenaje.")
+      return                        r("CL-ML", "Arcilla limosa (frontera CL-ML)",         "arcilla", "Suelo en la frontera CL/ML. Clasificacion dual, requiere juicio ingenieril.",         "Baja",         "Media",        "Media",        "Evaluar caso por caso. Se recomienda ensayos adicionales.")
+    }
+    if (sobreA) return r("CH", "Arcilla inorganica de alta plasticidad", "arcilla", "Arcilla gorda de alta plasticidad. Alta expansion con cambios de humedad.", "Muy baja", "Alta a muy alta", "Baja", "Problematico para cimentaciones. Requiere mejoramiento.")
+    return             r("MH", "Limo inorganico de alta plasticidad",    "limo",    "Limo elastico de alta plasticidad. Comportamiento similar a arcilla gorda.", "Muy baja", "Alta",            "Baja", "No recomendado sin mejoramiento. Sensible a variaciones de humedad.")
+  }
+
+  // GRUESOS
+  const pGrava      = 100 - P4
+  const pArena      = P4 - P200
+  const fracGruesa  = pGrava + pArena
+  const esGrava     = fracGruesa > 0 && pGrava > fracGruesa / 2
+  const finos       = P200
+  const cuOk        = esGrava ? Cu >= 4 : Cu >= 6
+  const ccOk        = Cc >= 1 && Cc <= 3
+  const bienSurtido = cuOk && ccOk
+  const hasCuCc     = !isNaN(Cu) && !isNaN(Cc) && Cu > 0
+
+  if (esGrava) {
+    if (finos < 5) {
+      if (!hasCuCc)    return r("G?", "Grava (Cu/Cc requeridos)", "grava", "Ingresa Cu y Cc para distinguir GW de GP.", "—","—","—","—")
+      if (bienSurtido) return r("GW", "Grava bien gradada",       "grava", "Grava limpia bien gradada con mezcla de tamanos.",      "Alta", "Muy baja", "Alta", "Excelente para bases, sub-bases, drenajes y rellenos estructurales.")
+      return                  r("GP", "Grava mal gradada",        "grava", "Grava limpia mal gradada o de tamano uniforme.",         "Alta", "Muy baja", "Alta", "Buena para drenajes. Menos adecuada para bases sin tratamiento.")
+    }
+    if (finos > 12) {
+      if (isNaN(wL) || isNaN(wP)) return r("G?", "Grava (Atterberg requeridos)", "grava", "Ingresa wL y wP para distinguir GC de GM.", "—","—","—","—")
+      if (sobreA && IP > 7) return r("GC", "Grava arcillosa", "grava", "Grava con finos plasticos (arcilla).", "Baja a media", "Baja", "Media a alta", "Nucleos impermeables de presas, subrasante.")
+      return                  r("GM", "Grava limosa",        "grava", "Grava con finos no plasticos (limo).", "Baja a media", "Baja", "Media a alta", "Terraplenes, subrasante. Susceptible a helada.")
+    }
+    // 5 <= finos <= 12 -> doble simbolo
+    if (!hasCuCc) {
+      if (finos > 10) {
+        if (!isNaN(wL) && !isNaN(wP)) {
+          if (sobreA) return r("GP-GC", "Grava mal gradada con arcilla", "grava", "Simbolo doble asumido mal gradado: P200 > 10% impide calcular D10.", "Media",      "Baja", "Media a alta", "Rellenos con control.")
+          return              r("GP-GM", "Grava mal gradada con limo",    "grava", "Simbolo doble asumido mal gradado: P200 > 10% impide calcular D10.", "Media a alta","Baja", "Media a alta", "Rellenos y bases con tratamiento.")
+        }
+        return r("GP-GM", "Grava mal gradada con limo", "grava", "Simbolo doble asumido mal gradado: P200 > 10% impide calcular D10.", "Media a alta","Baja","Media a alta","Rellenos y bases.")
+      }
+      return r("G??", "Grava doble simbolo (Cu/Cc requeridos)", "grava", "Ingresa Cu y Cc manualmente para determinar simbolo doble.", "—","—","—","—")
+    }
+    if (!isNaN(wL) && !isNaN(wP)) {
+      if (bienSurtido && sobreA)  return r("GW-GC", "Grava bien gradada con arcilla", "grava", "Grava bien gradada con 5-12% finos plasticos.",     "Media",      "Baja","Alta",         "Bases y sub-bases con control de compactacion.")
+      if (bienSurtido && !sobreA) return r("GW-GM", "Grava bien gradada con limo",   "grava", "Grava bien gradada con 5-12% finos no plasticos.",   "Media a alta","Baja","Alta",         "Bases y sub-bases.")
+      if (!bienSurtido && sobreA) return r("GP-GC", "Grava mal gradada con arcilla", "grava", "Grava mal gradada con 5-12% finos plasticos.",       "Media",      "Baja","Media a alta", "Rellenos con control.")
+      return                             r("GP-GM", "Grava mal gradada con limo",    "grava", "Grava mal gradada con 5-12% finos no plasticos.",    "Media a alta","Baja","Media a alta", "Rellenos y bases con tratamiento.")
+    }
+    if (bienSurtido) return r("GW-GM","Grava bien gradada con limo","grava","Grava bien gradada con 5-12% finos (Atterberg no ingresados).","Media a alta","Baja","Alta","Bases y sub-bases.")
+    return                  r("GP-GM","Grava mal gradada con limo", "grava","Grava mal gradada con 5-12% finos (Atterberg no ingresados).","Media a alta","Baja","Media a alta","Rellenos y bases.")
+  }
+
+  // ARENAS
+  if (finos < 5) {
+    if (!hasCuCc)    return r("S?", "Arena (Cu/Cc requeridos)", "arena", "Ingresa Cu y Cc para distinguir SW de SP.", "—","—","—","—")
+    if (bienSurtido) return r("SW", "Arena bien gradada",       "arena", "Arena limpia bien gradada. Buena distribucion de tamanos.",          "Alta", "Muy baja",    "Media a alta", "Excelente para bases, rellenos estructurales y concreto.")
+    return                  r("SP", "Arena mal gradada",        "arena", "Arena limpia mal gradada o uniforme. Susceptible a licuacion.",       "Alta", "Baja",        "Media",        "Rellenos no estructurales. Evaluar licuacion en zonas sismicas.")
+  }
+  if (finos > 12) {
+    if (isNaN(wL) || isNaN(wP)) return r("S?", "Arena (Atterberg requeridos)", "arena", "Ingresa wL y wP para distinguir SC de SM.", "—","—","—","—")
+    if (sobreA && IP > 7) return r("SC", "Arena arcillosa", "arena", "Arena con finos plasticos. Buena cohesion aparente.",            "Baja a media", "Media",       "Media", "Subrasante y terraplenes con control de humedad.")
+    return                  r("SM", "Arena limosa",        "arena", "Arena con finos no plasticos. Susceptible a cambios de humedad.", "Media",        "Baja a media","Media", "Subrasante. Evaluar compactacion y drenaje.")
+  }
+  // 5 <= finos <= 12 -> doble simbolo
+  if (!hasCuCc) {
+    if (finos > 10) {
+      if (!isNaN(wL) && !isNaN(wP)) {
+        if (sobreA) return r("SP-SC", "Arena mal gradada con arcilla", "arena", "Simbolo doble asumido mal gradado: P200 > 10% impide calcular D10.", "Media",      "Media","Media", "Rellenos con control.")
+        return              r("SP-SM", "Arena mal gradada con limo",    "arena", "Simbolo doble asumido mal gradado: P200 > 10% impide calcular D10.", "Media a alta","Baja", "Media", "Rellenos. Evaluar licuacion.")
+      }
+      return r("SP-SM", "Arena mal gradada con limo", "arena", "Simbolo doble asumido mal gradado: P200 > 10% impide calcular D10.", "Media a alta","Baja","Media","Rellenos. Evaluar licuacion.")
+    }
+    return r("S??", "Arena doble simbolo (Cu/Cc requeridos)", "arena", "Ingresa Cu y Cc manualmente para determinar simbolo doble.", "—","—","—","—")
+  }
+  if (!isNaN(wL) && !isNaN(wP)) {
+    if (bienSurtido && sobreA)  return r("SW-SC", "Arena bien gradada con arcilla", "arena", "Arena bien gradada con 5-12% finos plasticos.",    "Media",      "Baja a media","Media a alta","Bases y rellenos con compactacion controlada.")
+    if (bienSurtido && !sobreA) return r("SW-SM", "Arena bien gradada con limo",   "arena", "Arena bien gradada con 5-12% finos no plasticos.",  "Media a alta","Baja",         "Media a alta","Rellenos y bases.")
+    if (!bienSurtido && sobreA) return r("SP-SC", "Arena mal gradada con arcilla", "arena", "Arena mal gradada con 5-12% finos plasticos.",      "Media",      "Media",        "Media",       "Rellenos con control.")
+    return                             r("SP-SM", "Arena mal gradada con limo",    "arena", "Arena mal gradada con 5-12% finos no plasticos.",   "Media a alta","Baja",         "Media",       "Rellenos. Evaluar licuacion.")
+  }
+  if (bienSurtido) return r("SW-SM","Arena bien gradada con limo","arena","Arena bien gradada 5-12% finos (Atterberg no ingresados).","Media a alta","Baja","Media a alta","Rellenos y bases.")
+  return                  r("SP-SM","Arena mal gradada con limo", "arena","Arena mal gradada 5-12% finos (Atterberg no ingresados).","Media a alta","Baja","Media",       "Rellenos. Evaluar licuacion.")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
