@@ -1,48 +1,55 @@
 import katex from "katex"
 
 export async function ecuacionAPNG(latex: string, display = true, altura = 100): Promise<string> {
-  const container = document.createElement("div")
-  container.style.cssText = `
+  const wrapper = document.createElement("div")
+  wrapper.style.cssText = `
     position: fixed;
     top: -9999px;
     left: -9999px;
     background-color: white;
-    padding: 20px 24px;
     width: 620px;
-    min-height: ${altura}px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
     box-sizing: border-box;
   `
 
-  container.innerHTML = katex.renderToString(latex, {
+  const inner = document.createElement("div")
+  inner.style.cssText = `
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: ${altura}px;
+    background-color: white;
+  `
+
+  inner.innerHTML = katex.renderToString(latex, {
     displayMode: display,
     throwOnError: false,
     output: "html",
   })
 
-  document.body.appendChild(container)
+  wrapper.appendChild(inner)
+  document.body.appendChild(wrapper)
 
-  // Esperar un frame para que el DOM se estabilice
+  // Esperar dos frames para que KaTeX termine de renderizar
   await new Promise(r => requestAnimationFrame(r))
   await new Promise(r => requestAnimationFrame(r))
+
+  // Medir altura real del contenido
+  const alturaReal = Math.max(inner.getBoundingClientRect().height + 8, altura)
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const h2c = (await import("html2canvas")).default as any
-    const realAltura = Math.max(container.scrollHeight + 20, altura)
-    container.style.minHeight = `${realAltura}px`
-    const canvas = await h2c(container, {
+    const canvas = await h2c(inner, {
       scale: 2,
       logging: false,
       useCORS: true,
       width: 620,
-      height: realAltura,
+      height: alturaReal,
     })
     return canvas.toDataURL("image/png")
   } finally {
-    document.body.removeChild(container)
+    document.body.removeChild(wrapper)
   }
 }
 
