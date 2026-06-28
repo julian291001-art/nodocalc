@@ -381,14 +381,83 @@ function CartaCasagrande({
   const px = (w: number) => padL + (w - xMin) * sx
   const py = (ip: number) => H - padB - (ip - yMin) * sy
 
+  // Linea A: IP = 0.73*(wL - 20), arranca en wL=25.5 donde IP=4
+  // Linea U: IP = 0.9*(wL - 8),   arranca en wL=16   donde IP=7.2
+  const lineaA = (w: number) => 0.73 * (w - 20)
+  const lineaU = (w: number) => 0.9  * (w - 8)
+
+  // ── ZONAS COLOREADAS ─────────────────────────────────────────────────────
+  // Construimos polígonos para cada zona
+
+  // Límite derecho del gráfico
+  const xR = W - padR
+  const yB = H - padB  // eje X (IP=0)
+
+  // Puntos clave
+  // Línea A cruza IP=4 en wL=25.5, cruza IP=7 en wL=29.6
+  // Línea U cruza IP=7 en wL=15.8
+  // Intersección línea A y línea U: 0.73(w-20)=0.9(w-8) → w=18.8, ip=-1 (fuera del gráfico)
+  // Zona CL-ML: IP entre 4 y 7, entre linea A y wL=25.5 aprox
+
+  // ML (bajo línea A, wL <= 50, IP >= 0)
+  // Polígono: (0,0)→(50,0)→(50, lineaA(50))→(25.5, 4)→(0,4) aproximado
+  // Simplificamos: todo lo que está debajo de línea A y wL<=50
+  const zonaCLML = [
+    // pequeño triangulo/trapecio cerca del origen
+    { x: px(25.5), y: py(4)   },
+    { x: px(29.6), y: py(7)   },
+    { x: px(25.5), y: py(7)   },
+  ]
+
+  const zonaML = [
+    { x: px(0),    y: py(0)   },
+    { x: px(50),   y: py(0)   },
+    { x: px(50),   y: py(lineaA(50)) },
+    { x: px(25.5), y: py(4)   },
+    { x: px(25.5), y: py(0)   },
+  ]
+
+  const zonaCL = [
+    { x: px(25.5), y: py(4)   },
+    { x: px(50),   y: py(lineaA(50)) },
+    { x: px(50),   y: py(lineaU(50)) },
+    { x: px(29.6), y: py(7)   },
+  ]
+
+  const zonaMH = [
+    { x: px(50),   y: py(0)         },
+    { x: px(xMax), y: py(0)         },
+    { x: px(xMax), y: py(lineaA(xMax)) },
+    { x: px(50),   y: py(lineaA(50)) },
+  ]
+
+  const zonaCH = [
+    { x: px(50),   y: py(lineaA(50))   },
+    { x: px(xMax), y: py(lineaA(xMax)) },
+    { x: px(xMax), y: py(yMax)         },
+    { x: px(50),   y: py(yMax)         },
+  ]
+
+  // Zona sobre línea U (amarillo claro) — encima de lineaU, wL>=30 aprox
+  const zonaSobreU = [
+    { x: px(16),   y: py(lineaU(16))  },
+    { x: px(50),   y: py(lineaU(50))  },
+    { x: px(50),   y: py(yMax)        },
+    { x: px(16),   y: py(yMax)        },
+  ]
+
+  const toPolygon = (pts: {x:number; y:number}[]) =>
+    pts.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ")
+
+  // Líneas para path
   const ptA: [number, number][] = []
   for (let w = 25.5; w <= 100; w += 1.5) {
-    const ip = 0.73 * (w - 20)
+    const ip = lineaA(w)
     if (ip >= 0 && ip <= yMax) ptA.push([w, ip])
   }
   const ptU: [number, number][] = []
-  for (let w = 16; w <= 100; w += 1.5) {
-    const ip = 0.9 * (w - 8)
+  for (let w = 16; w <= 50; w += 1.5) {
+    const ip = lineaU(w)
     if (ip >= 0 && ip <= yMax) ptU.push([w, ip])
   }
   const toPath = (pts: [number, number][]) =>
@@ -397,6 +466,7 @@ function CartaCasagrande({
   const validPunto = !isNaN(wL) && !isNaN(IP)
   const ptX = validPunto ? Math.min(Math.max(px(wL), padL), W - padR) : null
   const ptY = validPunto ? Math.min(Math.max(py(IP), padT), H - padB) : null
+
   const dotColors: Record<TipoSuelo, string> = {
     grava:"#4ade80", arena:"#fbbf24", limo:"#60a5fa", arcilla:"#fb923c", organico:"#ca8a04"
   }
@@ -405,43 +475,76 @@ function CartaCasagrande({
   return (
     <svg viewBox={`0 0 ${W} ${H}`} width="100%"
       className="border border-gray-100 rounded-lg bg-white" style={{ maxHeight: 300 }}>
+
+      {/* ── ZONAS COLOREADAS ── */}
+      <polygon points={toPolygon(zonaML)}    fill="#d1fae5" opacity="0.7" />
+      <polygon points={toPolygon(zonaCL)}    fill="#bfdbfe" opacity="0.7" />
+      <polygon points={toPolygon(zonaCLML)}  fill="#fed7aa" opacity="0.7" />
+      <polygon points={toPolygon(zonaMH)}    fill="#ede9fe" opacity="0.7" />
+      <polygon points={toPolygon(zonaCH)}    fill="#bfdbfe" opacity="0.7" />
+      <polygon points={toPolygon(zonaSobreU)} fill="#fef9c3" opacity="0.7" />
+
+      {/* ── CUADRÍCULA ── */}
       {[10,20,30,40,50,60,70,80,90].map(w => (
-        <line key={`gx${w}`} x1={px(w)} y1={padT} x2={px(w)} y2={H-padB} stroke="#f0f0f0" strokeWidth="1" />
+        <line key={`gx${w}`} x1={px(w)} y1={padT} x2={px(w)} y2={H-padB}
+          stroke="#e5e7eb" strokeWidth="1" />
       ))}
       {[10,20,30,40,50].map(ip => (
-        <line key={`gy${ip}`} x1={padL} y1={py(ip)} x2={W-padR} y2={py(ip)} stroke="#f0f0f0" strokeWidth="1" />
+        <line key={`gy${ip}`} x1={padL} y1={py(ip)} x2={W-padR} y2={py(ip)}
+          stroke="#e5e7eb" strokeWidth="1" />
       ))}
+
+      {/* ── EJES ── */}
       <line x1={padL} y1={padT} x2={padL} y2={H-padB} stroke="#6b7280" strokeWidth="1.2" />
       <line x1={padL} y1={H-padB} x2={W-padR} y2={H-padB} stroke="#6b7280" strokeWidth="1.2" />
-      {[0,10,20,30,40,50,60,70,80,90,100].map(w => (
-        <text key={`lx${w}`} x={px(w)} y={H-padB+13} textAnchor="middle" fontSize="8" fill="#9ca3af">{w}</text>
-      ))}
-      {[0,10,20,30,40,50].map(ip => (
-        <text key={`ly${ip}`} x={padL-5} y={py(ip)+3} textAnchor="end" fontSize="8" fill="#9ca3af">{ip}</text>
-      ))}
-      <text x={padL+(W-padL-padR)/2} y={H-4} textAnchor="middle" fontSize="9" fill="#6b7280">
-        Límite líquido wL (%)
-      </text>
-      <text x={11} y={H/2} textAnchor="middle" fontSize="9" fill="#6b7280"
-        transform={`rotate(-90, 11, ${H/2})`}>IP (%)</text>
+
+      {/* ── LÍNEA VERTICAL wL=50 ── */}
       <line x1={px(50)} y1={padT} x2={px(50)} y2={H-padB}
         stroke="#9ca3af" strokeWidth="1" strokeDasharray="3,3" />
       <text x={px(50)+3} y={padT+9} fontSize="7.5" fill="#9ca3af">wL=50</text>
-      <path d={toPath(ptU)} fill="none" stroke="#94a3b8" strokeWidth="1" strokeDasharray="4,3" />
-      <text x={px(30)} y={py(0.9*(30-8))-5} fontSize="8" fill="#94a3b8">Línea U</text>
-      <path d={toPath(ptA)} fill="none" stroke="#1d4ed8" strokeWidth="1.6" />
-      <text x={px(68)} y={py(0.73*(68-20))-5} fontSize="8" fill="#1d4ed8" fontWeight="600">Línea A</text>
-      <text x={px(28)} y={py(3)}  textAnchor="middle" fontSize="9" fill="#6b7280"  fontWeight="600">ML</text>
-      <text x={px(35)} y={py(22)} textAnchor="middle" fontSize="9" fill="#f97316" fontWeight="600">CL</text>
-      <text x={px(70)} y={py(8)}  textAnchor="middle" fontSize="9" fill="#6b7280"  fontWeight="600">MH</text>
-      <text x={px(72)} y={py(42)} textAnchor="middle" fontSize="9" fill="#f97316" fontWeight="600">CH</text>
-      <text x={px(25)} y={py(9)}  textAnchor="middle" fontSize="7.5" fill="#9ca3af">CL-ML</text>
+
+      {/* ── LÍNEAS HORIZONTALES zona CL-ML (IP=4 e IP=7) ── */}
+      <line x1={px(25.5)} y1={py(4)} x2={px(50)} y2={py(4)}
+        stroke="#9ca3af" strokeWidth="0.8" strokeDasharray="2,2" />
+      <line x1={px(25.5)} y1={py(7)} x2={px(50)} y2={py(7)}
+        stroke="#9ca3af" strokeWidth="0.8" strokeDasharray="2,2" />
+
+      {/* ── LÍNEA U ── */}
+      <path d={toPath(ptU)} fill="none" stroke="#6b7280" strokeWidth="1.2" strokeDasharray="5,3" />
+
+      {/* ── LÍNEA A ── */}
+      <path d={toPath(ptA)} fill="none" stroke="#1e3a8a" strokeWidth="1.8" />
+
+      {/* ── LABELS DE ZONAS ── */}
+      <text x={px(20)} y={py(1.5)} textAnchor="middle" fontSize="8.5" fill="#065f46" fontWeight="700">ML</text>
+      <text x={px(38)} y={py(18)}  textAnchor="middle" fontSize="8.5" fill="#1e40af" fontWeight="700">CL</text>
+      <text x={px(22)} y={py(5.5)} textAnchor="middle" fontSize="7.5" fill="#92400e" fontWeight="700">CL-ML</text>
+      <text x={px(72)} y={py(4)}   textAnchor="middle" fontSize="8.5" fill="#5b21b6" fontWeight="700">MH</text>
+      <text x={px(72)} y={py(38)}  textAnchor="middle" fontSize="8.5" fill="#1e40af" fontWeight="700">CH</text>
+
+      {/* ── LABELS EJES ── */}
+      {[0,10,20,30,40,50,60,70,80,90,100].map(w => (
+        <text key={`lx${w}`} x={px(w)} y={H-padB+13}
+          textAnchor="middle" fontSize="8" fill="#9ca3af">{w}</text>
+      ))}
+      {[0,10,20,30,40,50].map(ip => (
+        <text key={`ly${ip}`} x={padL-5} y={py(ip)+3}
+          textAnchor="end" fontSize="8" fill="#9ca3af">{ip}</text>
+      ))}
+      <text x={padL+(W-padL-padR)/2} y={H-4}
+        textAnchor="middle" fontSize="9" fill="#6b7280">
+        Limite liquido wL (%)
+      </text>
+      <text x={11} y={H/2} textAnchor="middle" fontSize="9" fill="#6b7280"
+        transform={`rotate(-90, 11, ${H/2})`}>IP (%)</text>
+
+      {/* ── PUNTO DEL SUELO ── */}
       {ptX !== null && ptY !== null && (
         <g>
           <circle cx={ptX} cy={ptY} r="7" fill={dotColor} opacity="0.25" />
           <circle cx={ptX} cy={ptY} r="4" fill="#dc2626" />
           <text x={ptX+8} y={ptY-5} fontSize="9" fill="#dc2626" fontWeight="700">
-            {resultado?.simbolo ?? "•"}
+            {resultado?.simbolo ?? ""}
           </text>
         </g>
       )}
