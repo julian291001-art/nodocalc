@@ -73,96 +73,113 @@ function interpolarD(
 // ─────────────────────────────────────────────────────────────────────────────
 // LÓGICA SUCS (ASTM D2487)
 // ─────────────────────────────────────────────────────────────────────────────
-function calcularSUCS(
-  P200: number, P4: number, wL: number, wP: number,
-  Cu: number, Cc: number, organico: boolean
-): ResultadoSUCS | null {
-  if (isNaN(P200) || isNaN(P4)) return null
-
-  const IP       = wL - wP
-  const lineaA   = 0.73 * (wL - 20)
-  const sobreA   = IP >= lineaA
-
-  // ── FINOS ────────────────────────────────────────────────────────────────
-  if (P200 > 50) {
-    if (isNaN(wL) || isNaN(wP)) return null
-
-    if (organico) {
-      if (wL < 50) return r("OL", "Arcilla orgánica / Limo orgánico de baja plasticidad",     "organico", "Suelo orgánico de baja plasticidad. Se identifica cuando wL(horno)/wL(orig) < 0.75.",  "Baja a muy baja", "Media a alta",   "Baja",      "No recomendado para cimentaciones. Requiere tratamiento o sustitución.")
-      return             r("OH", "Arcilla orgánica / Limo orgánico de alta plasticidad",        "organico", "Suelo orgánico de alta plasticidad. Alta compresibilidad y baja resistencia.",           "Muy baja",        "Muy alta",       "Muy baja",  "No apto para construcción sin mejoramiento significativo.")
-    }
-    if (wL < 50) {
-      if (sobreA && IP > 7) return r("CL",    "Arcilla inorgánica de baja plasticidad",         "arcilla", "Arcilla de baja plasticidad. Buena resistencia en seco, sensible al agua.",             "Baja",            "Media",          "Media a alta","Aceptable para subrasante, terraplenes y núcleos de presas con control de humedad.")
-      if (!sobreA && IP < 4) return r("ML",   "Limo inorgánico de baja plasticidad",            "limo",    "Limo de baja plasticidad. Sensible a cambios de humedad.",                              "Media a baja",    "Media a alta",   "Baja a media","Subrasante con control estricto de compactación y drenaje.")
-      return                        r("CL-ML","Arcilla limosa (frontera CL-ML)",                 "arcilla", "Suelo en la frontera CL/ML. Clasificación dual, requiere juicio ingenieril.",            "Baja",            "Media",          "Media",      "Evaluar caso por caso. Se recomienda ensayos adicionales.")
-    }
-    if (sobreA) return r("CH", "Arcilla inorgánica de alta plasticidad", "arcilla", "Arcilla gorda de alta plasticidad. Alta expansión con cambios de humedad.",     "Muy baja", "Alta a muy alta", "Baja",     "Problemático para cimentaciones. Requiere mejoramiento o sustitución.")
-    return             r("MH", "Limo inorgánico de alta plasticidad",    "limo",    "Limo elástico de alta plasticidad. Comportamiento similar a arcilla gorda.",    "Muy baja", "Alta",            "Baja",     "No recomendado sin mejoramiento. Sensible a variaciones de humedad.")
-  }
-
-  // ── GRUESOS ──────────────────────────────────────────────────────────────
-  const pGrava       = 100 - P4
-  const pArena       = P4 - P200
-  const fracGruesa   = pGrava + pArena
-  const esGrava      = fracGruesa > 0 && pGrava > fracGruesa / 2
-  const finos        = P200
-  const cuOk         = esGrava ? Cu >= 4 : Cu >= 6
-  const ccOk         = Cc >= 1 && Cc <= 3
-  const bienSurtido  = cuOk && ccOk
-  const hasCuCc      = !isNaN(Cu) && !isNaN(Cc) && Cu > 0
-
-  if (esGrava) {
-    if (finos < 5) {
-      if (!hasCuCc) return r("G?",  "Grava (Cu/Cc requeridos)",         "grava", "Ingresa Cu y Cc para distinguir GW de GP.",                                       "—","—","—","—")
-      if (bienSurtido) return r("GW","Grava bien gradada",              "grava", "Grava limpia bien gradada con mezcla de tamaños.",                                 "Alta",          "Muy baja","Alta",         "Excelente para bases, sub-bases, drenajes y rellenos estructurales.")
-      return                  r("GP","Grava mal gradada",               "grava", "Grava limpia mal gradada o de tamaño uniforme.",                                   "Alta",          "Muy baja","Alta",         "Buena para drenajes y rellenos. Menos adecuada para bases sin tratamiento.")
-    }
-    if (finos > 12) {
-      if (isNaN(wL) || isNaN(wP)) return r("G?","Grava (Atterberg requeridos)","grava","Ingresa wL y wP para distinguir GC de GM.","—","—","—","—")
-      if (sobreA && IP > 7) return r("GC","Grava arcillosa",            "grava", "Grava con finos plásticos (arcilla).",                                             "Baja a media",  "Baja",    "Media a alta", "Núcleos impermeables de presas, subrasante.")
-      return                  r("GM","Grava limosa",                    "grava", "Grava con finos no plásticos (limo).",                                             "Baja a media",  "Baja",    "Media a alta", "Terraplenes, subrasante. Susceptible a helada.")
-    }
-    // 5 ≤ finos ≤ 12 → doble símbolo
-    if (!hasCuCc) return r("G??","Grava doble símbolo (Cu/Cc requeridos)","grava","Ingresa Cu y Cc para determinar símbolo doble.","—","—","—","—")
-    if (!isNaN(wL) && !isNaN(wP)) {
-      if (bienSurtido && sobreA)  return r("GW-GC","Grava bien gradada con arcilla","grava","Grava bien gradada con 5–12 % finos plásticos.","Media","Baja","Alta",  "Bases y sub-bases con control de compactación.")
-      if (bienSurtido && !sobreA) return r("GW-GM","Grava bien gradada con limo",  "grava","Grava bien gradada con 5–12 % finos no plásticos.","Media a alta","Baja","Alta","Bases y sub-bases.")
-      if (!bienSurtido && sobreA) return r("GP-GC","Grava mal gradada con arcilla","grava","Grava mal gradada con 5–12 % finos plásticos.","Media","Baja","Media a alta","Rellenos con control.")
-      return                             r("GP-GM","Grava mal gradada con limo",   "grava","Grava mal gradada con 5–12 % finos no plásticos.","Media a alta","Baja","Media a alta","Rellenos y bases con tratamiento.")
-    }
-    if (bienSurtido) return r("GW-GM","Grava bien gradada con limo","grava","Grava bien gradada con 5–12 % finos (Atterberg no ingresados).","Media a alta","Baja","Alta","Bases y sub-bases.")
-    return                  r("GP-GM","Grava mal gradada con limo", "grava","Grava mal gradada con 5–12 % finos (Atterberg no ingresados).","Media a alta","Baja","Media a alta","Rellenos y bases.")
-  }
-
-  // Arenas
-  if (finos < 5) {
-    if (!hasCuCc) return r("S?",  "Arena (Cu/Cc requeridos)",          "arena", "Ingresa Cu y Cc para distinguir SW de SP.",                                       "—","—","—","—")
-    if (bienSurtido) return r("SW","Arena bien gradada",               "arena", "Arena limpia bien gradada. Buena distribución de tamaños.",                        "Alta",          "Muy baja",    "Media a alta","Excelente para bases, rellenos estructurales y concreto.")
-    return                  r("SP","Arena mal gradada",                "arena", "Arena limpia mal gradada o uniforme. Susceptible a licuación.",                    "Alta",          "Baja",        "Media",      "Rellenos no estructurales. Evaluar licuación en zonas sísmicas (NSR-10).")
-  }
-  if (finos > 12) {
-    if (isNaN(wL) || isNaN(wP)) return r("S?","Arena (Atterberg requeridos)","arena","Ingresa wL y wP para distinguir SC de SM.","—","—","—","—")
-    if (sobreA && IP > 7) return r("SC","Arena arcillosa",             "arena", "Arena con finos plásticos. Buena cohesión aparente.",                              "Baja a media",  "Media",       "Media",      "Subrasante y terraplenes con control de humedad.")
-    return                  r("SM","Arena limosa",                     "arena", "Arena con finos no plásticos. Susceptible a cambios de humedad.",                  "Media",         "Baja a media","Media",      "Subrasante. Evaluar compactación y drenaje.")
-  }
-  // 5 ≤ finos ≤ 12 → doble símbolo
-  if (!hasCuCc) return r("S??","Arena doble símbolo (Cu/Cc requeridos)","arena","Ingresa Cu y Cc para determinar símbolo doble.","—","—","—","—")
-  if (!isNaN(wL) && !isNaN(wP)) {
-    if (bienSurtido && sobreA)  return r("SW-SC","Arena bien gradada con arcilla","arena","Arena bien gradada con 5–12 % finos plásticos.","Media","Baja a media","Media a alta","Bases y rellenos con compactación controlada.")
-    if (bienSurtido && !sobreA) return r("SW-SM","Arena bien gradada con limo",  "arena","Arena bien gradada con 5–12 % finos no plásticos.","Media a alta","Baja","Media a alta","Rellenos y bases.")
-    if (!bienSurtido && sobreA) return r("SP-SC","Arena mal gradada con arcilla","arena","Arena mal gradada con 5–12 % finos plásticos.","Media","Media","Media","Rellenos con control.")
-    return                             r("SP-SM","Arena mal gradada con limo",   "arena","Arena mal gradada con 5–12 % finos no plásticos.","Media a alta","Baja","Media","Rellenos. Evaluar licuación.")
-  }
-  if (bienSurtido) return r("SW-SM","Arena bien gradada con limo","arena","Arena bien gradada 5–12 % finos (Atterberg no ingresados).","Media a alta","Baja","Media a alta","Rellenos y bases.")
-  return                  r("SP-SM","Arena mal gradada con limo", "arena","Arena mal gradada 5–12 % finos (Atterberg no ingresados).","Media a alta","Baja","Media","Rellenos. Evaluar licuación.")
-}
-
 function r(
   simbolo: string, nombre: string, tipo: TipoSuelo,
   descripcion: string, permeabilidad: string,
   compresibilidad: string, resistencia: string, uso: string
 ): ResultadoSUCS {
   return { simbolo, nombre, tipo, descripcion, permeabilidad, compresibilidad, resistencia, uso }
+}
+
+function calcularSUCS(
+  P200: number, P4: number, wL: number, wP: number,
+  Cu: number, Cc: number, organico: boolean
+): ResultadoSUCS | null {
+  if (isNaN(P200) || isNaN(P4)) return null
+
+  const IP     = wL - wP
+  const lineaA = 0.73 * (wL - 20)
+  const sobreA = IP >= lineaA
+
+  // FINOS
+  if (P200 > 50) {
+    if (isNaN(wL) || isNaN(wP)) return null
+    if (organico) {
+      if (wL < 50) return r("OL", "Arcilla organica / Limo organico de baja plasticidad",  "organico", "Suelo organico de baja plasticidad. Se identifica cuando wL(horno)/wL(orig) < 0.75.", "Baja a muy baja", "Media a alta",   "Baja",     "No recomendado para cimentaciones. Requiere tratamiento.")
+      return             r("OH", "Arcilla organica / Limo organico de alta plasticidad",   "organico", "Suelo organico de alta plasticidad. Alta compresibilidad y baja resistencia.",          "Muy baja",        "Muy alta",       "Muy baja", "No apto para construccion sin mejoramiento significativo.")
+    }
+    if (wL < 50) {
+      if (sobreA && IP > 7)  return r("CL",    "Arcilla inorganica de baja plasticidad", "arcilla", "Arcilla de baja plasticidad. Buena resistencia en seco, sensible al agua.",          "Baja",         "Media",        "Media a alta", "Aceptable para subrasante, terraplenes y nucleos de presas.")
+      if (!sobreA && IP < 4) return r("ML",    "Limo inorganico de baja plasticidad",    "limo",    "Limo de baja plasticidad. Sensible a cambios de humedad.",                           "Media a baja", "Media a alta", "Baja a media", "Subrasante con control estricto de compactacion y drenaje.")
+      return                        r("CL-ML", "Arcilla limosa (frontera CL-ML)",         "arcilla", "Suelo en la frontera CL/ML. Clasificacion dual, requiere juicio ingenieril.",         "Baja",         "Media",        "Media",        "Evaluar caso por caso. Se recomienda ensayos adicionales.")
+    }
+    if (sobreA) return r("CH", "Arcilla inorganica de alta plasticidad", "arcilla", "Arcilla gorda de alta plasticidad. Alta expansion con cambios de humedad.", "Muy baja", "Alta a muy alta", "Baja", "Problematico para cimentaciones. Requiere mejoramiento.")
+    return             r("MH", "Limo inorganico de alta plasticidad",    "limo",    "Limo elastico de alta plasticidad. Comportamiento similar a arcilla gorda.", "Muy baja", "Alta",            "Baja", "No recomendado sin mejoramiento. Sensible a variaciones de humedad.")
+  }
+
+  // GRUESOS
+  const pGrava      = 100 - P4
+  const pArena      = P4 - P200
+  const fracGruesa  = pGrava + pArena
+  const esGrava     = fracGruesa > 0 && pGrava > fracGruesa / 2
+  const finos       = P200
+  const cuOk        = esGrava ? Cu >= 4 : Cu >= 6
+  const ccOk        = Cc >= 1 && Cc <= 3
+  const bienSurtido = cuOk && ccOk
+  const hasCuCc     = !isNaN(Cu) && !isNaN(Cc) && Cu > 0
+
+  if (esGrava) {
+    if (finos < 5) {
+      if (!hasCuCc)    return r("G?", "Grava (Cu/Cc requeridos)", "grava", "Ingresa Cu y Cc para distinguir GW de GP.", "—","—","—","—")
+      if (bienSurtido) return r("GW", "Grava bien gradada",       "grava", "Grava limpia bien gradada con mezcla de tamanos.",      "Alta", "Muy baja", "Alta", "Excelente para bases, sub-bases, drenajes y rellenos estructurales.")
+      return                  r("GP", "Grava mal gradada",        "grava", "Grava limpia mal gradada o de tamano uniforme.",         "Alta", "Muy baja", "Alta", "Buena para drenajes. Menos adecuada para bases sin tratamiento.")
+    }
+    if (finos > 12) {
+      if (isNaN(wL) || isNaN(wP)) return r("G?", "Grava (Atterberg requeridos)", "grava", "Ingresa wL y wP para distinguir GC de GM.", "—","—","—","—")
+      if (sobreA && IP > 7) return r("GC", "Grava arcillosa", "grava", "Grava con finos plasticos (arcilla).", "Baja a media", "Baja", "Media a alta", "Nucleos impermeables de presas, subrasante.")
+      return                  r("GM", "Grava limosa",        "grava", "Grava con finos no plasticos (limo).", "Baja a media", "Baja", "Media a alta", "Terraplenes, subrasante. Susceptible a helada.")
+    }
+    // 5 <= finos <= 12 -> doble simbolo
+    if (!hasCuCc) {
+      if (finos > 10) {
+        if (!isNaN(wL) && !isNaN(wP)) {
+          if (sobreA) return r("GP-GC", "Grava mal gradada con arcilla", "grava", "Simbolo doble asumido mal gradado: P200 > 10% impide calcular D10.", "Media",      "Baja", "Media a alta", "Rellenos con control.")
+          return              r("GP-GM", "Grava mal gradada con limo",    "grava", "Simbolo doble asumido mal gradado: P200 > 10% impide calcular D10.", "Media a alta","Baja", "Media a alta", "Rellenos y bases con tratamiento.")
+        }
+        return r("GP-GM", "Grava mal gradada con limo", "grava", "Simbolo doble asumido mal gradado: P200 > 10% impide calcular D10.", "Media a alta","Baja","Media a alta","Rellenos y bases.")
+      }
+      return r("G??", "Grava doble simbolo (Cu/Cc requeridos)", "grava", "Ingresa Cu y Cc manualmente para determinar simbolo doble.", "—","—","—","—")
+    }
+    if (!isNaN(wL) && !isNaN(wP)) {
+      if (bienSurtido && sobreA)  return r("GW-GC", "Grava bien gradada con arcilla", "grava", "Grava bien gradada con 5-12% finos plasticos.",     "Media",      "Baja","Alta",         "Bases y sub-bases con control de compactacion.")
+      if (bienSurtido && !sobreA) return r("GW-GM", "Grava bien gradada con limo",   "grava", "Grava bien gradada con 5-12% finos no plasticos.",   "Media a alta","Baja","Alta",         "Bases y sub-bases.")
+      if (!bienSurtido && sobreA) return r("GP-GC", "Grava mal gradada con arcilla", "grava", "Grava mal gradada con 5-12% finos plasticos.",       "Media",      "Baja","Media a alta", "Rellenos con control.")
+      return                             r("GP-GM", "Grava mal gradada con limo",    "grava", "Grava mal gradada con 5-12% finos no plasticos.",    "Media a alta","Baja","Media a alta", "Rellenos y bases con tratamiento.")
+    }
+    if (bienSurtido) return r("GW-GM","Grava bien gradada con limo","grava","Grava bien gradada con 5-12% finos (Atterberg no ingresados).","Media a alta","Baja","Alta","Bases y sub-bases.")
+    return                  r("GP-GM","Grava mal gradada con limo", "grava","Grava mal gradada con 5-12% finos (Atterberg no ingresados).","Media a alta","Baja","Media a alta","Rellenos y bases.")
+  }
+
+  // ARENAS
+  if (finos < 5) {
+    if (!hasCuCc)    return r("S?", "Arena (Cu/Cc requeridos)", "arena", "Ingresa Cu y Cc para distinguir SW de SP.", "—","—","—","—")
+    if (bienSurtido) return r("SW", "Arena bien gradada",       "arena", "Arena limpia bien gradada. Buena distribucion de tamanos.",          "Alta", "Muy baja",    "Media a alta", "Excelente para bases, rellenos estructurales y concreto.")
+    return                  r("SP", "Arena mal gradada",        "arena", "Arena limpia mal gradada o uniforme. Susceptible a licuacion.",       "Alta", "Baja",        "Media",        "Rellenos no estructurales. Evaluar licuacion en zonas sismicas.")
+  }
+  if (finos > 12) {
+    if (isNaN(wL) || isNaN(wP)) return r("S?", "Arena (Atterberg requeridos)", "arena", "Ingresa wL y wP para distinguir SC de SM.", "—","—","—","—")
+    if (sobreA && IP > 7) return r("SC", "Arena arcillosa", "arena", "Arena con finos plasticos. Buena cohesion aparente.",            "Baja a media", "Media",       "Media", "Subrasante y terraplenes con control de humedad.")
+    return                  r("SM", "Arena limosa",        "arena", "Arena con finos no plasticos. Susceptible a cambios de humedad.", "Media",        "Baja a media","Media", "Subrasante. Evaluar compactacion y drenaje.")
+  }
+  // 5 <= finos <= 12 -> doble simbolo
+  if (!hasCuCc) {
+    if (finos > 10) {
+      if (!isNaN(wL) && !isNaN(wP)) {
+        if (sobreA) return r("SP-SC", "Arena mal gradada con arcilla", "arena", "Simbolo doble asumido mal gradado: P200 > 10% impide calcular D10.", "Media",      "Media","Media", "Rellenos con control.")
+        return              r("SP-SM", "Arena mal gradada con limo",    "arena", "Simbolo doble asumido mal gradado: P200 > 10% impide calcular D10.", "Media a alta","Baja", "Media", "Rellenos. Evaluar licuacion.")
+      }
+      return r("SP-SM", "Arena mal gradada con limo", "arena", "Simbolo doble asumido mal gradado: P200 > 10% impide calcular D10.", "Media a alta","Baja","Media","Rellenos. Evaluar licuacion.")
+    }
+    return r("S??", "Arena doble simbolo (Cu/Cc requeridos)", "arena", "Ingresa Cu y Cc manualmente para determinar simbolo doble.", "—","—","—","—")
+  }
+  if (!isNaN(wL) && !isNaN(wP)) {
+    if (bienSurtido && sobreA)  return r("SW-SC", "Arena bien gradada con arcilla", "arena", "Arena bien gradada con 5-12% finos plasticos.",    "Media",      "Baja a media","Media a alta","Bases y rellenos con compactacion controlada.")
+    if (bienSurtido && !sobreA) return r("SW-SM", "Arena bien gradada con limo",   "arena", "Arena bien gradada con 5-12% finos no plasticos.",  "Media a alta","Baja",         "Media a alta","Rellenos y bases.")
+    if (!bienSurtido && sobreA) return r("SP-SC", "Arena mal gradada con arcilla", "arena", "Arena mal gradada con 5-12% finos plasticos.",      "Media",      "Media",        "Media",       "Rellenos con control.")
+    return                             r("SP-SM", "Arena mal gradada con limo",    "arena", "Arena mal gradada con 5-12% finos no plasticos.",   "Media a alta","Baja",         "Media",       "Rellenos. Evaluar licuacion.")
+  }
+  if (bienSurtido) return r("SW-SM","Arena bien gradada con limo","arena","Arena bien gradada 5-12% finos (Atterberg no ingresados).","Media a alta","Baja","Media a alta","Rellenos y bases.")
+  return                  r("SP-SM","Arena mal gradada con limo", "arena","Arena mal gradada 5-12% finos (Atterberg no ingresados).","Media a alta","Baja","Media",       "Rellenos. Evaluar licuacion.")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -364,14 +381,83 @@ function CartaCasagrande({
   const px = (w: number) => padL + (w - xMin) * sx
   const py = (ip: number) => H - padB - (ip - yMin) * sy
 
+  // Linea A: IP = 0.73*(wL - 20), arranca en wL=25.5 donde IP=4
+  // Linea U: IP = 0.9*(wL - 8),   arranca en wL=16   donde IP=7.2
+  const lineaA = (w: number) => 0.73 * (w - 20)
+  const lineaU = (w: number) => 0.9  * (w - 8)
+
+  // ── ZONAS COLOREADAS ─────────────────────────────────────────────────────
+  // Construimos polígonos para cada zona
+
+  // Límite derecho del gráfico
+  const xR = W - padR
+  const yB = H - padB  // eje X (IP=0)
+
+  // Puntos clave
+  // Línea A cruza IP=4 en wL=25.5, cruza IP=7 en wL=29.6
+  // Línea U cruza IP=7 en wL=15.8
+  // Intersección línea A y línea U: 0.73(w-20)=0.9(w-8) → w=18.8, ip=-1 (fuera del gráfico)
+  // Zona CL-ML: IP entre 4 y 7, entre linea A y wL=25.5 aprox
+
+  // ML (bajo línea A, wL <= 50, IP >= 0)
+  // Polígono: (0,0)→(50,0)→(50, lineaA(50))→(25.5, 4)→(0,4) aproximado
+  // Simplificamos: todo lo que está debajo de línea A y wL<=50
+  const zonaCLML = [
+    // pequeño triangulo/trapecio cerca del origen
+    { x: px(25.5), y: py(4)   },
+    { x: px(29.6), y: py(7)   },
+    { x: px(25.5), y: py(7)   },
+  ]
+
+  const zonaML = [
+    { x: px(0),    y: py(0)   },
+    { x: px(50),   y: py(0)   },
+    { x: px(50),   y: py(lineaA(50)) },
+    { x: px(25.5), y: py(4)   },
+    { x: px(25.5), y: py(0)   },
+  ]
+
+  const zonaCL = [
+    { x: px(25.5), y: py(4)   },
+    { x: px(50),   y: py(lineaA(50)) },
+    { x: px(50),   y: py(lineaU(50)) },
+    { x: px(29.6), y: py(7)   },
+  ]
+
+  const zonaMH = [
+    { x: px(50),   y: py(0)         },
+    { x: px(xMax), y: py(0)         },
+    { x: px(xMax), y: py(lineaA(xMax)) },
+    { x: px(50),   y: py(lineaA(50)) },
+  ]
+
+  const zonaCH = [
+    { x: px(50),   y: py(lineaA(50))   },
+    { x: px(xMax), y: py(lineaA(xMax)) },
+    { x: px(xMax), y: py(yMax)         },
+    { x: px(50),   y: py(yMax)         },
+  ]
+
+  // Zona sobre línea U (amarillo claro) — encima de lineaU, wL>=30 aprox
+  const zonaSobreU = [
+    { x: px(16),   y: py(lineaU(16))  },
+    { x: px(50),   y: py(lineaU(50))  },
+    { x: px(50),   y: py(yMax)        },
+    { x: px(16),   y: py(yMax)        },
+  ]
+
+  const toPolygon = (pts: {x:number; y:number}[]) =>
+    pts.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ")
+
+  // Líneas para path
   const ptA: [number, number][] = []
   for (let w = 25.5; w <= 100; w += 1.5) {
-    const ip = 0.73 * (w - 20)
+    const ip = lineaA(w)
     if (ip >= 0 && ip <= yMax) ptA.push([w, ip])
   }
   const ptU: [number, number][] = []
-  for (let w = 16; w <= 100; w += 1.5) {
-    const ip = 0.9 * (w - 8)
+  for (let w = 16; w <= 50; w += 1.5) {
+    const ip = lineaU(w)
     if (ip >= 0 && ip <= yMax) ptU.push([w, ip])
   }
   const toPath = (pts: [number, number][]) =>
@@ -380,6 +466,7 @@ function CartaCasagrande({
   const validPunto = !isNaN(wL) && !isNaN(IP)
   const ptX = validPunto ? Math.min(Math.max(px(wL), padL), W - padR) : null
   const ptY = validPunto ? Math.min(Math.max(py(IP), padT), H - padB) : null
+
   const dotColors: Record<TipoSuelo, string> = {
     grava:"#4ade80", arena:"#fbbf24", limo:"#60a5fa", arcilla:"#fb923c", organico:"#ca8a04"
   }
@@ -388,43 +475,76 @@ function CartaCasagrande({
   return (
     <svg viewBox={`0 0 ${W} ${H}`} width="100%"
       className="border border-gray-100 rounded-lg bg-white" style={{ maxHeight: 300 }}>
+
+      {/* ── ZONAS COLOREADAS ── */}
+      <polygon points={toPolygon(zonaML)}    fill="#d1fae5" opacity="0.7" />
+      <polygon points={toPolygon(zonaCL)}    fill="#bfdbfe" opacity="0.7" />
+      <polygon points={toPolygon(zonaCLML)}  fill="#fed7aa" opacity="0.7" />
+      <polygon points={toPolygon(zonaMH)}    fill="#ede9fe" opacity="0.7" />
+      <polygon points={toPolygon(zonaCH)}    fill="#bfdbfe" opacity="0.7" />
+      <polygon points={toPolygon(zonaSobreU)} fill="#fef9c3" opacity="0.7" />
+
+      {/* ── CUADRÍCULA ── */}
       {[10,20,30,40,50,60,70,80,90].map(w => (
-        <line key={`gx${w}`} x1={px(w)} y1={padT} x2={px(w)} y2={H-padB} stroke="#f0f0f0" strokeWidth="1" />
+        <line key={`gx${w}`} x1={px(w)} y1={padT} x2={px(w)} y2={H-padB}
+          stroke="#e5e7eb" strokeWidth="1" />
       ))}
       {[10,20,30,40,50].map(ip => (
-        <line key={`gy${ip}`} x1={padL} y1={py(ip)} x2={W-padR} y2={py(ip)} stroke="#f0f0f0" strokeWidth="1" />
+        <line key={`gy${ip}`} x1={padL} y1={py(ip)} x2={W-padR} y2={py(ip)}
+          stroke="#e5e7eb" strokeWidth="1" />
       ))}
+
+      {/* ── EJES ── */}
       <line x1={padL} y1={padT} x2={padL} y2={H-padB} stroke="#6b7280" strokeWidth="1.2" />
       <line x1={padL} y1={H-padB} x2={W-padR} y2={H-padB} stroke="#6b7280" strokeWidth="1.2" />
-      {[0,10,20,30,40,50,60,70,80,90,100].map(w => (
-        <text key={`lx${w}`} x={px(w)} y={H-padB+13} textAnchor="middle" fontSize="8" fill="#9ca3af">{w}</text>
-      ))}
-      {[0,10,20,30,40,50].map(ip => (
-        <text key={`ly${ip}`} x={padL-5} y={py(ip)+3} textAnchor="end" fontSize="8" fill="#9ca3af">{ip}</text>
-      ))}
-      <text x={padL+(W-padL-padR)/2} y={H-4} textAnchor="middle" fontSize="9" fill="#6b7280">
-        Límite líquido wL (%)
-      </text>
-      <text x={11} y={H/2} textAnchor="middle" fontSize="9" fill="#6b7280"
-        transform={`rotate(-90, 11, ${H/2})`}>IP (%)</text>
+
+      {/* ── LÍNEA VERTICAL wL=50 ── */}
       <line x1={px(50)} y1={padT} x2={px(50)} y2={H-padB}
         stroke="#9ca3af" strokeWidth="1" strokeDasharray="3,3" />
       <text x={px(50)+3} y={padT+9} fontSize="7.5" fill="#9ca3af">wL=50</text>
-      <path d={toPath(ptU)} fill="none" stroke="#94a3b8" strokeWidth="1" strokeDasharray="4,3" />
-      <text x={px(30)} y={py(0.9*(30-8))-5} fontSize="8" fill="#94a3b8">Línea U</text>
-      <path d={toPath(ptA)} fill="none" stroke="#1d4ed8" strokeWidth="1.6" />
-      <text x={px(68)} y={py(0.73*(68-20))-5} fontSize="8" fill="#1d4ed8" fontWeight="600">Línea A</text>
-      <text x={px(28)} y={py(3)}  textAnchor="middle" fontSize="9" fill="#6b7280"  fontWeight="600">ML</text>
-      <text x={px(35)} y={py(22)} textAnchor="middle" fontSize="9" fill="#f97316" fontWeight="600">CL</text>
-      <text x={px(70)} y={py(8)}  textAnchor="middle" fontSize="9" fill="#6b7280"  fontWeight="600">MH</text>
-      <text x={px(72)} y={py(42)} textAnchor="middle" fontSize="9" fill="#f97316" fontWeight="600">CH</text>
-      <text x={px(25)} y={py(9)}  textAnchor="middle" fontSize="7.5" fill="#9ca3af">CL-ML</text>
+
+      {/* ── LÍNEAS HORIZONTALES zona CL-ML (IP=4 e IP=7) ── */}
+      <line x1={px(25.5)} y1={py(4)} x2={px(50)} y2={py(4)}
+        stroke="#9ca3af" strokeWidth="0.8" strokeDasharray="2,2" />
+      <line x1={px(25.5)} y1={py(7)} x2={px(50)} y2={py(7)}
+        stroke="#9ca3af" strokeWidth="0.8" strokeDasharray="2,2" />
+
+      {/* ── LÍNEA U ── */}
+      <path d={toPath(ptU)} fill="none" stroke="#6b7280" strokeWidth="1.2" strokeDasharray="5,3" />
+
+      {/* ── LÍNEA A ── */}
+      <path d={toPath(ptA)} fill="none" stroke="#1e3a8a" strokeWidth="1.8" />
+
+      {/* ── LABELS DE ZONAS ── */}
+      <text x={px(20)} y={py(1.5)} textAnchor="middle" fontSize="8.5" fill="#065f46" fontWeight="700">ML</text>
+      <text x={px(38)} y={py(18)}  textAnchor="middle" fontSize="8.5" fill="#1e40af" fontWeight="700">CL</text>
+      <text x={px(22)} y={py(5.5)} textAnchor="middle" fontSize="7.5" fill="#92400e" fontWeight="700">CL-ML</text>
+      <text x={px(72)} y={py(4)}   textAnchor="middle" fontSize="8.5" fill="#5b21b6" fontWeight="700">MH</text>
+      <text x={px(72)} y={py(38)}  textAnchor="middle" fontSize="8.5" fill="#1e40af" fontWeight="700">CH</text>
+
+      {/* ── LABELS EJES ── */}
+      {[0,10,20,30,40,50,60,70,80,90,100].map(w => (
+        <text key={`lx${w}`} x={px(w)} y={H-padB+13}
+          textAnchor="middle" fontSize="8" fill="#9ca3af">{w}</text>
+      ))}
+      {[0,10,20,30,40,50].map(ip => (
+        <text key={`ly${ip}`} x={padL-5} y={py(ip)+3}
+          textAnchor="end" fontSize="8" fill="#9ca3af">{ip}</text>
+      ))}
+      <text x={padL+(W-padL-padR)/2} y={H-4}
+        textAnchor="middle" fontSize="9" fill="#6b7280">
+        Limite liquido wL (%)
+      </text>
+      <text x={11} y={H/2} textAnchor="middle" fontSize="9" fill="#6b7280"
+        transform={`rotate(-90, 11, ${H/2})`}>IP (%)</text>
+
+      {/* ── PUNTO DEL SUELO ── */}
       {ptX !== null && ptY !== null && (
         <g>
           <circle cx={ptX} cy={ptY} r="7" fill={dotColor} opacity="0.25" />
           <circle cx={ptX} cy={ptY} r="4" fill="#dc2626" />
           <text x={ptX+8} y={ptY-5} fontSize="9" fill="#dc2626" fontWeight="700">
-            {resultado?.simbolo ?? "•"}
+            {resultado?.simbolo ?? ""}
           </text>
         </g>
       )}
@@ -751,14 +871,13 @@ export default function ClasificacionSUCS() {
                 Limpiar todo
               </button>
             </div>
-
             {/* ── RESULTADO ── */}
             {resultado && col && (
               <div className={`${col.bg} border-2 ${col.border} rounded-xl p-6`}>
                 <div className="flex items-start justify-between mb-4 flex-wrap gap-3">
                   <div>
                     <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">
-                      Clasificación SUCS / ASTM D2487
+                      Clasificacion SUCS / ASTM D2487
                     </div>
                     <div className={`text-5xl font-bold ${col.text} mb-1`}>{resultado.simbolo}</div>
                     <div className={`text-base font-semibold ${col.text}`}>{resultado.nombre}</div>
@@ -770,11 +889,22 @@ export default function ClasificacionSUCS() {
                   </span>
                 </div>
                 <p className="text-sm text-gray-700 mb-4 leading-relaxed">{resultado.descripcion}</p>
+
+                {/* Nota cuando finos > 10 y simbolo doble */}
+                {esDoble(resultado.simbolo) && !isNaN(P200) && P200 > 10 && P200 <= 12 && (
+                  <div className="mb-4 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700 leading-relaxed">
+                    <span className="font-semibold">Nota:</span> Con P200 = {P200}% no es posible
+                    interpolar D10 desde la curva granulometrica, por lo que Cu y Cc no pueden
+                    calcularse automaticamente. Segun ASTM D2487 se asume gradacion deficiente
+                    (mal gradada).
+                  </div>
+                )}
+
                 <div className="grid grid-cols-2 gap-3">
-                  <PropCard label="Permeabilidad típica"  valor={resultado.permeabilidad}  />
+                  <PropCard label="Permeabilidad tipica"  valor={resultado.permeabilidad}  />
                   <PropCard label="Compresibilidad"        valor={resultado.compresibilidad} />
                   <PropCard label="Resistencia al corte"  valor={resultado.resistencia}     />
-                  <PropCard label="Uso en construcción"   valor={resultado.uso}             />
+                  <PropCard label="Uso en construccion"   valor={resultado.uso}             />
                 </div>
               </div>
             )}
