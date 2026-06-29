@@ -29,7 +29,9 @@ export default function FundamentosVectoriales() {
   const [metodo, setMetodo] = useState<"vectorial" | "descomposicion" | "poligono">("descomposicion")
   const [nextId, setNextId] = useState(3)
   const canvasRef = useRef<HTMLCanvasElement>(null)
-
+  const [mostrarModalPDF, setMostrarModalPDF] = useState(false)
+  const [datosPDF, setDatosPDF] = useState({ ingeniero: "", empresa: "", proyecto: "", descripcion: "", fecha: "" })
+  const [estadoPDF, setEstadoPDF] = useState<"idle" | "generando">("idle")
   // Calcular resultante
   const Rx = fuerzas.reduce((s, f) => s + f.magnitud * Math.cos(f.angulo * Math.PI / 180), 0)
   const Ry = fuerzas.reduce((s, f) => s + f.magnitud * Math.sin(f.angulo * Math.PI / 180), 0)
@@ -160,6 +162,32 @@ export default function FundamentosVectoriales() {
   const actualizar = (id: number, key: keyof Fuerza, val: string | number) => {
     setFuerzas(fuerzas.map(f => f.id === id ? { ...f, [key]: typeof val === "string" && key !== "nombre" ? parseFloat(val) || 0 : val } : f))
   }
+
+  const descargarPDF = async () => {
+  setEstadoPDF("generando")
+  try {
+    const { pdf } = await import("@react-pdf/renderer")
+    const { PDFVectorial } = await import("../../components/PDFVectorial")
+    const imagenCanvas = canvasRef.current ? canvasRef.current.toDataURL("image/png") : ""
+    const blob = await pdf(
+      <PDFVectorial
+        fuerzas={fuerzas}
+        Rx={Rx} Ry={Ry} R={R} theta={theta}
+        metodo={metodo}
+        imagenCanvas={imagenCanvas}
+        datosUsuario={datosPDF}
+        unidadFuerza={cfg.fuerza}
+      />
+    ).toBlob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `NodoCalc_Vectorial_${datosPDF.proyecto || "memoria"}.pdf`
+    a.click()
+    URL.revokeObjectURL(url)
+  } catch (err) { console.error(err) }
+  setEstadoPDF("idle")
+}
 
   return (
     <div className="flex h-screen bg-gray-100 font-sans">
@@ -367,6 +395,38 @@ export default function FundamentosVectoriales() {
                     </div>
                   </div>
                 )}
+                {/* PDF */}
+                <div className="bg-white border border-gray-200 rounded-xl p-5">
+                  <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">MEMORIA DE CÁLCULO PDF</div>
+                  {!mostrarModalPDF ? (
+                    <button onClick={() => setMostrarModalPDF(true)}
+                      className="w-full text-sm bg-red-600 text-white py-2.5 rounded-lg hover:bg-red-700 transition-colors">
+                      📄 Generar memoria de cálculo
+                    </button>
+                  ) : (
+                    <div className="flex flex-col gap-3">
+                      <div className="text-xs text-gray-500">Datos para el encabezado del reporte</div>
+                      {([
+                        { key: "ingeniero", label: "Nombre del ingeniero" },
+                        { key: "proyecto", label: "Nombre del proyecto" },
+                        { key: "empresa", label: "Empresa / Universidad" },
+                        { key: "descripcion", label: "Descripción del problema" },
+                      ] as { key: keyof typeof datosPDF; label: string }[]).map(f => (
+                        <div key={f.key}>
+                          <div className="text-xs text-gray-500 mb-0.5">{f.label}</div>
+                          <input type="text" value={datosPDF[f.key]}
+                            onChange={e => setDatosPDF({ ...datosPDF, [f.key]: e.target.value })}
+                            className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-red-400" />
+                        </div>
+                      ))}
+                      <button onClick={descargarPDF}
+                        className="w-full text-sm bg-red-600 text-white py-2.5 rounded-lg hover:bg-red-700 transition-colors">
+                        {estadoPDF === "generando" ? "⏳ Generando PDF..." : "⬇ Descargar memoria de cálculo"}
+                      </button>
+                      <button onClick={() => setMostrarModalPDF(false)} className="text-xs text-gray-400 hover:underline text-center">Cancelar</button>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
