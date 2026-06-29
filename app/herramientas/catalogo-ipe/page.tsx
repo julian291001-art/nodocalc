@@ -1,15 +1,15 @@
 "use client"
 import { useState } from "react"
 import Sidebar from "../../components/Sidebar"
-import { perfilesW, PerfilW } from "../data/perfiles"
+import { perfilesIPE, PerfilIPE } from "../data/perfiles"
 
-export default function CatalogoW() {
+export default function CatalogoIPE() {
   const [busqueda, setBusqueda] = useState("")
   const [minIx, setMinIx] = useState("")
   const [minA, setMinA] = useState("")
   const [minSx, setMinSx] = useState("")
 
-  const filtrados = perfilesW.filter(p => {
+  const filtrados = perfilesIPE.filter(p => {
     const matchBusqueda = p.designacion.toLowerCase().includes(busqueda.toLowerCase())
     const matchIx = minIx ? p.Ix >= parseFloat(minIx) : true
     const matchA = minA ? p.A >= parseFloat(minA) : true
@@ -23,7 +23,7 @@ export default function CatalogoW() {
       <div className="flex-1 flex flex-col overflow-hidden">
         <div className="bg-white border-b border-gray-200 px-6 py-4">
           <span className="text-gray-400 text-sm">Herramientas /</span>
-          <span className="text-gray-800 font-medium text-base ml-1">Catálogo W (AISC)</span>
+          <span className="text-gray-800 font-medium text-base ml-1">Catálogo IPE (Europa)</span>
         </div>
         <div className="flex-1 overflow-y-auto p-6">
           <div className="bg-white border border-gray-200 rounded-xl p-5 mb-4">
@@ -32,23 +32,23 @@ export default function CatalogoW() {
               <div>
                 <div className="text-xs text-gray-500 mb-1">Buscar designación</div>
                 <input value={busqueda} onChange={e => setBusqueda(e.target.value)}
-                  placeholder="W12, W14×50..."
+                  placeholder="IPE 200, IPE 300..."
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400" />
               </div>
               <div>
-                <div className="text-xs text-gray-500 mb-1">Ix mín (in⁴)</div>
+                <div className="text-xs text-gray-500 mb-1">Ix mín (cm⁴)</div>
                 <input type="number" value={minIx} onChange={e => setMinIx(e.target.value)}
                   placeholder="0"
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400" />
               </div>
               <div>
-                <div className="text-xs text-gray-500 mb-1">A mín (in²)</div>
+                <div className="text-xs text-gray-500 mb-1">A mín (cm²)</div>
                 <input type="number" value={minA} onChange={e => setMinA(e.target.value)}
                   placeholder="0"
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400" />
               </div>
               <div>
-                <div className="text-xs text-gray-500 mb-1">Sx mín (in³)</div>
+                <div className="text-xs text-gray-500 mb-1">Sx mín (cm³)</div>
                 <input type="number" value={minSx} onChange={e => setMinSx(e.target.value)}
                   placeholder="0"
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400" />
@@ -63,18 +63,18 @@ export default function CatalogoW() {
                 <thead>
                   <tr className="bg-blue-700 text-white">
                     <th className="px-3 py-3 text-left font-medium">Designación</th>
-                    <th className="px-3 py-3 text-right font-medium">A (in²)</th>
-                    <th className="px-3 py-3 text-right font-medium">d (in)</th>
-                    <th className="px-3 py-3 text-right font-medium">bf (in)</th>
-                    <th className="px-3 py-3 text-right font-medium">tf (in)</th>
-                    <th className="px-3 py-3 text-right font-medium">tw (in)</th>
-                    <th className="px-3 py-3 text-right font-medium">Ix (in⁴)</th>
-                    <th className="px-3 py-3 text-right font-medium">Sx (in³)</th>
-                    <th className="px-3 py-3 text-right font-medium">rx (in)</th>
-                    <th className="px-3 py-3 text-right font-medium">Iy (in⁴)</th>
-                    <th className="px-3 py-3 text-right font-medium">Sy (in³)</th>
-                    <th className="px-3 py-3 text-right font-medium">ry (in)</th>
-                    <th className="px-3 py-3 text-right font-medium">Peso (lb/ft)</th>
+                    <th className="px-3 py-3 text-right font-medium">A (cm²)</th>
+                    <th className="px-3 py-3 text-right font-medium">h (mm)</th>
+                    <th className="px-3 py-3 text-right font-medium">b (mm)</th>
+                    <th className="px-3 py-3 text-right font-medium">tf (mm)</th>
+                    <th className="px-3 py-3 text-right font-medium">tw (mm)</th>
+                    <th className="px-3 py-3 text-right font-medium">Ix (cm⁴)</th>
+                    <th className="px-3 py-3 text-right font-medium">Sx (cm³)</th>
+                    <th className="px-3 py-3 text-right font-medium">rx (cm)</th>
+                    <th className="px-3 py-3 text-right font-medium">Iy (cm⁴)</th>
+                    <th className="px-3 py-3 text-right font-medium">Sy (cm³)</th>
+                    <th className="px-3 py-3 text-right font-medium">ry (cm)</th>
+                    <th className="px-3 py-3 text-right font-medium">Peso (kg/m)</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -82,8 +82,8 @@ export default function CatalogoW() {
                     <tr key={p.designacion} className={`${i % 2 === 0 ? "bg-white" : "bg-gray-50"} hover:bg-blue-50 transition-colors`}>
                       <td className="px-3 py-2 font-medium text-blue-700">{p.designacion}</td>
                       <td className="px-3 py-2 text-right text-gray-700">{p.A}</td>
-                      <td className="px-3 py-2 text-right text-gray-700">{p.d}</td>
-                      <td className="px-3 py-2 text-right text-gray-700">{p.bf}</td>
+                      <td className="px-3 py-2 text-right text-gray-700">{p.h}</td>
+                      <td className="px-3 py-2 text-right text-gray-700">{p.b}</td>
                       <td className="px-3 py-2 text-right text-gray-700">{p.tf}</td>
                       <td className="px-3 py-2 text-right text-gray-700">{p.tw}</td>
                       <td className="px-3 py-2 text-right text-gray-700">{p.Ix}</td>
