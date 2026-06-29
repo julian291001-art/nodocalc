@@ -42,112 +42,98 @@ export default function FundamentosVectoriales() {
     dibujar()
   }, [fuerzas, metodo])
 
-  const dibujar = () => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext("2d")!
-    const dpr = window.devicePixelRatio || 1
-    const W = canvas.offsetWidth
-    const H = canvas.offsetHeight
-    canvas.width = W * dpr
-    canvas.height = H * dpr
-    ctx.scale(dpr, dpr)
+const dibujar = () => {
+  const canvas = canvasRef.current
+  if (!canvas) return
+  const ctx = canvas.getContext("2d")!
 
-    // Fondo
-    ctx.fillStyle = "#f8fafc"
-    ctx.fillRect(0, 0, W, H)
+  const dpr = window.devicePixelRatio || 1
+  const W = canvas.offsetWidth
+  const H = canvas.offsetHeight || 380
+  canvas.width = W * dpr
+  canvas.height = H * dpr
+  ctx.scale(dpr, dpr)
 
-    const cx = W / 2, cy = H / 2
-    const maxMag = Math.max(...fuerzas.map(f => f.magnitud), R, 1)
-    const scale = Math.min(W, H) * 0.38 / maxMag
+  ctx.fillStyle = "#f8fafc"
+  ctx.fillRect(0, 0, W, H)
 
-    // Cuadrícula
-    ctx.strokeStyle = "#e2e8f0"
-    ctx.lineWidth = 0.5
-    for (let i = -10; i <= 10; i++) {
-      ctx.beginPath(); ctx.moveTo(cx + i * 30, 0); ctx.lineTo(cx + i * 30, H); ctx.stroke()
-      ctx.beginPath(); ctx.moveTo(0, cy + i * 30); ctx.lineTo(W, cy + i * 30); ctx.stroke()
+  const cx = W / 2, cy = H / 2
+  const maxMag = Math.max(...fuerzas.map(f => f.magnitud), R, 1)
+  const scale = Math.min(W, H) * 0.38 / maxMag
+
+  // Cuadrícula
+  ctx.strokeStyle = "#e2e8f0"
+  ctx.lineWidth = 0.5
+  for (let i = -10; i <= 10; i++) {
+    ctx.beginPath(); ctx.moveTo(cx + i * 30, 0); ctx.lineTo(cx + i * 30, H); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(0, cy + i * 30); ctx.lineTo(W, cy + i * 30); ctx.stroke()
+  }
+
+  // Ejes
+  ctx.strokeStyle = "#94a3b8"; ctx.lineWidth = 1.2
+  ctx.beginPath(); ctx.moveTo(0, cy); ctx.lineTo(W, cy); ctx.stroke()
+  ctx.beginPath(); ctx.moveTo(cx, 0); ctx.lineTo(cx, H); ctx.stroke()
+  ctx.fillStyle = "#94a3b8"; ctx.font = "11px sans-serif"
+  ctx.fillText("x", W - 14, cy - 5)
+  ctx.fillText("y", cx + 5, 12)
+
+  function flecha(x1: number, y1: number, x2: number, y2: number, color: string, grosor = 2) {
+    const dx = x2 - x1, dy = y2 - y1
+    const len = Math.sqrt(dx * dx + dy * dy)
+    if (len < 1) return
+    const headLen = 12, headAngle = 0.4
+    ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = grosor
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke()
+    ctx.beginPath()
+    ctx.moveTo(x2, y2)
+    ctx.lineTo(x2 - headLen * Math.cos(Math.atan2(dy, dx) - headAngle), y2 - headLen * Math.sin(Math.atan2(dy, dx) - headAngle))
+    ctx.lineTo(x2 - headLen * Math.cos(Math.atan2(dy, dx) + headAngle), y2 - headLen * Math.sin(Math.atan2(dy, dx) + headAngle))
+    ctx.closePath(); ctx.fill()
+  }
+
+  if (metodo === "poligono") {
+    let px = cx, py = cy
+    fuerzas.forEach(f => {
+      const vx = f.magnitud * scale * Math.cos(f.angulo * Math.PI / 180)
+      const vy = -f.magnitud * scale * Math.sin(f.angulo * Math.PI / 180)
+      flecha(px, py, px + vx, py + vy, f.color, 2.5)
+      ctx.fillStyle = f.color; ctx.font = "bold 11px sans-serif"
+      ctx.fillText(f.nombre, px + vx / 2 + 6, py + vy / 2)
+      px += vx; py += vy
+    })
+    if (fuerzas.length > 1) {
+      flecha(cx, cy, px, py, "#dc2626", 3)
+      ctx.fillStyle = "#dc2626"; ctx.font = "bold 12px sans-serif"
+      ctx.fillText("R", (cx + px) / 2 + 8, (cy + py) / 2)
     }
-
-    // Ejes
-    ctx.strokeStyle = "#94a3b8"; ctx.lineWidth = 1.2
-    ctx.beginPath(); ctx.moveTo(0, cy); ctx.lineTo(W, cy); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(cx, 0); ctx.lineTo(cx, H); ctx.stroke()
-    ctx.fillStyle = "#94a3b8"; ctx.font = "11px sans-serif"
-    ctx.fillText("x", W - 14, cy - 5)
-    ctx.fillText("y", cx + 5, 12)
-
-    // Flecha auxiliar
-    function flecha(x1: number, y1: number, x2: number, y2: number, color: string, grosor = 2) {
-      const dx = x2 - x1, dy = y2 - y1
-      const len = Math.sqrt(dx * dx + dy * dy)
-      if (len < 1) return
-      const ux = dx / len, uy = dy / len
-      const headLen = 12, headAngle = 0.4
-      ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = grosor
-      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke()
+  } else {
+    fuerzas.forEach(f => {
+      const vx = f.magnitud * scale * Math.cos(f.angulo * Math.PI / 180)
+      const vy = -f.magnitud * scale * Math.sin(f.angulo * Math.PI / 180)
+      flecha(cx, cy, cx + vx, cy + vy, f.color, 2.5)
+      if (metodo === "descomposicion") {
+        ctx.setLineDash([4, 3])
+        ctx.strokeStyle = f.color + "80"; ctx.lineWidth = 1.2
+        ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + vx, cy); ctx.stroke()
+        ctx.beginPath(); ctx.moveTo(cx + vx, cy); ctx.lineTo(cx + vx, cy + vy); ctx.stroke()
+        ctx.setLineDash([])
+      }
+      ctx.fillStyle = f.color; ctx.font = "bold 11px sans-serif"
+      ctx.fillText(f.nombre, cx + vx * 1.08, cy + vy * 1.08)
+      ctx.strokeStyle = f.color + "60"; ctx.lineWidth = 1
       ctx.beginPath()
-      ctx.moveTo(x2, y2)
-      ctx.lineTo(x2 - headLen * Math.cos(Math.atan2(dy, dx) - headAngle), y2 - headLen * Math.sin(Math.atan2(dy, dx) - headAngle))
-      ctx.lineTo(x2 - headLen * Math.cos(Math.atan2(dy, dx) + headAngle), y2 - headLen * Math.sin(Math.atan2(dy, dx) + headAngle))
-      ctx.closePath(); ctx.fill()
-    }
-
-    if (metodo === "poligono") {
-      // Polígono de fuerzas — suma cabeza a cola
-      let px = cx, py = cy
-      fuerzas.forEach((f, idx) => {
-        const vx = f.magnitud * scale * Math.cos(f.angulo * Math.PI / 180)
-        const vy = -f.magnitud * scale * Math.sin(f.angulo * Math.PI / 180)
-        flecha(px, py, px + vx, py + vy, f.color, 2.5)
-        ctx.fillStyle = f.color; ctx.font = "bold 11px sans-serif"
-        ctx.fillText(f.nombre, px + vx / 2 + 6, py + vy / 2)
-        px += vx; py += vy
-      })
-      // Resultante cierre
-      if (fuerzas.length > 1) {
-        flecha(cx, cy, px, py, "#dc2626", 3)
-        ctx.fillStyle = "#dc2626"; ctx.font = "bold 12px sans-serif"
-        ctx.fillText("R", (cx + px) / 2 + 8, (cy + py) / 2)
-      }
-    } else {
-      // Vectorial o descomposición — todos desde el origen
-      fuerzas.forEach(f => {
-        const vx = f.magnitud * scale * Math.cos(f.angulo * Math.PI / 180)
-        const vy = -f.magnitud * scale * Math.sin(f.angulo * Math.PI / 180)
-        flecha(cx, cy, cx + vx, cy + vy, f.color, 2.5)
-
-        if (metodo === "descomposicion") {
-          // Componentes punteadas
-          ctx.setLineDash([4, 3])
-          ctx.strokeStyle = f.color + "80"; ctx.lineWidth = 1.2
-          ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + vx, cy); ctx.stroke()
-          ctx.beginPath(); ctx.moveTo(cx + vx, cy); ctx.lineTo(cx + vx, cy + vy); ctx.stroke()
-          ctx.setLineDash([])
-        }
-
-        // Etiqueta
-        ctx.fillStyle = f.color; ctx.font = "bold 11px sans-serif"
-        const lx = cx + vx * 1.08, ly = cy + vy * 1.08
-        ctx.fillText(f.nombre, lx, ly)
-
-        // Ángulo arco
-        ctx.strokeStyle = f.color + "60"; ctx.lineWidth = 1
-        ctx.beginPath()
-        ctx.arc(cx, cy, 28, -f.angulo * Math.PI / 180, 0)
-        if (f.angulo > 0) ctx.arc(cx, cy, 28, 0, -f.angulo * Math.PI / 180, true)
-        ctx.stroke()
-      })
-
-      // Resultante
-      if (fuerzas.length > 0 && R > 0.01) {
-        const rvx = Rx * scale, rvy = -Ry * scale
-        flecha(cx, cy, cx + rvx, cy + rvy, "#dc2626", 3)
-        ctx.fillStyle = "#dc2626"; ctx.font = "bold 13px sans-serif"
-        ctx.fillText("R", cx + rvx * 1.1, cy + rvy * 1.1)
-      }
+      ctx.arc(cx, cy, 28, -f.angulo * Math.PI / 180, 0)
+      if (f.angulo > 0) ctx.arc(cx, cy, 28, 0, -f.angulo * Math.PI / 180, true)
+      ctx.stroke()
+    })
+    if (fuerzas.length > 0 && R > 0.01) {
+      const rvx = Rx * scale, rvy = -Ry * scale
+      flecha(cx, cy, cx + rvx, cy + rvy, "#dc2626", 3)
+      ctx.fillStyle = "#dc2626"; ctx.font = "bold 13px sans-serif"
+      ctx.fillText("R", cx + rvx * 1.1, cy + rvy * 1.1)
     }
   }
+}
 
   const agregarFuerza = () => {
     const id = nextId
@@ -318,8 +304,8 @@ export default function FundamentosVectoriales() {
               {/* Canvas */}
               <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">DIAGRAMA VECTORIAL</div>
-                <canvas ref={canvasRef} width={440} height={380}
-                  className="w-full border border-gray-100 rounded-lg" />
+                <canvas ref={canvasRef}
+                  className="w-full border border-gray-100 rounded-lg" style={{ height: 380 }} />
                 <div className="mt-2 flex gap-4 text-xs text-gray-400 flex-wrap">
                   {fuerzas.map(f => (
                     <span key={f.id} className="flex items-center gap-1">
