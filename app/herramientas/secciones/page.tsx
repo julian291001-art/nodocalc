@@ -3,6 +3,8 @@ import { useState, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Sidebar from "../../components/Sidebar"
 import { useSeccionStore } from "../../store/useSeccionStore"
+import { useUnidadesStore } from "../../store/useUnidadesStore"
+import { fmtVal, labelSeccion, labelInercia, labelModulo } from "../../lib/unidades"
 
 type Plantilla = "rectangular" | "circular" | "tubo" | "I" | "T" | "L" | "C" | "cajon" | "coordenadas"
 type Params = Record<string, number>
@@ -835,7 +837,7 @@ export default function SectionBuilder() {
   const setSeccion = useSeccionStore((s) => s.setSeccion)
   const router = useRouter()
   const nextId = useRef(1)
-
+  const cfg = useUnidadesStore(s => s.config) 
   useEffect(() => {
     if (canvasRef.current) dibujarCanvas(canvasRef.current, elementos, resultado)
   }, [elementos, resultado])
@@ -1038,8 +1040,8 @@ export default function SectionBuilder() {
                   </div>
                   {steiner && (
                     <div className="grid grid-cols-2 gap-3">
-                      <div className="p-3 bg-blue-50 rounded-lg"><div className="text-xs text-blue-500">I<sub>x</sub>′ (cm⁴)</div><div className="text-sm font-medium text-blue-900">{fmt(steiner.Ix)}</div></div>
-                      <div className="p-3 bg-blue-50 rounded-lg"><div className="text-xs text-blue-500">I<sub>y</sub>′ (cm⁴)</div><div className="text-sm font-medium text-blue-900">{fmt(steiner.Iy)}</div></div>
+                      <div className="text-xs text-blue-500">I<sub>x</sub>′ ({cfg.inercia})</div>
+                      <div className="text-xs text-blue-500">I<sub>y</sub>′ ({cfg.inercia})</div>
                     </div>
                   )}
                 </div>
@@ -1102,21 +1104,21 @@ export default function SectionBuilder() {
                 <div className="bg-white border border-gray-200 rounded-xl p-5">
                   <div className="text-xs text-gray-400 font-medium tracking-wider mb-4">PROPIEDADES DE LA SECCIÓN</div>
                   <div className="grid grid-cols-2 gap-3">
-                    <Prop s="A" n="Área total" v={`${fmt(resultado.A)} cm²`} />
-                    <Prop s={<>x̄</>} n="Centroide x" v={`${fmt(resultado.xc)} cm`} />
-                    <Prop s={<>ȳ</>} n="Centroide y" v={`${fmt(resultado.yc)} cm`} />
-                    <Prop s={<>I<sub>cx</sub></>} n="Inercia centroidal x" v={`${fmt(resultado.Icx)} cm⁴`} />
-                    <Prop s={<>I<sub>cy</sub></>} n="Inercia centroidal y" v={`${fmt(resultado.Icy)} cm⁴`} />
-                    <Prop s={<>I<sub>xy</sub></>} n="Inercia producto" v={`${fmt(resultado.Ixy)} cm⁴`} />
-                    <Prop s={<>S<sub>x</sub>⁺</>} n="Módulo resistente sup." v={`${fmt(resultado.Sx_top)} cm³`} />
-                    <Prop s={<>S<sub>x</sub>⁻</>} n="Módulo resistente inf." v={`${fmt(resultado.Sx_bot)} cm³`} />
-                    <Prop s={<>S<sub>y</sub></>} n="Módulo resistente y" v={`${fmt(resultado.Sy)} cm³`} />
-                    <Prop s={<>r<sub>x</sub></>} n="Radio de giro x" v={`${fmt(resultado.rx)} cm`} />
-                    <Prop s={<>r<sub>y</sub></>} n="Radio de giro y" v={`${fmt(resultado.ry)} cm`} />
-                    <Prop s="J" n="Momento polar" v={`${fmt(resultado.J)} cm⁴`} />
-                    <Prop s={<>I<sub>1</sub></>} n="Inercia principal máx." v={`${fmt(resultado.I1)} cm⁴`} />
-                    <Prop s={<>I<sub>2</sub></>} n="Inercia principal mín." v={`${fmt(resultado.I2)} cm⁴`} />
-                    <Prop s={<>θ<sub>p</sub></>} n="Ángulo ejes principales" v={`${fmt(resultado.theta_p, 2)}°`} />
+                   <Prop s="A" n="Área total" v={`${fmt(resultado.A)} ${cfg.seccion}²`} />
+                        <Prop s={<>x̄</>} n="Centroide x" v={`${fmt(resultado.xc)} ${cfg.seccion}`} />
+                        <Prop s={<>ȳ</>} n="Centroide y" v={`${fmt(resultado.yc)} ${cfg.seccion}`} />
+                        <Prop s={<>I<sub>cx</sub></>} n="Inercia centroidal x" v={`${fmt(resultado.Icx)} ${cfg.inercia}`} />
+                        <Prop s={<>I<sub>cy</sub></>} n="Inercia centroidal y" v={`${fmt(resultado.Icy)} ${cfg.inercia}`} />
+                        <Prop s={<>I<sub>xy</sub></>} n="Inercia producto" v={`${fmt(resultado.Ixy)} ${cfg.inercia}`} />
+                        <Prop s={<>S<sub>x</sub>⁺</>} n="Módulo resistente sup." v={`${fmt(resultado.Sx_top)} ${cfg.modulo_resistente}`} />
+                        <Prop s={<>S<sub>x</sub>⁻</>} n="Módulo resistente inf." v={`${fmt(resultado.Sx_bot)} ${cfg.modulo_resistente}`} />
+                        <Prop s={<>S<sub>y</sub></>} n="Módulo resistente y" v={`${fmt(resultado.Sy)} ${cfg.modulo_resistente}`} />
+                        <Prop s={<>r<sub>x</sub></>} n="Radio de giro x" v={`${fmt(resultado.rx)} ${cfg.seccion}`} />
+                        <Prop s={<>r<sub>y</sub></>} n="Radio de giro y" v={`${fmt(resultado.ry)} ${cfg.seccion}`} />
+                        <Prop s="J" n="Momento polar" v={`${fmt(resultado.J)} ${cfg.inercia}`} />
+                        <Prop s={<>I<sub>1</sub></>} n="Inercia principal máx." v={`${fmt(resultado.I1)} ${cfg.inercia}`} />
+                        <Prop s={<>I<sub>2</sub></>} n="Inercia principal mín." v={`${fmt(resultado.I2)} ${cfg.inercia}`} />
+                        <Prop s={<>θ<sub>p</sub></>} n="Ángulo ejes principales" v={`${fmt(resultado.theta_p, 2)}°`} />
                   </div>
                 </div>
               )}
