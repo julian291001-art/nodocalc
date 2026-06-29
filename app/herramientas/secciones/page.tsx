@@ -344,11 +344,18 @@ function niceStep(range: number, targetTicks = 5): number {
   if (raw / base > 2) return base * 2
   return base
 }
-
 function dibujarCanvas(canvas: HTMLCanvasElement, elementos: Elemento[], resultado: ResultadoSeccion | null) {
   const ctx = canvas.getContext("2d")
   if (!ctx) return
-  ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+  const dpr = window.devicePixelRatio || 1
+  const W = canvas.offsetWidth
+  const H = canvas.offsetHeight || 380
+  canvas.width = W * dpr
+  canvas.height = H * dpr
+  ctx.scale(dpr, dpr)
+  ctx.clearRect(0, 0, W, H)
+
   const todosLosPts: { x: number; y: number }[] = [{ x: 0, y: 0 }]
   for (const el of elementos) {
     if (el.plantilla === "coordenadas") { if (el.coordPts) todosLosPts.push(...el.coordPts); continue }
@@ -366,11 +373,11 @@ function dibujarCanvas(canvas: HTMLCanvasElement, elementos: Elemento[], resulta
   if (xmax - xmin < 1) { xmin -= 5; xmax += 5 }
   if (ymax - ymin < 1) { ymin -= 5; ymax += 5 }
   const padL = 50, padR = 20, padT = 20, padB = 30
-  const W = canvas.width - padL - padR, H = canvas.height - padT - padB
+  const WW = W - padL - padR, HH = H - padT - padB
   const mg = 0.15
-  const scale = Math.min(W / ((xmax - xmin) * (1 + mg * 2)), H / ((ymax - ymin) * (1 + mg * 2)))
+  const scale = Math.min(WW / ((xmax - xmin) * (1 + mg * 2)), HH / ((ymax - ymin) * (1 + mg * 2)))
   const ox = padL + (-xmin + (xmax - xmin) * mg) * scale
-  const oy = canvas.height - padB - (-ymin + (ymax - ymin) * mg) * scale
+  const oy = H - padB - (-ymin + (ymax - ymin) * mg) * scale
   const tx = (x: number) => ox + x * scale
   const ty = (y: number) => oy - y * scale
   const stepX = niceStep(xmax - xmin), stepY = niceStep(ymax - ymin)
@@ -378,34 +385,34 @@ function dibujarCanvas(canvas: HTMLCanvasElement, elementos: Elemento[], resulta
   const x0g = Math.floor((xmin - (xmax - xmin) * mg) / stepX) * stepX
   const x1g = xmax + (xmax - xmin) * mg + stepX * 2
   for (let gx = x0g; gx <= x1g; gx = parseFloat((gx + stepX).toFixed(10))) {
-    ctx.beginPath(); ctx.moveTo(tx(gx), 0); ctx.lineTo(tx(gx), canvas.height); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(tx(gx), 0); ctx.lineTo(tx(gx), H); ctx.stroke()
   }
   const y0g = Math.floor((ymin - (ymax - ymin) * mg) / stepY) * stepY
   const y1g = ymax + (ymax - ymin) * mg + stepY * 2
   for (let gy = y0g; gy <= y1g; gy = parseFloat((gy + stepY).toFixed(10))) {
-    ctx.beginPath(); ctx.moveTo(0, ty(gy)); ctx.lineTo(canvas.width, ty(gy)); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(0, ty(gy)); ctx.lineTo(W, ty(gy)); ctx.stroke()
   }
   ctx.fillStyle = "#9ca3af"; ctx.font = "9px sans-serif"; ctx.textAlign = "center"
   let lastLX = -Infinity
   for (let gx = x0g; gx <= x1g; gx = parseFloat((gx + stepX).toFixed(10))) {
     const px = tx(gx)
-    if (px < padL || px > canvas.width - padR || px - lastLX < 30) continue
+    if (px < padL || px > W - padR || px - lastLX < 30) continue
     lastLX = px
-    ctx.fillText(Number.isInteger(gx) ? `${gx}` : `${parseFloat(gx.toFixed(2))}`, px, canvas.height - 6)
+    ctx.fillText(Number.isInteger(gx) ? `${gx}` : `${parseFloat(gx.toFixed(2))}`, px, H - 6)
   }
   ctx.textAlign = "right"
   let lastLY = Infinity
   for (let gy = y0g; gy <= y1g; gy = parseFloat((gy + stepY).toFixed(10))) {
     const py = ty(gy)
-    if (py < padT || py > canvas.height - padB || lastLY - py < 20) continue
+    if (py < padT || py > H - padB || lastLY - py < 20) continue
     lastLY = py
     ctx.fillText(Number.isInteger(gy) ? `${gy}` : `${parseFloat(gy.toFixed(2))}`, padL - 4, py + 3)
   }
   ctx.strokeStyle = "#6b7280"; ctx.lineWidth = 1.2
-  ctx.beginPath(); ctx.moveTo(0, oy); ctx.lineTo(canvas.width, oy); ctx.stroke()
-  ctx.beginPath(); ctx.moveTo(ox, 0); ctx.lineTo(ox, canvas.height); ctx.stroke()
+  ctx.beginPath(); ctx.moveTo(0, oy); ctx.lineTo(W, oy); ctx.stroke()
+  ctx.beginPath(); ctx.moveTo(ox, 0); ctx.lineTo(ox, H); ctx.stroke()
   ctx.fillStyle = "#374151"; ctx.font = "bold 10px sans-serif"
-  ctx.textAlign = "left"; ctx.fillText("x (cm)", canvas.width - 38, oy - 4)
+  ctx.textAlign = "left"; ctx.fillText("x (cm)", W - 38, oy - 4)
   ctx.textAlign = "center"; ctx.fillText("y (cm)", ox + 4, padT - 6)
   const fills = ["rgba(59,130,246,0.2)", "rgba(16,185,129,0.2)", "rgba(245,158,11,0.2)", "rgba(239,68,68,0.2)", "rgba(139,92,246,0.2)"]
   const strokes = ["#1d4ed8", "#059669", "#d97706", "#dc2626", "#7c3aed"]
@@ -1092,7 +1099,7 @@ export default function SectionBuilder() {
             <div className="flex flex-col gap-4">
               <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">PLANO CARTESIANO</div>
-                <canvas ref={canvasRef} width={440} height={380} className="w-full border border-gray-100 rounded-lg bg-white" />
+                <canvas ref={canvasRef} className="w-full border border-gray-100 rounded-lg bg-white" style={{ height: 380 }} />
                 <div className="mt-2 flex items-center gap-4 text-xs text-gray-400">
                   <span className="flex items-center gap-1"><span className="w-3 h-3 bg-blue-200 border border-blue-600 inline-block rounded-sm" />Área +</span>
                   <span className="flex items-center gap-1"><span className="w-3 h-3 bg-white border border-blue-600 inline-block rounded-sm" />Área − (hueco)</span>

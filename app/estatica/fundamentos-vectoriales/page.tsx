@@ -46,8 +46,12 @@ export default function FundamentosVectoriales() {
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext("2d")!
-    const W = canvas.width, H = canvas.height
-    ctx.clearRect(0, 0, W, H)
+    const dpr = window.devicePixelRatio || 1
+    const W = canvas.offsetWidth
+    const H = canvas.offsetHeight
+    canvas.width = W * dpr
+    canvas.height = H * dpr
+    ctx.scale(dpr, dpr)
 
     // Fondo
     ctx.fillStyle = "#f8fafc"
