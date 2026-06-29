@@ -57,26 +57,68 @@ const dibujar = () => {
   ctx.fillStyle = "#f8fafc"
   ctx.fillRect(0, 0, W, H)
 
-  const cx = W / 2, cy = H / 2
-  const maxMag = Math.max(...fuerzas.map(f => f.magnitud), R, 1)
-  const scale = Math.min(W, H) * 0.38 / maxMag
+  // Calcular rango para escala
+  const padL = 45, padR = 20, padT = 20, padB = 30
+  const allX = fuerzas.map(f => f.magnitud * Math.cos(f.angulo * Math.PI / 180))
+  const allY = fuerzas.map(f => f.magnitud * Math.sin(f.angulo * Math.PI / 180))
+  allX.push(Rx, 0); allY.push(Ry, 0)
+  const maxAbs = Math.max(...allX.map(Math.abs), ...allY.map(Math.abs), 1) * 1.3
+  const scaleX = (W - padL - padR) / (2 * maxAbs)
+  const scaleY = (H - padT - padB) / (2 * maxAbs)
+  const sc = Math.min(scaleX, scaleY)
+  const cx = padL + (W - padL - padR) / 2
+  const cy = padT + (H - padT - padB) / 2
+
+  const tx = (x: number) => cx + x * sc
+  const ty = (y: number) => cy - y * sc
+
+  // Paso de cuadrícula
+  const rawStep = maxAbs / 3
+  const exp = Math.floor(Math.log10(rawStep || 1))
+  const base = Math.pow(10, exp)
+  const step = rawStep / base > 5 ? base * 5 : rawStep / base > 2 ? base * 2 : base
 
   // Cuadrícula
-  ctx.strokeStyle = "#e2e8f0"
-  ctx.lineWidth = 0.5
-  for (let i = -10; i <= 10; i++) {
-    ctx.beginPath(); ctx.moveTo(cx + i * 30, 0); ctx.lineTo(cx + i * 30, H); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(0, cy + i * 30); ctx.lineTo(W, cy + i * 30); ctx.stroke()
+  ctx.strokeStyle = "#e2e8f0"; ctx.lineWidth = 0.5
+  for (let v = -Math.ceil(maxAbs / step) * step; v <= maxAbs * 1.1; v = parseFloat((v + step).toFixed(10))) {
+    ctx.beginPath(); ctx.moveTo(tx(v), padT); ctx.lineTo(tx(v), H - padB); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(padL, ty(v)); ctx.lineTo(W - padR, ty(v)); ctx.stroke()
   }
 
-  // Ejes
-  ctx.strokeStyle = "#94a3b8"; ctx.lineWidth = 1.2
-  ctx.beginPath(); ctx.moveTo(0, cy); ctx.lineTo(W, cy); ctx.stroke()
-  ctx.beginPath(); ctx.moveTo(cx, 0); ctx.lineTo(cx, H); ctx.stroke()
-  ctx.fillStyle = "#94a3b8"; ctx.font = "11px sans-serif"
-  ctx.fillText("x", W - 14, cy - 5)
-  ctx.fillText("y", cx + 5, 12)
+  // Etiquetas de ejes
+  ctx.fillStyle = "#9ca3af"; ctx.font = "9px sans-serif"; ctx.textAlign = "center"
+  let lastLX = -Infinity
+  for (let v = -Math.ceil(maxAbs / step) * step; v <= maxAbs * 1.1; v = parseFloat((v + step).toFixed(10))) {
+    const px = tx(v)
+    if (px < padL || px > W - padR || px - lastLX < 35) continue
+    lastLX = px
+    const label = Math.abs(v) < 0.001 ? "0" : Math.abs(v) >= 1000 ? v.toExponential(1) : parseFloat(v.toFixed(1)).toString()
+    ctx.fillText(label, px, H - padB + 12)
+  }
+  ctx.textAlign = "right"
+  let lastLY = Infinity
+  for (let v = -Math.ceil(maxAbs / step) * step; v <= maxAbs * 1.1; v = parseFloat((v + step).toFixed(10))) {
+    const py = ty(v)
+    if (py < padT || py > H - padB || lastLY - py < 18) continue
+    lastLY = py
+    if (Math.abs(v) < 0.001) continue
+    const label = Math.abs(v) >= 1000 ? v.toExponential(1) : parseFloat(v.toFixed(1)).toString()
+    ctx.fillText(label, padL - 4, py + 3)
+  }
 
+  // Ejes principales
+  ctx.strokeStyle = "#6b7280"; ctx.lineWidth = 1.2
+  ctx.beginPath(); ctx.moveTo(padL, cy); ctx.lineTo(W - padR, cy); ctx.stroke()
+  ctx.beginPath(); ctx.moveTo(cx, padT); ctx.lineTo(cx, H - padB); ctx.stroke()
+
+  // Etiquetas ejes
+  ctx.fillStyle = "#374151"; ctx.font = "bold 10px sans-serif"
+  ctx.textAlign = "left"
+  ctx.fillText(`x (${cfg.fuerza})`, W - padR - 30, cy - 5)
+  ctx.textAlign = "center"
+  ctx.fillText(`y (${cfg.fuerza})`, cx + 4, padT - 6)
+
+  // Función flecha
   function flecha(x1: number, y1: number, x2: number, y2: number, color: string, grosor = 2) {
     const dx = x2 - x1, dy = y2 - y1
     const len = Math.sqrt(dx * dx + dy * dy)
@@ -94,43 +136,57 @@ const dibujar = () => {
   if (metodo === "poligono") {
     let px = cx, py = cy
     fuerzas.forEach(f => {
-      const vx = f.magnitud * scale * Math.cos(f.angulo * Math.PI / 180)
-      const vy = -f.magnitud * scale * Math.sin(f.angulo * Math.PI / 180)
+      const vx = f.magnitud * sc * Math.cos(f.angulo * Math.PI / 180)
+      const vy = -f.magnitud * sc * Math.sin(f.angulo * Math.PI / 180)
       flecha(px, py, px + vx, py + vy, f.color, 2.5)
-      ctx.fillStyle = f.color; ctx.font = "bold 11px sans-serif"
+      ctx.fillStyle = f.color; ctx.font = "bold 11px sans-serif"; ctx.textAlign = "left"
       ctx.fillText(f.nombre, px + vx / 2 + 6, py + vy / 2)
       px += vx; py += vy
     })
     if (fuerzas.length > 1) {
       flecha(cx, cy, px, py, "#dc2626", 3)
-      ctx.fillStyle = "#dc2626"; ctx.font = "bold 12px sans-serif"
+      ctx.fillStyle = "#dc2626"; ctx.font = "bold 12px sans-serif"; ctx.textAlign = "left"
       ctx.fillText("R", (cx + px) / 2 + 8, (cy + py) / 2)
     }
   } else {
     fuerzas.forEach(f => {
-      const vx = f.magnitud * scale * Math.cos(f.angulo * Math.PI / 180)
-      const vy = -f.magnitud * scale * Math.sin(f.angulo * Math.PI / 180)
+      const vx = f.magnitud * sc * Math.cos(f.angulo * Math.PI / 180)
+      const vy = -f.magnitud * sc * Math.sin(f.angulo * Math.PI / 180)
       flecha(cx, cy, cx + vx, cy + vy, f.color, 2.5)
+
       if (metodo === "descomposicion") {
         ctx.setLineDash([4, 3])
         ctx.strokeStyle = f.color + "80"; ctx.lineWidth = 1.2
         ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + vx, cy); ctx.stroke()
         ctx.beginPath(); ctx.moveTo(cx + vx, cy); ctx.lineTo(cx + vx, cy + vy); ctx.stroke()
         ctx.setLineDash([])
+        // Etiquetas componentes
+        ctx.fillStyle = f.color + "cc"; ctx.font = "9px sans-serif"; ctx.textAlign = "center"
+        ctx.fillText(`${f.nombre}x=${parseFloat((f.magnitud * Math.cos(f.angulo * Math.PI / 180)).toFixed(1))}`, cx + vx / 2, cy + 12)
+        ctx.textAlign = "right"
+        ctx.fillText(`${f.nombre}y=${parseFloat((f.magnitud * Math.sin(f.angulo * Math.PI / 180)).toFixed(1))}`, cx + vx - 4, cy + vy / 2)
       }
-      ctx.fillStyle = f.color; ctx.font = "bold 11px sans-serif"
-      ctx.fillText(f.nombre, cx + vx * 1.08, cy + vy * 1.08)
+
+      ctx.fillStyle = f.color; ctx.font = "bold 11px sans-serif"; ctx.textAlign = "left"
+      ctx.fillText(f.nombre, cx + vx * 1.08 + 4, cy + vy * 1.08)
+
+      // Arco de ángulo
       ctx.strokeStyle = f.color + "60"; ctx.lineWidth = 1
+      const arcR = 28
       ctx.beginPath()
-      ctx.arc(cx, cy, 28, -f.angulo * Math.PI / 180, 0)
-      if (f.angulo > 0) ctx.arc(cx, cy, 28, 0, -f.angulo * Math.PI / 180, true)
+      ctx.arc(cx, cy, arcR, 0, -f.angulo * Math.PI / 180, f.angulo > 0)
       ctx.stroke()
+      // Etiqueta ángulo
+      const midAngle = -f.angulo * Math.PI / 360
+      ctx.fillStyle = f.color; ctx.font = "8px sans-serif"; ctx.textAlign = "center"
+      ctx.fillText(`${f.angulo}°`, cx + (arcR + 10) * Math.cos(midAngle), cy + (arcR + 10) * Math.sin(midAngle))
     })
+
     if (fuerzas.length > 0 && R > 0.01) {
-      const rvx = Rx * scale, rvy = -Ry * scale
+      const rvx = Rx * sc, rvy = -Ry * sc
       flecha(cx, cy, cx + rvx, cy + rvy, "#dc2626", 3)
-      ctx.fillStyle = "#dc2626"; ctx.font = "bold 13px sans-serif"
-      ctx.fillText("R", cx + rvx * 1.1, cy + rvy * 1.1)
+      ctx.fillStyle = "#dc2626"; ctx.font = "bold 12px sans-serif"; ctx.textAlign = "left"
+      ctx.fillText(`R=${parseFloat(R.toFixed(1))} ∠${parseFloat(theta.toFixed(1))}°`, cx + rvx * 1.05 + 4, cy + rvy * 1.05)
     }
   }
 }
