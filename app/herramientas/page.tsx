@@ -24,15 +24,15 @@ export default function Herramientas() {
             <HerramientaCard nombre="Propiedades del agua" desc="Densidad, viscosidad, tensión superficial y presión de vapor según temperatura." tag="Fluidos" />
           </div>
           <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">SECCIONES TRANSVERSALES</div>
-          <div className="grid grid-cols-2 gap-4 mb-6">
+            <div className="grid grid-cols-2 gap-4 mb-6">
             <a href="/herramientas/secciones"><HerramientaCard nombre="Section Builder" desc="Diseña secciones personalizadas (I, T, cajón, circular, compuesta) y calcula A, Ix, Iy, Sx, Sy, rx, ry." tag="Secciones" /></a>
-            <HerramientaCard nombre="Catálogo W (AISC)" desc="Perfiles W4 a W44. Busca por designación o por propiedades mínimas requeridas." tag="Catálogo" />
-            <HerramientaCard nombre="Catálogo IPE (Europa)" desc="Perfiles IPE 80 a IPE 600 con todas sus propiedades geométricas." tag="Catálogo" />
-            <HerramientaCard nombre="Catálogo HEA / HEB / HEM" desc="Perfiles de ala ancha europeos con propiedades completas." tag="Catálogo" />
-            <HerramientaCard nombre="Catálogo C y L" desc="Perfiles canal (C) y ángulo simple y doble (L) según AISC." tag="Catálogo" />
-            <HerramientaCard nombre="Catálogo HSS y CHS" desc="Tubos cuadrados, rectangulares y circulares huecos según AISC." tag="Catálogo" />
-            <HerramientaCard nombre="Perfiles colombianos" desc="Catálogo de perfiles ACESCO y Diaco disponibles en Colombia." tag="Catálogo" />
-          </div>
+            <a href="/herramientas/catalogo-w"><HerramientaCard nombre="Catálogo W (AISC)" desc="Perfiles W4 a W44. Busca por designación o por propiedades mínimas requeridas." tag="Catálogo" /></a>
+            <a href="/herramientas/catalogo-ipe"><HerramientaCard nombre="Catálogo IPE (Europa)" desc="Perfiles IPE 80 a IPE 600 con todas sus propiedades geométricas." tag="Catálogo" /></a>
+            <a href="/herramientas/catalogo-hea"><HerramientaCard nombre="Catálogo HEA / HEB / HEM" desc="Perfiles de ala ancha europeos con propiedades completas." tag="Catálogo" /></a>
+            <a href="/herramientas/catalogo-cl"><HerramientaCard nombre="Catálogo C y L" desc="Perfiles canal (C) y ángulo simple y doble (L) según AISC." tag="Catálogo" /></a>
+            <a href="/herramientas/catalogo-hss"><HerramientaCard nombre="Catálogo HSS y CHS" desc="Tubos cuadrados, rectangulares y circulares huecos según AISC." tag="Catálogo" /></a>
+            <a href="/herramientas/catalogo-col"><HerramientaCard nombre="Perfiles colombianos" desc="Catálogo de perfiles ACESCO y Diaco disponibles en Colombia." tag="Catálogo" /></a>
+        </div>
           <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">CONVERSIONES Y MATERIALES</div>
           <div className="grid grid-cols-2 gap-4">
             <a href="/herramientas/unidades"><HerramientaCard nombre="Conversión de unidades" desc="Convierte entre sistemas SI, métrico y americano para fuerza, longitud, presión y momento." tag="Utilidades" /></a>
