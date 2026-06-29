@@ -991,7 +991,7 @@ export default function SectionBuilder() {
                       <div className="grid grid-cols-2 gap-2 mb-3">
                         {plantillasConfig[plantillaActual].campos.map(c => (
                           <div key={c.key}>
-                            <div className="text-xs text-gray-500 mb-0.5" dangerouslySetInnerHTML={{ __html: c.labelHtml }} />
+                            <div className="text-xs text-gray-500 mb-0.5" dangerouslySetInnerHTML={{ __html: c.labelHtml.replace(/\(cm\)/g, `(${cfg.seccion})`) }}></div>
                             <input type="number" value={paramsActuales[c.key] ?? ""}
                               onChange={e => setParamsActuales({ ...paramsActuales, [c.key]: parseFloat(e.target.value) })}
                               className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400" />
@@ -1003,11 +1003,11 @@ export default function SectionBuilder() {
                       {plantillaActual !== "coordenadas" && (
                         <>
                           <div>
-                            <div className="text-xs text-gray-500 mb-0.5">x₀ (cm)</div>
+                            <div className="text-xs text-gray-500 mb-0.5">x₀ ({cfg.seccion})</div>
                             <input type="number" value={x0} onChange={e => setX0(e.target.value)} className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400" />
                           </div>
                           <div>
-                            <div className="text-xs text-gray-500 mb-0.5">y₀ (cm)</div>
+                            <div className="text-xs text-gray-500 mb-0.5">y₀ ({cfg.seccion})</div>
                             <input type="number" value={y0} onChange={e => setY0(e.target.value)} className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400" />
                           </div>
                         </>
