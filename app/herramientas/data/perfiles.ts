@@ -264,3 +264,52 @@ export const perfilesHSS: PerfilHSS[] = [
   { designacion: "HSS12×0.250",     tipo: "circular", H: 12.00, B: 12.00, t: 0.233, A: 8.25,  Ix: 157,    Sx: 26.2,   rx: 4.36,  Iy: 157,    Sy: 26.2,   ry: 4.36,  peso: 28.1 },
   { designacion: "HSS12×0.375",     tipo: "circular", H: 12.00, B: 12.00, t: 0.349, A: 12.2,  Ix: 228,    Sx: 38.1,   rx: 4.32,  Iy: 228,    Sy: 38.1,   ry: 4.32,  peso: 41.6 },
 ]
+export type PerfilColombiano = {
+  designacion: string; tipo: string; fabricante: string
+  A: number; h: number; b: number; t: number; e?: number
+  Ix: number; Sx: number; rx: number; Iy: number; Sy: number; ry: number
+  peso: number; norma: string
+}
+
+export const perfilesColombiaos: PerfilColombiano[] = [
+  // Tubos estructurales redondos Colmena ASTM A500 Grado C (unidades: cm)
+  { designacion: "TR 1 3/4\" e=2.5mm",  tipo: "Tubo redondo",      fabricante: "Colmena", A: 2.92,  h: 4.45, b: 4.45, t: 0.25, Ix: 3.59,    Sx: 1.62,   rx: 1.11, Iy: 3.59,    Sy: 1.62,  ry: 1.11, peso: 2.29,  norma: "ASTM A500 C / NTC 4526" },
+  { designacion: "TR 1 3/4\" e=3.0mm",  tipo: "Tubo redondo",      fabricante: "Colmena", A: 3.47,  h: 4.45, b: 4.45, t: 0.30, Ix: 4.27,    Sx: 1.92,   rx: 1.11, Iy: 4.27,    Sy: 1.92,  ry: 1.11, peso: 2.72,  norma: "ASTM A500 C / NTC 4526" },
+  { designacion: "TR 2 1/4\" e=2.5mm",  tipo: "Tubo redondo",      fabricante: "Colmena", A: 3.64,  h: 5.72, b: 5.72, t: 0.25, Ix: 9.44,    Sx: 3.30,   rx: 1.61, Iy: 9.44,    Sy: 3.30,  ry: 1.61, peso: 2.86,  norma: "ASTM A500 C / NTC 4526" },
+  { designacion: "TR 2 1/4\" e=3.0mm",  tipo: "Tubo redondo",      fabricante: "Colmena", A: 4.33,  h: 5.72, b: 5.72, t: 0.30, Ix: 11.03,   Sx: 3.86,   rx: 1.60, Iy: 11.03,   Sy: 3.86,  ry: 1.60, peso: 3.40,  norma: "ASTM A500 C / NTC 4526" },
+  { designacion: "TR 2 3/4\" e=2.5mm",  tipo: "Tubo redondo",      fabricante: "Colmena", A: 4.45,  h: 6.99, b: 6.99, t: 0.25, Ix: 18.64,   Sx: 5.33,   rx: 2.05, Iy: 18.64,   Sy: 5.33,  ry: 2.05, peso: 3.49,  norma: "ASTM A500 C / NTC 4526" },
+  { designacion: "TR 2 3/4\" e=3.0mm",  tipo: "Tubo redondo",      fabricante: "Colmena", A: 5.30,  h: 6.99, b: 6.99, t: 0.30, Ix: 21.94,   Sx: 6.27,   rx: 2.03, Iy: 21.94,   Sy: 6.27,  ry: 2.03, peso: 4.16,  norma: "ASTM A500 C / NTC 4526" },
+  { designacion: "TR 3 1/4\" e=3.0mm",  tipo: "Tubo redondo",      fabricante: "Colmena", A: 6.47,  h: 8.26, b: 8.26, t: 0.30, Ix: 38.80,   Sx: 9.39,   rx: 2.45, Iy: 38.80,   Sy: 9.39,  ry: 2.45, peso: 5.08,  norma: "ASTM A500 C / NTC 4526" },
+  { designacion: "TR 4 1/4\" e=3.0mm",  tipo: "Tubo redondo",      fabricante: "Colmena", A: 8.35,  h: 10.80, b: 10.80, t: 0.30, Ix: 81.28,  Sx: 15.05,  rx: 3.12, Iy: 81.28,   Sy: 15.05, ry: 3.12, peso: 6.55,  norma: "ASTM A500 C / NTC 4526" },
+  { designacion: "TR 4 1/4\" e=4.0mm",  tipo: "Tubo redondo",      fabricante: "Colmena", A: 11.04, h: 10.80, b: 10.80, t: 0.40, Ix: 105.54, Sx: 19.55,  rx: 3.09, Iy: 105.54,  Sy: 19.55, ry: 3.09, peso: 8.67,  norma: "ASTM A500 C / NTC 4526" },
+  { designacion: "TR 6 1/4\" e=3.0mm",  tipo: "Tubo redondo",      fabricante: "Colmena", A: 10.49, h: 15.88, b: 15.88, t: 0.30, Ix: 162.55, Sx: 20.47,  rx: 3.94, Iy: 162.55,  Sy: 20.47, ry: 3.94, peso: 8.23,  norma: "ASTM A500 C / NTC 4526" },
+  { designacion: "TR 6 1/4\" e=4.0mm",  tipo: "Tubo redondo",      fabricante: "Colmena", A: 13.86, h: 15.88, b: 15.88, t: 0.40, Ix: 211.07, Sx: 26.59,  rx: 3.90, Iy: 211.07,  Sy: 26.59, ry: 3.90, peso: 10.88, norma: "ASTM A500 C / NTC 4526" },
+  { designacion: "TR 6 1/4\" e=6.0mm",  tipo: "Tubo redondo",      fabricante: "Colmena", A: 20.41, h: 15.88, b: 15.88, t: 0.60, Ix: 300.21, Sx: 37.82,  rx: 3.83, Iy: 300.21,  Sy: 37.82, ry: 3.83, peso: 16.02, norma: "ASTM A500 C / NTC 4526" },
+  // Tubos estructurales cuadrados Colmena ASTM A500 Grado C
+  { designacion: "TC 50×50 e=2.0mm",    tipo: "Tubo cuadrado",     fabricante: "Colmena", A: 3.74,  h: 5.0, b: 5.0, t: 0.20, Ix: 14.19,   Sx: 5.68,   rx: 1.95, Iy: 14.19,   Sy: 5.68,  ry: 1.95, peso: 2.93,  norma: "ASTM A500 C / NTC 4526" },
+  { designacion: "TC 50×50 e=3.0mm",    tipo: "Tubo cuadrado",     fabricante: "Colmena", A: 5.42,  h: 5.0, b: 5.0, t: 0.30, Ix: 19.56,   Sx: 7.82,   rx: 1.90, Iy: 19.56,   Sy: 7.82,  ry: 1.90, peso: 4.25,  norma: "ASTM A500 C / NTC 4526" },
+  { designacion: "TC 60×60 e=2.0mm",    tipo: "Tubo cuadrado",     fabricante: "Colmena", A: 4.54,  h: 6.0, b: 6.0, t: 0.20, Ix: 24.83,   Sx: 8.28,   rx: 2.34, Iy: 24.83,   Sy: 8.28,  ry: 2.34, peso: 3.56,  norma: "ASTM A500 C / NTC 4526" },
+  { designacion: "TC 60×60 e=3.0mm",    tipo: "Tubo cuadrado",     fabricante: "Colmena", A: 6.62,  h: 6.0, b: 6.0, t: 0.30, Ix: 34.72,   Sx: 11.57,  rx: 2.29, Iy: 34.72,   Sy: 11.57, ry: 2.29, peso: 5.20,  norma: "ASTM A500 C / NTC 4526" },
+  { designacion: "TC 80×80 e=3.0mm",    tipo: "Tubo cuadrado",     fabricante: "Colmena", A: 9.02,  h: 8.0, b: 8.0, t: 0.30, Ix: 85.39,   Sx: 21.35,  rx: 3.08, Iy: 85.39,   Sy: 21.35, ry: 3.08, peso: 7.08,  norma: "ASTM A500 C / NTC 4526" },
+  { designacion: "TC 80×80 e=4.0mm",    tipo: "Tubo cuadrado",     fabricante: "Colmena", A: 11.84, h: 8.0, b: 8.0, t: 0.40, Ix: 109.83,  Sx: 27.46,  rx: 3.05, Iy: 109.83,  Sy: 27.46, ry: 3.05, peso: 9.30,  norma: "ASTM A500 C / NTC 4526" },
+  { designacion: "TC 100×100 e=3.0mm",  tipo: "Tubo cuadrado",     fabricante: "Colmena", A: 11.42, h: 10.0, b: 10.0, t: 0.30, Ix: 170.51, Sx: 34.10,  rx: 3.87, Iy: 170.51,  Sy: 34.10, ry: 3.87, peso: 8.97,  norma: "ASTM A500 C / NTC 4526" },
+  { designacion: "TC 100×100 e=4.0mm",  tipo: "Tubo cuadrado",     fabricante: "Colmena", A: 15.04, h: 10.0, b: 10.0, t: 0.40, Ix: 220.53, Sx: 44.11,  rx: 3.83, Iy: 220.53,  Sy: 44.11, ry: 3.83, peso: 11.81, norma: "ASTM A500 C / NTC 4526" },
+  { designacion: "TC 120×120 e=4.0mm",  tipo: "Tubo cuadrado",     fabricante: "Colmena", A: 18.24, h: 12.0, b: 12.0, t: 0.40, Ix: 389.14, Sx: 64.86,  rx: 4.62, Iy: 389.14,  Sy: 64.86, ry: 4.62, peso: 14.32, norma: "ASTM A500 C / NTC 4526" },
+  { designacion: "TC 150×150 e=4.0mm",  tipo: "Tubo cuadrado",     fabricante: "Colmena", A: 23.04, h: 15.0, b: 15.0, t: 0.40, Ix: 781.25, Sx: 104.17, rx: 5.82, Iy: 781.25,  Sy: 104.17,ry: 5.82, peso: 18.10, norma: "ASTM A500 C / NTC 4526" },
+  // Tubos rectangulares Colmena ASTM A500 Grado C
+  { designacion: "TR 100×50 e=3.0mm",   tipo: "Tubo rectangular",  fabricante: "Colmena", A: 8.62,  h: 10.0, b: 5.0, t: 0.30, Ix: 155.40, Sx: 31.08,  rx: 4.24, Iy: 48.83,   Sy: 19.53, ry: 2.38, peso: 6.77,  norma: "ASTM A500 C / NTC 4526" },
+  { designacion: "TR 100×50 e=4.0mm",   tipo: "Tubo rectangular",  fabricante: "Colmena", A: 11.36, h: 10.0, b: 5.0, t: 0.40, Ix: 199.95, Sx: 39.99,  rx: 4.20, Iy: 62.12,   Sy: 24.85, ry: 2.34, peso: 8.92,  norma: "ASTM A500 C / NTC 4526" },
+  { designacion: "TR 120×60 e=3.0mm",   tipo: "Tubo rectangular",  fabricante: "Colmena", A: 10.42, h: 12.0, b: 6.0, t: 0.30, Ix: 275.56, Sx: 45.93,  rx: 5.14, Iy: 84.35,   Sy: 28.12, ry: 2.85, peso: 8.18,  norma: "ASTM A500 C / NTC 4526" },
+  { designacion: "TR 120×60 e=4.0mm",   tipo: "Tubo rectangular",  fabricante: "Colmena", A: 13.76, h: 12.0, b: 6.0, t: 0.40, Ix: 357.08, Sx: 59.51,  rx: 5.09, Iy: 108.27,  Sy: 36.09, ry: 2.81, peso: 10.80, norma: "ASTM A500 C / NTC 4526" },
+  { designacion: "TR 150×100 e=4.0mm",  tipo: "Tubo rectangular",  fabricante: "Colmena", A: 18.56, h: 15.0, b: 10.0, t: 0.40, Ix: 787.50, Sx: 105.00, rx: 6.51, Iy: 390.63,  Sy: 78.13, ry: 4.59, peso: 14.57, norma: "ASTM A500 C / NTC 4526" },
+  { designacion: "TR 200×100 e=4.0mm",  tipo: "Tubo rectangular",  fabricante: "Colmena", A: 22.56, h: 20.0, b: 10.0, t: 0.40, Ix: 1728.0, Sx: 172.80, rx: 8.75, Iy: 488.00,  Sy: 97.60, ry: 4.65, peso: 17.71, norma: "ASTM A500 C / NTC 4526" },
+  // Perfiles C formados en frio Acesco Grado 50
+  { designacion: "C 100×50×15 e=1.5mm", tipo: "Perfil C frio",     fabricante: "Acesco",  A: 2.36,  h: 10.0, b: 5.0, t: 0.15, Ix: 41.20,  Sx: 8.24,   rx: 4.18, Iy: 5.83,    Sy: 1.75,  ry: 1.57, peso: 1.85,  norma: "NTC 2076 / AISI S100" },
+  { designacion: "C 100×50×15 e=2.0mm", tipo: "Perfil C frio",     fabricante: "Acesco",  A: 3.10,  h: 10.0, b: 5.0, t: 0.20, Ix: 53.20,  Sx: 10.64,  rx: 4.14, Iy: 7.42,    Sy: 2.22,  ry: 1.55, peso: 2.43,  norma: "NTC 2076 / AISI S100" },
+  { designacion: "C 150×65×20 e=1.5mm", tipo: "Perfil C frio",     fabricante: "Acesco",  A: 3.29,  h: 15.0, b: 6.5, t: 0.15, Ix: 148.30, Sx: 19.77,  rx: 6.71, Iy: 13.86,   Sy: 3.01,  ry: 2.05, peso: 2.58,  norma: "NTC 2076 / AISI S100" },
+  { designacion: "C 150×65×20 e=2.0mm", tipo: "Perfil C frio",     fabricante: "Acesco",  A: 4.34,  h: 15.0, b: 6.5, t: 0.20, Ix: 193.20, Sx: 25.76,  rx: 6.67, Iy: 17.74,   Sy: 3.87,  ry: 2.02, peso: 3.41,  norma: "NTC 2076 / AISI S100" },
+  { designacion: "C 200×75×25 e=2.0mm", tipo: "Perfil C frio",     fabricante: "Acesco",  A: 5.54,  h: 20.0, b: 7.5, t: 0.20, Ix: 455.30, Sx: 45.53,  rx: 9.07, Iy: 27.43,   Sy: 5.04,  ry: 2.23, peso: 4.35,  norma: "NTC 2076 / AISI S100" },
+  { designacion: "C 200×75×25 e=2.5mm", tipo: "Perfil C frio",     fabricante: "Acesco",  A: 6.88,  h: 20.0, b: 7.5, t: 0.25, Ix: 558.40, Sx: 55.84,  rx: 9.00, Iy: 33.26,   Sy: 6.14,  ry: 2.20, peso: 5.40,  norma: "NTC 2076 / AISI S100" },
+  { designacion: "C 250×75×25 e=2.0mm", tipo: "Perfil C frio",     fabricante: "Acesco",  A: 6.14,  h: 25.0, b: 7.5, t: 0.20, Ix: 870.50, Sx: 69.64,  rx: 11.91,Iy: 29.14,   Sy: 5.34,  ry: 2.18, peso: 4.82,  norma: "NTC 2076 / AISI S100" },
+  { designacion: "C 250×75×25 e=3.0mm", tipo: "Perfil C frio",     fabricante: "Acesco",  A: 9.04,  h: 25.0, b: 7.5, t: 0.30, Ix: 1248.0, Sx: 99.84,  rx: 11.76,Iy: 40.79,   Sy: 7.57,  ry: 2.13, peso: 7.10,  norma: "NTC 2076 / AISI S100" },
+]
