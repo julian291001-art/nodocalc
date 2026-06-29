@@ -142,3 +142,125 @@ export const perfilesHE: PerfilHE[] = [
   { designacion: "HEM 280", serie: "HEM", A: 224, h: 310, b: 288, tf: 33.0, tw: 18.5, Ix: 39550, Sx: 2551, rx: 13.27, Iy: 13160, Sy: 914, ry: 7.66, peso: 176 },
   { designacion: "HEM 300", serie: "HEM", A: 253, h: 340, b: 310, tf: 34.5, tw: 21.0, Ix: 59200, Sx: 3482, rx: 15.30, Iy: 19400, Sy: 1252, ry: 8.75, peso: 238 },
 ]
+export type PerfilC = {
+  designacion: string; A: number; d: number; bf: number; tf: number; tw: number
+  Ix: number; Sx: number; rx: number; Iy: number; Sy: number; ry: number; peso: number
+}
+
+export const perfilesC: PerfilC[] = [
+  { designacion: "C3×4.1",   A: 1.21, d: 3.00, bf: 1.410, tf: 0.273, tw: 0.170, Ix: 1.66,  Sx: 1.10,  rx: 1.17, Iy: 0.197, Sy: 0.247, ry: 0.404, peso: 4.1 },
+  { designacion: "C3×5",     A: 1.47, d: 3.00, bf: 1.498, tf: 0.273, tw: 0.258, Ix: 1.85,  Sx: 1.24,  rx: 1.12, Iy: 0.247, Sy: 0.296, ry: 0.410, peso: 5.0 },
+  { designacion: "C4×5.4",   A: 1.59, d: 4.00, bf: 1.584, tf: 0.296, tw: 0.184, Ix: 3.85,  Sx: 1.93,  rx: 1.56, Iy: 0.319, Sy: 0.343, ry: 0.449, peso: 5.4 },
+  { designacion: "C4×7.25",  A: 2.13, d: 4.00, bf: 1.721, tf: 0.296, tw: 0.321, Ix: 4.59,  Sx: 2.29,  rx: 1.47, Iy: 0.433, Sy: 0.425, ry: 0.450, peso: 7.25 },
+  { designacion: "C5×6.7",   A: 1.97, d: 5.00, bf: 1.750, tf: 0.320, tw: 0.190, Ix: 7.49,  Sx: 3.00,  rx: 1.95, Iy: 0.478, Sy: 0.450, ry: 0.493, peso: 6.7 },
+  { designacion: "C5×9",     A: 2.64, d: 5.00, bf: 1.885, tf: 0.320, tw: 0.325, Ix: 8.90,  Sx: 3.56,  rx: 1.83, Iy: 0.632, Sy: 0.549, ry: 0.489, peso: 9.0 },
+  { designacion: "C6×8.2",   A: 2.40, d: 6.00, bf: 1.920, tf: 0.343, tw: 0.200, Ix: 13.1,  Sx: 4.38,  rx: 2.34, Iy: 0.693, Sy: 0.564, ry: 0.537, peso: 8.2 },
+  { designacion: "C6×13",    A: 3.83, d: 6.00, bf: 2.157, tf: 0.343, tw: 0.437, Ix: 17.4,  Sx: 5.80,  rx: 2.13, Iy: 1.05,  Sy: 0.793, ry: 0.524, peso: 13.0 },
+  { designacion: "C7×9.8",   A: 2.87, d: 7.00, bf: 2.085, tf: 0.366, tw: 0.210, Ix: 21.3,  Sx: 6.08,  rx: 2.72, Iy: 0.968, Sy: 0.698, ry: 0.581, peso: 9.8 },
+  { designacion: "C7×14.75", A: 4.33, d: 7.00, bf: 2.299, tf: 0.366, tw: 0.419, Ix: 27.2,  Sx: 7.78,  rx: 2.51, Iy: 1.38,  Sy: 0.883, ry: 0.565, peso: 14.75 },
+  { designacion: "C8×11.5",  A: 3.38, d: 8.00, bf: 2.260, tf: 0.390, tw: 0.220, Ix: 32.6,  Sx: 8.14,  rx: 3.11, Iy: 1.32,  Sy: 0.871, ry: 0.625, peso: 11.5 },
+  { designacion: "C8×18.75", A: 5.51, d: 8.00, bf: 2.527, tf: 0.390, tw: 0.487, Ix: 44.0,  Sx: 11.0,  rx: 2.82, Iy: 1.98,  Sy: 1.13,  ry: 0.599, peso: 18.75 },
+  { designacion: "C9×15",    A: 4.41, d: 9.00, bf: 2.485, tf: 0.413, tw: 0.285, Ix: 51.0,  Sx: 11.3,  rx: 3.40, Iy: 1.93,  Sy: 1.05,  ry: 0.661, peso: 15.0 },
+  { designacion: "C9×20",    A: 5.88, d: 9.00, bf: 2.648, tf: 0.413, tw: 0.448, Ix: 60.9,  Sx: 13.5,  rx: 3.22, Iy: 2.42,  Sy: 1.31,  ry: 0.642, peso: 20.0 },
+  { designacion: "C10×15.3", A: 4.49, d: 10.00, bf: 2.600, tf: 0.436, tw: 0.240, Ix: 67.4, Sx: 13.5,  rx: 3.87, Iy: 2.28,  Sy: 1.16,  ry: 0.713, peso: 15.3 },
+  { designacion: "C10×20",   A: 5.88, d: 10.00, bf: 2.739, tf: 0.436, tw: 0.379, Ix: 78.9, Sx: 15.8,  rx: 3.66, Iy: 2.81,  Sy: 1.38,  ry: 0.691, peso: 20.0 },
+  { designacion: "C10×30",   A: 8.82, d: 10.00, bf: 3.033, tf: 0.436, tw: 0.673, Ix: 103,  Sx: 20.7,  rx: 3.42, Iy: 3.94,  Sy: 1.84,  ry: 0.669, peso: 30.0 },
+  { designacion: "C12×20.7", A: 6.09, d: 12.00, bf: 2.942, tf: 0.501, tw: 0.282, Ix: 129,  Sx: 21.5,  rx: 4.61, Iy: 3.88,  Sy: 1.73,  ry: 0.799, peso: 20.7 },
+  { designacion: "C12×30",   A: 8.82, d: 12.00, bf: 3.170, tf: 0.501, tw: 0.510, Ix: 162,  Sx: 27.0,  rx: 4.29, Iy: 5.14,  Sy: 2.06,  ry: 0.763, peso: 30.0 },
+  { designacion: "C15×33.9", A: 9.96, d: 15.00, bf: 3.400, tf: 0.650, tw: 0.400, Ix: 315,  Sx: 42.0,  rx: 5.62, Iy: 8.13,  Sy: 2.99,  ry: 0.904, peso: 33.9 },
+  { designacion: "C15×50",   A: 14.7, d: 15.00, bf: 3.716, tf: 0.650, tw: 0.716, Ix: 404,  Sx: 53.8,  rx: 5.24, Iy: 11.0,  Sy: 3.78,  ry: 0.865, peso: 50.0 },
+]
+
+export type PerfilL = {
+  designacion: string; A: number; b1: number; b2: number; t: number
+  Ix: number; Sx: number; rx: number; Iy: number; Sy: number; ry: number; peso: number
+}
+
+export const perfilesL: PerfilL[] = [
+  { designacion: "L2×2×1/8",     A: 0.484, b1: 2.00, b2: 2.00, t: 0.125, Ix: 0.190, Sx: 0.131, rx: 0.626, Iy: 0.190, Sy: 0.131, ry: 0.626, peso: 1.65 },
+  { designacion: "L2×2×3/16",    A: 0.715, b1: 2.00, b2: 2.00, t: 0.188, Ix: 0.272, Sx: 0.190, rx: 0.617, Iy: 0.272, Sy: 0.190, ry: 0.617, peso: 2.44 },
+  { designacion: "L2×2×1/4",     A: 0.938, b1: 2.00, b2: 2.00, t: 0.250, Ix: 0.348, Sx: 0.247, rx: 0.609, Iy: 0.348, Sy: 0.247, ry: 0.609, peso: 3.19 },
+  { designacion: "L2×2×3/8",     A: 1.36,  b1: 2.00, b2: 2.00, t: 0.375, Ix: 0.479, Sx: 0.351, rx: 0.594, Iy: 0.479, Sy: 0.351, ry: 0.594, peso: 4.70 },
+  { designacion: "L2.5×2.5×3/16",A: 0.902, b1: 2.50, b2: 2.50, t: 0.188, Ix: 0.547, Sx: 0.304, rx: 0.778, Iy: 0.547, Sy: 0.304, ry: 0.778, peso: 3.07 },
+  { designacion: "L2.5×2.5×1/4", A: 1.19,  b1: 2.50, b2: 2.50, t: 0.250, Ix: 0.703, Sx: 0.394, rx: 0.769, Iy: 0.703, Sy: 0.394, ry: 0.769, peso: 4.10 },
+  { designacion: "L3×3×1/4",     A: 1.44,  b1: 3.00, b2: 3.00, t: 0.250, Ix: 1.24,  Sx: 0.577, rx: 0.930, Iy: 1.24,  Sy: 0.577, ry: 0.930, peso: 4.90 },
+  { designacion: "L3×3×3/8",     A: 2.11,  b1: 3.00, b2: 3.00, t: 0.375, Ix: 1.76,  Sx: 0.833, rx: 0.913, Iy: 1.76,  Sy: 0.833, ry: 0.913, peso: 7.20 },
+  { designacion: "L3×3×1/2",     A: 2.75,  b1: 3.00, b2: 3.00, t: 0.500, Ix: 2.22,  Sx: 1.07,  rx: 0.898, Iy: 2.22,  Sy: 1.07,  ry: 0.898, peso: 9.40 },
+  { designacion: "L3×2×1/4",     A: 1.19,  b1: 3.00, b2: 2.00, t: 0.250, Ix: 1.09,  Sx: 0.542, rx: 0.957, Iy: 0.390, Sy: 0.272, ry: 0.572, peso: 4.10 },
+  { designacion: "L3×2×3/8",     A: 1.73,  b1: 3.00, b2: 2.00, t: 0.375, Ix: 1.53,  Sx: 0.781, rx: 0.940, Iy: 0.543, Sy: 0.371, ry: 0.559, peso: 5.90 },
+  { designacion: "L3×2×1/2",     A: 2.25,  b1: 3.00, b2: 2.00, t: 0.500, Ix: 1.92,  Sx: 1.00,  rx: 0.924, Iy: 0.672, Sy: 0.464, ry: 0.546, peso: 7.70 },
+  { designacion: "L4×4×1/4",     A: 1.94,  b1: 4.00, b2: 4.00, t: 0.250, Ix: 2.77,  Sx: 0.968, rx: 1.19,  Iy: 2.77,  Sy: 0.968, ry: 1.19,  peso: 6.60 },
+  { designacion: "L4×4×3/8",     A: 2.86,  b1: 4.00, b2: 4.00, t: 0.375, Ix: 3.96,  Sx: 1.40,  rx: 1.18,  Iy: 3.96,  Sy: 1.40,  ry: 1.18,  peso: 9.80 },
+  { designacion: "L4×4×1/2",     A: 3.75,  b1: 4.00, b2: 4.00, t: 0.500, Ix: 5.05,  Sx: 1.81,  rx: 1.16,  Iy: 5.05,  Sy: 1.81,  ry: 1.16,  peso: 12.8 },
+  { designacion: "L4×3×1/4",     A: 1.69,  b1: 4.00, b2: 3.00, t: 0.250, Ix: 2.53,  Sx: 0.913, rx: 1.22,  Iy: 1.04,  Sy: 0.487, ry: 0.784, peso: 5.80 },
+  { designacion: "L4×3×3/8",     A: 2.48,  b1: 4.00, b2: 3.00, t: 0.375, Ix: 3.64,  Sx: 1.33,  rx: 1.21,  Iy: 1.49,  Sy: 0.696, ry: 0.775, peso: 8.50 },
+  { designacion: "L4×3×1/2",     A: 3.25,  b1: 4.00, b2: 3.00, t: 0.500, Ix: 4.62,  Sx: 1.72,  rx: 1.19,  Iy: 1.85,  Sy: 0.888, ry: 0.755, peso: 11.1 },
+  { designacion: "L5×5×5/16",    A: 3.07,  b1: 5.00, b2: 5.00, t: 0.313, Ix: 7.42,  Sx: 2.04,  rx: 1.55,  Iy: 7.42,  Sy: 2.04,  ry: 1.55,  peso: 10.4 },
+  { designacion: "L5×5×3/8",     A: 3.61,  b1: 5.00, b2: 5.00, t: 0.375, Ix: 8.74,  Sx: 2.42,  rx: 1.56,  Iy: 8.74,  Sy: 2.42,  ry: 1.56,  peso: 12.3 },
+  { designacion: "L5×5×1/2",     A: 4.75,  b1: 5.00, b2: 5.00, t: 0.500, Ix: 11.3,  Sx: 3.16,  rx: 1.54,  Iy: 11.3,  Sy: 3.16,  ry: 1.54,  peso: 16.2 },
+  { designacion: "L5×3×1/4",     A: 1.94,  b1: 5.00, b2: 3.00, t: 0.250, Ix: 5.11,  Sx: 1.45,  rx: 1.62,  Iy: 0.968, Sy: 0.443, ry: 0.706, peso: 6.60 },
+  { designacion: "L5×3×3/8",     A: 2.86,  b1: 5.00, b2: 3.00, t: 0.375, Ix: 7.37,  Sx: 2.12,  rx: 1.61,  Iy: 1.38,  Sy: 0.632, ry: 0.694, peso: 9.80 },
+  { designacion: "L6×6×3/8",     A: 4.36,  b1: 6.00, b2: 6.00, t: 0.375, Ix: 19.9,  Sx: 4.61,  rx: 1.88,  Iy: 19.9,  Sy: 4.61,  ry: 1.88,  peso: 14.9 },
+  { designacion: "L6×6×1/2",     A: 5.75,  b1: 6.00, b2: 6.00, t: 0.500, Ix: 26.0,  Sx: 6.09,  rx: 1.87,  Iy: 26.0,  Sy: 6.09,  ry: 1.87,  peso: 19.6 },
+  { designacion: "L6×4×3/8",     A: 3.61,  b1: 6.00, b2: 4.00, t: 0.375, Ix: 17.3,  Sx: 4.17,  rx: 1.95,  Iy: 6.27,  Sy: 2.08,  ry: 1.32,  peso: 12.3 },
+  { designacion: "L6×4×1/2",     A: 4.75,  b1: 6.00, b2: 4.00, t: 0.500, Ix: 22.1,  Sx: 5.42,  rx: 1.93,  Iy: 8.68,  Sy: 2.97,  ry: 1.35,  peso: 16.2 },
+  { designacion: "L8×8×1/2",     A: 7.75,  b1: 8.00, b2: 8.00, t: 0.500, Ix: 89.0,  Sx: 15.8,  rx: 2.49,  Iy: 89.0,  Sy: 15.8,  ry: 2.49,  peso: 26.4 },
+  { designacion: "L8×8×3/4",     A: 11.4,  b1: 8.00, b2: 8.00, t: 0.750, Ix: 127,   Sx: 23.0,  rx: 2.44,  Iy: 127,   Sy: 23.0,  ry: 2.44,  peso: 38.9 },
+  { designacion: "L8×6×1/2",     A: 6.75,  b1: 8.00, b2: 6.00, t: 0.500, Ix: 80.8,  Sx: 14.8,  rx: 2.65,  Iy: 38.8,  Sy: 8.92,  ry: 1.76,  peso: 23.0 },
+]
+
+export type PerfilHSS = {
+  designacion: string; tipo: "rectangular" | "cuadrado" | "circular"
+  H: number; B: number; t: number; A: number
+  Ix: number; Sx: number; rx: number; Iy: number; Sy: number; ry: number; peso: number
+}
+
+export const perfilesHSS: PerfilHSS[] = [
+  // Cuadrados
+  { designacion: "HSS2×2×1/8",     tipo: "cuadrado",     H: 2.00, B: 2.00, t: 0.116, A: 0.840, Ix: 0.486,  Sx: 0.486,  rx: 0.760, Iy: 0.486,  Sy: 0.486,  ry: 0.760, peso: 2.86 },
+  { designacion: "HSS2×2×3/16",    tipo: "cuadrado",     H: 2.00, B: 2.00, t: 0.174, A: 1.19,  Ix: 0.641,  Sx: 0.641,  rx: 0.734, Iy: 0.641,  Sy: 0.641,  ry: 0.734, peso: 4.05 },
+  { designacion: "HSS3×3×1/8",     tipo: "cuadrado",     H: 3.00, B: 3.00, t: 0.116, A: 1.29,  Ix: 1.72,   Sx: 1.15,   rx: 1.15,  Iy: 1.72,   Sy: 1.15,   ry: 1.15,  peso: 4.37 },
+  { designacion: "HSS3×3×3/16",    tipo: "cuadrado",     H: 3.00, B: 3.00, t: 0.174, A: 1.89,  Ix: 2.44,   Sx: 1.63,   rx: 1.14,  Iy: 2.44,   Sy: 1.63,   ry: 1.14,  peso: 6.45 },
+  { designacion: "HSS3×3×1/4",     tipo: "cuadrado",     H: 3.00, B: 3.00, t: 0.233, A: 2.44,  Ix: 3.02,   Sx: 2.01,   rx: 1.11,  Iy: 3.02,   Sy: 2.01,   ry: 1.11,  peso: 8.45 },
+  { designacion: "HSS4×4×1/8",     tipo: "cuadrado",     H: 4.00, B: 4.00, t: 0.116, A: 1.77,  Ix: 4.33,   Sx: 2.17,   rx: 1.56,  Iy: 4.33,   Sy: 2.17,   ry: 1.56,  peso: 6.02 },
+  { designacion: "HSS4×4×3/16",    tipo: "cuadrado",     H: 4.00, B: 4.00, t: 0.174, A: 2.61,  Ix: 6.21,   Sx: 3.10,   rx: 1.54,  Iy: 6.21,   Sy: 3.10,   ry: 1.54,  peso: 8.81 },
+  { designacion: "HSS4×4×1/4",     tipo: "cuadrado",     H: 4.00, B: 4.00, t: 0.233, A: 3.37,  Ix: 7.80,   Sx: 3.90,   rx: 1.52,  Iy: 7.80,   Sy: 3.90,   ry: 1.52,  peso: 11.5 },
+  { designacion: "HSS4×4×3/8",     tipo: "cuadrado",     H: 4.00, B: 4.00, t: 0.349, A: 4.78,  Ix: 10.4,   Sx: 5.18,   rx: 1.47,  Iy: 10.4,   Sy: 5.18,   ry: 1.47,  peso: 16.2 },
+  { designacion: "HSS5×5×3/16",    tipo: "cuadrado",     H: 5.00, B: 5.00, t: 0.174, A: 3.30,  Ix: 12.5,   Sx: 5.00,   rx: 1.95,  Iy: 12.5,   Sy: 5.00,   ry: 1.95,  peso: 11.2 },
+  { designacion: "HSS5×5×1/4",     tipo: "cuadrado",     H: 5.00, B: 5.00, t: 0.233, A: 4.30,  Ix: 15.9,   Sx: 6.37,   rx: 1.92,  Iy: 15.9,   Sy: 6.37,   ry: 1.92,  peso: 14.6 },
+  { designacion: "HSS5×5×3/8",     tipo: "cuadrado",     H: 5.00, B: 5.00, t: 0.349, A: 6.17,  Ix: 21.6,   Sx: 8.64,   rx: 1.87,  Iy: 21.6,   Sy: 8.64,   ry: 1.87,  peso: 21.0 },
+  { designacion: "HSS6×6×3/16",    tipo: "cuadrado",     H: 6.00, B: 6.00, t: 0.174, A: 4.00,  Ix: 21.8,   Sx: 7.27,   rx: 2.33,  Iy: 21.8,   Sy: 7.27,   ry: 2.33,  peso: 13.6 },
+  { designacion: "HSS6×6×1/4",     tipo: "cuadrado",     H: 6.00, B: 6.00, t: 0.233, A: 5.24,  Ix: 27.9,   Sx: 9.30,   rx: 2.31,  Iy: 27.9,   Sy: 9.30,   ry: 2.31,  peso: 17.8 },
+  { designacion: "HSS6×6×3/8",     tipo: "cuadrado",     H: 6.00, B: 6.00, t: 0.349, A: 7.58,  Sx: 12.9,   Ix: 38.7,   rx: 2.26,  Iy: 38.7,   Sy: 12.9,   ry: 2.26,  peso: 25.8 },
+  { designacion: "HSS6×6×1/2",     tipo: "cuadrado",     H: 6.00, B: 6.00, t: 0.465, A: 9.74,  Ix: 47.9,   Sx: 16.0,   rx: 2.22,  Iy: 47.9,   Sy: 16.0,   ry: 2.22,  peso: 33.1 },
+  { designacion: "HSS8×8×1/4",     tipo: "cuadrado",     H: 8.00, B: 8.00, t: 0.233, A: 7.10,  Ix: 68.0,   Sx: 17.0,   rx: 3.09,  Iy: 68.0,   Sy: 17.0,   ry: 3.09,  peso: 24.1 },
+  { designacion: "HSS8×8×3/8",     tipo: "cuadrado",     H: 8.00, B: 8.00, t: 0.349, A: 10.4,  Ix: 96.0,   Sx: 24.0,   rx: 3.04,  Iy: 96.0,   Sy: 24.0,   ry: 3.04,  peso: 35.2 },
+  { designacion: "HSS8×8×1/2",     tipo: "cuadrado",     H: 8.00, B: 8.00, t: 0.465, A: 13.5,  Ix: 121,    Sx: 30.3,   rx: 3.00,  Iy: 121,    Sy: 30.3,   ry: 3.00,  peso: 45.6 },
+  { designacion: "HSS10×10×3/8",   tipo: "cuadrado",     H: 10.0, B: 10.0, t: 0.349, A: 13.1,  Ix: 190,    Sx: 38.0,   rx: 3.81,  Iy: 190,    Sy: 38.0,   ry: 3.81,  peso: 44.6 },
+  { designacion: "HSS10×10×1/2",   tipo: "cuadrado",     H: 10.0, B: 10.0, t: 0.465, A: 17.2,  Ix: 243,    Sx: 48.6,   rx: 3.76,  Iy: 243,    Sy: 48.6,   ry: 3.76,  peso: 58.4 },
+  // Rectangulares
+  { designacion: "HSS6×4×1/4",     tipo: "rectangular",  H: 6.00, B: 4.00, t: 0.233, A: 4.30,  Ix: 22.0,   Sx: 7.33,   rx: 2.26,  Iy: 11.1,   Sy: 5.55,   ry: 1.61,  peso: 14.6 },
+  { designacion: "HSS6×4×3/8",     tipo: "rectangular",  H: 6.00, B: 4.00, t: 0.349, A: 6.17,  Ix: 30.1,   Sx: 10.0,   rx: 2.21,  Iy: 15.0,   Sy: 7.50,   ry: 1.56,  peso: 21.0 },
+  { designacion: "HSS8×4×1/4",     tipo: "rectangular",  H: 8.00, B: 4.00, t: 0.233, A: 5.24,  Ix: 50.4,   Sx: 12.6,   rx: 3.10,  Iy: 13.9,   Sy: 6.93,   ry: 1.63,  peso: 17.8 },
+  { designacion: "HSS8×4×3/8",     tipo: "rectangular",  H: 8.00, B: 4.00, t: 0.349, A: 7.58,  Ix: 70.5,   Sx: 17.6,   rx: 3.05,  Iy: 19.0,   Sy: 9.48,   ry: 1.58,  peso: 25.8 },
+  { designacion: "HSS8×6×1/4",     tipo: "rectangular",  H: 8.00, B: 6.00, t: 0.233, A: 6.17,  Ix: 59.0,   Sx: 14.8,   rx: 3.09,  Iy: 36.6,   Sy: 12.2,   ry: 2.44,  peso: 21.0 },
+  { designacion: "HSS8×6×3/8",     tipo: "rectangular",  H: 8.00, B: 6.00, t: 0.349, A: 8.97,  Ix: 83.8,   Sx: 21.0,   rx: 3.06,  Iy: 51.4,   Sy: 17.1,   ry: 2.39,  peso: 30.5 },
+  { designacion: "HSS10×6×3/8",    tipo: "rectangular",  H: 10.0, B: 6.00, t: 0.349, A: 10.4,  Ix: 148,    Sx: 29.5,   rx: 3.77,  Iy: 60.7,   Sy: 20.2,   ry: 2.42,  peso: 35.2 },
+  { designacion: "HSS12×6×3/8",    tipo: "rectangular",  H: 12.0, B: 6.00, t: 0.349, A: 11.7,  Ix: 253,    Sx: 42.2,   rx: 4.65,  Iy: 70.0,   Sy: 23.3,   ry: 2.44,  peso: 40.0 },
+  { designacion: "HSS12×8×3/8",    tipo: "rectangular",  H: 12.0, B: 8.00, t: 0.349, A: 13.1,  Ix: 286,    Sx: 47.7,   rx: 4.67,  Iy: 143,    Sy: 35.8,   ry: 3.31,  peso: 44.6 },
+  // Circulares CHS
+  { designacion: "HSS2.375×0.125",  tipo: "circular", H: 2.375, B: 2.375, t: 0.116, A: 0.823, Ix: 0.443,  Sx: 0.373,  rx: 0.734, Iy: 0.443,  Sy: 0.373,  ry: 0.734, peso: 2.80 },
+  { designacion: "HSS3.5×0.125",    tipo: "circular", H: 3.500, B: 3.500, t: 0.116, A: 1.23,  Ix: 1.51,   Sx: 0.863,  rx: 1.11,  Iy: 1.51,   Sy: 0.863,  ry: 1.11,  peso: 4.17 },
+  { designacion: "HSS4×0.125",      tipo: "circular", H: 4.000, B: 4.000, t: 0.116, A: 1.41,  Ix: 2.25,   Sx: 1.13,   rx: 1.26,  Iy: 2.25,   Sy: 1.13,   ry: 1.26,  peso: 4.80 },
+  { designacion: "HSS4×0.250",      tipo: "circular", H: 4.000, B: 4.000, t: 0.233, A: 2.70,  Ix: 4.06,   Sx: 2.03,   rx: 1.23,  Iy: 4.06,   Sy: 2.03,   ry: 1.23,  peso: 9.20 },
+  { designacion: "HSS5×0.188",      tipo: "circular", H: 5.000, B: 5.000, t: 0.174, A: 2.58,  Ix: 8.48,   Sx: 3.39,   rx: 1.81,  Iy: 8.48,   Sy: 3.39,   ry: 1.81,  peso: 8.78 },
+  { designacion: "HSS5×0.250",      tipo: "circular", H: 5.000, B: 5.000, t: 0.233, A: 3.39,  Ix: 10.9,   Sx: 4.38,   rx: 1.80,  Iy: 10.9,   Sy: 4.38,   ry: 1.80,  peso: 11.5 },
+  { designacion: "HSS6×0.188",      tipo: "circular", H: 6.000, B: 6.000, t: 0.174, A: 3.12,  Ix: 14.9,   Sx: 4.95,   rx: 2.18,  Iy: 14.9,   Sy: 4.95,   ry: 2.18,  peso: 10.6 },
+  { designacion: "HSS6×0.250",      tipo: "circular", H: 6.000, B: 6.000, t: 0.233, A: 4.10,  Ix: 19.3,   Sx: 6.42,   rx: 2.17,  Iy: 19.3,   Sy: 6.42,   ry: 2.17,  peso: 14.0 },
+  { designacion: "HSS8×0.250",      tipo: "circular", H: 8.000, B: 8.000, t: 0.233, A: 5.48,  Ix: 46.0,   Sx: 11.5,   rx: 2.90,  Iy: 46.0,   Sy: 11.5,   ry: 2.90,  peso: 18.7 },
+  { designacion: "HSS8×0.375",      tipo: "circular", H: 8.000, B: 8.000, t: 0.349, A: 8.09,  Ix: 66.0,   Sx: 16.5,   rx: 2.86,  Iy: 66.0,   Sy: 16.5,   ry: 2.86,  peso: 27.5 },
+  { designacion: "HSS10×0.250",     tipo: "circular", H: 10.00, B: 10.00, t: 0.233, A: 6.86,  Ix: 90.6,   Sx: 18.1,   rx: 3.64,  Iy: 90.6,   Sy: 18.1,   ry: 3.64,  peso: 23.3 },
+  { designacion: "HSS10×0.375",     tipo: "circular", H: 10.00, B: 10.00, t: 0.349, A: 10.2,  Ix: 131,    Sx: 26.3,   rx: 3.59,  Iy: 131,    Sy: 26.3,   ry: 3.59,  peso: 34.6 },
+  { designacion: "HSS12×0.250",     tipo: "circular", H: 12.00, B: 12.00, t: 0.233, A: 8.25,  Ix: 157,    Sx: 26.2,   rx: 4.36,  Iy: 157,    Sy: 26.2,   ry: 4.36,  peso: 28.1 },
+  { designacion: "HSS12×0.375",     tipo: "circular", H: 12.00, B: 12.00, t: 0.349, A: 12.2,  Ix: 228,    Sx: 38.1,   rx: 4.32,  Iy: 228,    Sy: 38.1,   ry: 4.32,  peso: 41.6 },
+]
