@@ -25,6 +25,7 @@ type Elemento = {
   tipo: TipoElemento
   conocido: boolean
   valorConocido: number
+  tensionAdmisible: number
   color: string
 }
 
@@ -89,11 +90,11 @@ export default function Equilibrio2D() {
     { id: 3, nombre: "C", x: 0, y: 0, apoyo: "libre", anguloRodillo: 0 },
   ])
   const [elementos, setElementos] = useState<Elemento[]>([
-    { id: 1, nombre: "T₁", nodoA: 3, nodoB: 1, tipo: "cable", conocido: true, valorConocido: 300, color: COLORES[0] },
-    { id: 2, nombre: "T₂", nodoA: 3, nodoB: 2, tipo: "cable", conocido: true, valorConocido: 250, color: COLORES[1] },
+    { id: 1, nombre: "T₁", nodoA: 3, nodoB: 1, tipo: "cable", conocido: false, valorConocido: 0, tensionAdmisible: 500, color: COLORES[0] },
+    { id: 2, nombre: "T₂", nodoA: 3, nodoB: 2, tipo: "cable", conocido: false, valorConocido: 0, tensionAdmisible: 500, color: COLORES[1] },
   ])
   const [fuerzas, setFuerzas] = useState<FuerzaExterna[]>([
-    { id: 1, nodoId: 3, nombre: "F2", magnitud: 100, angulo: 270, modo: "soloMagnitud", color: "#374151" },
+    { id: 1, nodoId: 3, nombre: "W", magnitud: 100, angulo: 270, modo: "soloMagnitud", color: "#374151" },
   ])
 
   const [nextNodoId, setNextNodoId] = useState(4)
@@ -101,6 +102,7 @@ export default function Equilibrio2D() {
   const [nextFId, setNextFId] = useState(2)
   const [mostrarAgregarNodo, setMostrarAgregarNodo] = useState(false)
   const [mostrarAgregarEl, setMostrarAgregarEl] = useState(false)
+  const [modoDiseno, setModoDiseno] = useState(false)
 
   const getNodo = (id: number) => nodos.find(n => n.id === id)!
 
@@ -205,7 +207,6 @@ export default function Equilibrio2D() {
     if (n === numEcuaciones) {
       solucion = resolverSistema(A, b)
     } else {
-      // Tomar las primeras filas no triviales (que tienen al menos un coeficiente no nulo)
       const filasValidas: number[] = []
       for (let i = 0; i < A.length && filasValidas.length < n; i++) {
         if (A[i].some(v => Math.abs(v) > 1e-9)) filasValidas.push(i)
@@ -268,6 +269,33 @@ export default function Equilibrio2D() {
     const val = e.conocido ? e.valorConocido : (solucion && idx >= 0 ? solucion[idx] : 0)
     return val < -0.01
   })
+
+  // ── Modo diseño: peso máximo según tensión admisible ───────────────────────
+  let disenoResultado: { wMax: number; factoresK: { nombre: string; k: number; wMaxIndividual: number }[]; cableGobernante: string } | null = null
+
+  if (modoDiseno && determinado && solucion) {
+    const fuerzaPeso = fuerzas.find(f => f.modo === "soloMagnitud" || f.modo === "completa")
+    if (fuerzaPeso) {
+      const wActual = fuerzaPeso.modo === "soloMagnitud"
+        ? solucion[incognitas.findIndex(i => i.tipo === "fuerzaMag" && i.refId === fuerzaPeso.id)]
+        : fuerzaPeso.magnitud
+      const factoresK = elementosCalc.filter(e => e.tipo === "cable" && !e.conocido).map(e => {
+        const idx = incognitas.findIndex(i => i.tipo === "elemento" && i.refId === e.id)
+        const tActual = idx >= 0 ? solucion![idx] : 0
+        const k = wActual !== 0 ? tActual / wActual : 0
+        const wMaxIndividual = k > 0 ? e.tensionAdmisible / k : Infinity
+        return { nombre: e.nombre, k, wMaxIndividual }
+      })
+      if (factoresK.length > 0) {
+        const validos = factoresK.filter(f => f.wMaxIndividual > 0 && isFinite(f.wMaxIndividual))
+        if (validos.length > 0) {
+          const wMax = Math.min(...validos.map(f => f.wMaxIndividual))
+          const gobernante = validos.find(f => f.wMaxIndividual === wMax)
+          disenoResultado = { wMax, factoresK, cableGobernante: gobernante?.nombre || "" }
+        }
+      }
+    }
+  }
 
   const valorIncognita = (idx: number) => solucion ? solucion[idx] : 0
 
@@ -445,7 +473,7 @@ export default function Equilibrio2D() {
     if (nuevoElA === null || nuevoElB === null || nuevoElA === nuevoElB) return
     setElementos([...elementos, {
       id: nextElId, nombre: `T${nextElId}`, nodoA: nuevoElA, nodoB: nuevoElB,
-      tipo: nuevoElTipo, conocido: false, valorConocido: 0, color: COLORES[(nextElId - 1) % COLORES.length]
+      tipo: nuevoElTipo, conocido: false, valorConocido: 0, tensionAdmisible: 500, color: COLORES[(nextElId - 1) % COLORES.length]
     }])
     setNextElId(nextElId + 1)
     setNuevoElA(null); setNuevoElB(null)
@@ -478,6 +506,16 @@ export default function Equilibrio2D() {
           <div className="grid grid-cols-2 gap-6">
 
             <div className="flex flex-col gap-4">
+
+              <div className="bg-white border border-gray-200 rounded-xl p-5">
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input type="checkbox" checked={modoDiseno} onChange={e => setModoDiseno(e.target.checked)} className="mt-0.5" />
+                  <div>
+                    <div className="text-sm font-medium text-gray-800">Modo diseño: peso máximo según tensión admisible</div>
+                    <div className="text-xs text-gray-500 mt-0.5">Marca cada cable con su tensión máxima admisible (capacidad). El sistema calcula el peso máximo que puede soportar el sistema sin sobrepasar esa tensión en ningún cable.</div>
+                  </div>
+                </label>
+              </div>
 
               <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="flex items-center justify-between mb-3">
@@ -589,14 +627,24 @@ export default function Equilibrio2D() {
                         <button onClick={() => eliminarElemento(e.id)} className="text-xs text-red-400 hover:text-red-600">×</button>
                       </div>
                       <div className="text-xs text-gray-400 mb-2">{e.tipo === "cable" ? "Cable" : "Barra rígida"} — longitud: {fmt(e.longitud, 2)} {cfg.longitud} — ángulo: {fmt(e.angDesdeA, 1)}°</div>
-                      <label className="flex items-center gap-2 text-xs text-gray-600 mb-2">
-                        <input type="checkbox" checked={e.conocido} onChange={ev => actualizarElemento(e.id, "conocido", ev.target.checked)} />
-                        Valor conocido (si no, es incógnita)
-                      </label>
-                      {e.conocido && (
-                        <input type="number" value={e.valorConocido} onChange={ev => actualizarElemento(e.id, "valorConocido", parseFloat(ev.target.value) || 0)}
-                          placeholder={`Valor (${cfg.fuerza})`}
-                          className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-blue-400" />
+                      {modoDiseno && e.tipo === "cable" ? (
+                        <div>
+                          <div className="text-xs text-gray-500 mb-1">Tensión admisible / capacidad ({cfg.fuerza})</div>
+                          <input type="number" value={e.tensionAdmisible} onChange={ev => actualizarElemento(e.id, "tensionAdmisible", parseFloat(ev.target.value) || 0)}
+                            className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-blue-400" />
+                        </div>
+                      ) : (
+                        <>
+                          <label className="flex items-center gap-2 text-xs text-gray-600 mb-2">
+                            <input type="checkbox" checked={e.conocido} onChange={ev => actualizarElemento(e.id, "conocido", ev.target.checked)} />
+                            Valor conocido (si no, es incógnita)
+                          </label>
+                          {e.conocido && (
+                            <input type="number" value={e.valorConocido} onChange={ev => actualizarElemento(e.id, "valorConocido", parseFloat(ev.target.value) || 0)}
+                              placeholder={`Valor (${cfg.fuerza})`}
+                              className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-blue-400" />
+                          )}
+                        </>
                       )}
                     </div>
                   ))}
@@ -651,7 +699,11 @@ export default function Equilibrio2D() {
                           <div className="text-xs text-gray-500 mb-1">Ángulo conocido (°)</div>
                           <input type="number" value={f.angulo} onChange={e => actualizarFuerza(f.id, "angulo", parseFloat(e.target.value) || 0)}
                             className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-blue-400" />
-                          <div className="text-xs text-amber-600 bg-amber-50 rounded-lg px-2 py-1.5 mt-2">Magnitud se calcula como incógnita</div>
+                          {modoDiseno ? (
+                            <div className="text-xs text-blue-600 bg-blue-50 rounded-lg px-2 py-1.5 mt-2">Esta fuerza se usa como referencia (W) para calcular el peso máximo en modo diseño</div>
+                          ) : (
+                            <div className="text-xs text-amber-600 bg-amber-50 rounded-lg px-2 py-1.5 mt-2">Magnitud se calcula como incógnita</div>
+                          )}
                         </div>
                       )}
                       {f.modo === "resultante" && (
@@ -684,6 +736,25 @@ export default function Equilibrio2D() {
                 <div className="rounded-xl p-4 border bg-red-50 border-red-200">
                   <div className="text-xs font-medium text-red-700">
                     ⚠ {cablesInvalidos.map(c => c.nombre).join(", ")} resulta en compresión (valor negativo) — un cable no puede empujar, solo tirar. Revisa la geometría o las cargas del problema.
+                  </div>
+                </div>
+              )}
+
+              {disenoResultado && (
+                <div className="bg-white border-2 border-green-300 rounded-xl p-5">
+                  <div className="text-xs text-green-600 font-medium tracking-wider mb-3">RESULTADO DE DISEÑO — PESO MÁXIMO ADMISIBLE</div>
+                  <div className="p-4 bg-green-50 rounded-xl border border-green-200 mb-3">
+                    <div className="text-xs text-green-600 mb-1">Peso máximo que el sistema puede soportar</div>
+                    <div className="text-2xl font-bold text-green-800">{fmt(disenoResultado.wMax)} {cfg.fuerza}</div>
+                    <div className="text-xs text-green-600 mt-1">Cable gobernante: {disenoResultado.cableGobernante} (alcanza su tensión admisible primero)</div>
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    {disenoResultado.factoresK.map(f => (
+                      <div key={f.nombre} className="flex items-center justify-between text-xs p-2 bg-gray-50 rounded-lg">
+                        <span className="text-gray-600">{f.nombre}: factor k = {fmt(f.k, 4)} (T = k·W)</span>
+                        <span className="font-medium text-gray-800">W_max individual = {fmt(f.wMaxIndividual)} {cfg.fuerza}</span>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
