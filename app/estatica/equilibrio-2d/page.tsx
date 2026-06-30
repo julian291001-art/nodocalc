@@ -4,7 +4,7 @@ import Sidebar from "../../components/Sidebar"
 import { useUnidadesStore } from "../../store/useUnidadesStore"
 
 // ── Tipos ──────────────────────────────────────────────────────────────────
-type TipoApoyo = "libre" | "pasador" | "rodillo" | "empotrado" | "polea"
+type TipoApoyo = "libre" | "fijo" | "pasador" | "rodillo" | "empotrado" | "polea"
 
 type Nodo = {
   id: number
@@ -12,7 +12,7 @@ type Nodo = {
   x: number
   y: number
   apoyo: TipoApoyo
-  anguloRodillo: number // ángulo de la superficie del rodillo (grados), solo si apoyo === "rodillo"
+  anguloRodillo: number
 }
 
 type TipoElemento = "cable" | "barra"
@@ -20,11 +20,11 @@ type TipoElemento = "cable" | "barra"
 type Elemento = {
   id: number
   nombre: string
-  nodoA: number // id del nodo origen
-  nodoB: number // id del nodo destino
+  nodoA: number
+  nodoB: number
   tipo: TipoElemento
   conocido: boolean
-  valorConocido: number // si conocido = true
+  valorConocido: number
   color: string
 }
 
@@ -74,8 +74,8 @@ export default function Equilibrio2D() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   const [nodos, setNodos] = useState<Nodo[]>([
-    { id: 1, nombre: "A", x: -3, y: 4, apoyo: "libre", anguloRodillo: 0 },
-    { id: 2, nombre: "B", x: 3, y: 4, apoyo: "libre", anguloRodillo: 0 },
+    { id: 1, nombre: "A", x: -3, y: 4, apoyo: "fijo", anguloRodillo: 0 },
+    { id: 2, nombre: "B", x: 3, y: 4, apoyo: "fijo", anguloRodillo: 0 },
     { id: 3, nombre: "C", x: 0, y: 0, apoyo: "libre", anguloRodillo: 0 },
   ])
   const [elementos, setElementos] = useState<Elemento[]>([
@@ -83,8 +83,8 @@ export default function Equilibrio2D() {
     { id: 2, nombre: "T₂", nodoA: 3, nodoB: 2, tipo: "cable", conocido: false, valorConocido: 0, color: COLORES[1] },
   ])
   const [fuerzas, setFuerzas] = useState<FuerzaExterna[]>([
-  { id: 1, nodoId: 3, nombre: "W", magnitud: 500, angulo: 270, conocida: true, color: "#374151" },
-])
+    { id: 1, nodoId: 3, nombre: "W", magnitud: 500, angulo: 270, conocida: true, color: "#374151" },
+  ])
 
   const [nextNodoId, setNextNodoId] = useState(4)
   const [nextElId, setNextElId] = useState(3)
@@ -94,7 +94,6 @@ export default function Equilibrio2D() {
 
   const getNodo = (id: number) => nodos.find(n => n.id === id)!
 
-  // ── Ángulo y longitud de cada elemento (desde nodoA hacia nodoB) ──────────
   const elementosCalc = elementos.map(e => {
     const A = getNodo(e.nodoA), B = getNodo(e.nodoB)
     const dx = B.x - A.x, dy = B.y - A.y
@@ -103,27 +102,25 @@ export default function Equilibrio2D() {
     return { ...e, angDesdeA, longitud }
   })
 
-  // ── Armar incógnitas: una por elemento no-conocido, más reacciones de apoyo ─
   type Incognita = { tipo: "elemento" | "reaccionX" | "reaccionY" | "fuerzaExt"; refId: number; nombre: string }
   const incognitas: Incognita[] = []
-elementosCalc.forEach(e => {
-  if (!e.conocido) incognitas.push({ tipo: "elemento", refId: e.id, nombre: e.nombre })
-})
-fuerzas.forEach(f => {
-  if (!f.conocida) incognitas.push({ tipo: "fuerzaExt", refId: f.id, nombre: f.nombre })
-})
+  elementosCalc.forEach(e => {
+    if (!e.conocido) incognitas.push({ tipo: "elemento", refId: e.id, nombre: e.nombre })
+  })
+  fuerzas.forEach(f => {
+    if (!f.conocida) incognitas.push({ tipo: "fuerzaExt", refId: f.id, nombre: f.nombre })
+  })
   nodos.forEach(n => {
     if (n.apoyo === "pasador" || n.apoyo === "empotrado") {
       incognitas.push({ tipo: "reaccionX", refId: n.id, nombre: `${n.nombre}x` })
       incognitas.push({ tipo: "reaccionY", refId: n.id, nombre: `${n.nombre}y` })
     } else if (n.apoyo === "rodillo") {
-      incognitas.push({ tipo: "reaccionX", refId: n.id, nombre: `R${n.nombre}` }) // 1 reacción perpendicular a superficie, guardada en "X" por simplicidad
+      incognitas.push({ tipo: "reaccionX", refId: n.id, nombre: `R${n.nombre}` })
     }
   })
 
-  // Nodos libres (no apoyo) generan 2 ecuaciones cada uno: ΣFx=0, ΣFy=0
-  const nodosLibres = nodos.filter(n => n.apoyo === "libre" || n.apoyo === "polea")
-  const numEcuaciones = nodosLibres.length * 2
+  const nodosConEcuacion = nodos.filter(n => n.apoyo !== "fijo")
+  const numEcuaciones = nodosConEcuacion.length * 2
   const determinado = incognitas.length === numEcuaciones && incognitas.length > 0
 
   let solucion: number[] | null = null
@@ -133,12 +130,11 @@ fuerzas.forEach(f => {
     const A: number[][] = []
     const b: number[] = []
 
-    nodosLibres.forEach(n => {
+    nodosConEcuacion.forEach(n => {
       const rowX = new Array(incognitas.length).fill(0)
       const rowY = new Array(incognitas.length).fill(0)
       let knownX = 0, knownY = 0
 
-      // Elementos conectados a este nodo
       elementosCalc.forEach(e => {
         let angDesdeNodo: number | null = null
         if (e.nodoA === n.id) angDesdeNodo = e.angDesdeA
@@ -158,7 +154,6 @@ fuerzas.forEach(f => {
         }
       })
 
-      // Reacciones de apoyo en este nodo (si aplica)
       if (n.apoyo === "pasador" || n.apoyo === "empotrado") {
         const idxX = incognitas.findIndex(i => i.tipo === "reaccionX" && i.refId === n.id)
         const idxY = incognitas.findIndex(i => i.tipo === "reaccionY" && i.refId === n.id)
@@ -171,31 +166,27 @@ fuerzas.forEach(f => {
         rowY[idxR] += Math.sin(angPerp)
       }
 
-            // Fuerzas externas en este nodo
-        fuerzas.filter(f => f.nodoId === n.id).forEach(f => {
+      fuerzas.filter(f => f.nodoId === n.id).forEach(f => {
         const cosA = Math.cos(f.angulo * Math.PI / 180)
         const sinA = Math.sin(f.angulo * Math.PI / 180)
         if (f.conocida) {
-            knownX += f.magnitud * cosA
-            knownY += f.magnitud * sinA
+          knownX += f.magnitud * cosA
+          knownY += f.magnitud * sinA
         } else {
-            const idx = incognitas.findIndex(i => i.tipo === "fuerzaExt" && i.refId === f.id)
-            rowX[idx] += cosA
-            rowY[idx] += sinA
+          const idx = incognitas.findIndex(i => i.tipo === "fuerzaExt" && i.refId === f.id)
+          rowX[idx] += cosA
+          rowY[idx] += sinA
         }
-        })
+      })
 
-      A.push(rowX)
-      b.push(-knownX)
-      A.push(rowY)
-      b.push(-knownY)
+      A.push(rowX); b.push(-knownX)
+      A.push(rowY); b.push(-knownY)
     })
 
     solucion = resolverSistema(A, b)
 
-    // Verificación
     if (solucion) {
-      checkPorNodo = nodosLibres.map(n => {
+      checkPorNodo = nodosConEcuacion.map(n => {
         let fx = 0, fy = 0
         elementosCalc.forEach(e => {
           let angDesdeNodo: number | null = null
@@ -216,10 +207,10 @@ fuerzas.forEach(f => {
           fx += solucion![idxR] * Math.cos(angPerp)
           fy += solucion![idxR] * Math.sin(angPerp)
         }
-                fuerzas.filter(f => f.nodoId === n.id).forEach(f => {
-        const val = f.conocida ? f.magnitud : solucion![incognitas.findIndex(i => i.tipo === "fuerzaExt" && i.refId === f.id)]
-        fx += val * Math.cos(f.angulo * Math.PI / 180)
-        fy += val * Math.sin(f.angulo * Math.PI / 180)
+        fuerzas.filter(f => f.nodoId === n.id).forEach(f => {
+          const val = f.conocida ? f.magnitud : solucion![incognitas.findIndex(i => i.tipo === "fuerzaExt" && i.refId === f.id)]
+          fx += val * Math.cos(f.angulo * Math.PI / 180)
+          fy += val * Math.sin(f.angulo * Math.PI / 180)
         })
         return { nombre: n.nombre, fx, fy }
       })
@@ -228,7 +219,6 @@ fuerzas.forEach(f => {
 
   const valorIncognita = (idx: number) => solucion ? solucion[idx] : 0
 
-  // ── Dibujo ─────────────────────────────────────────────────────────────────
   useEffect(() => { dibujar() }, [nodos, elementos, fuerzas, solucion])
 
   const dibujar = () => {
@@ -271,15 +261,35 @@ fuerzas.forEach(f => {
     ctx.strokeStyle = "#cbd5e1"; ctx.lineWidth = 1
     ctx.strokeRect(padL, padT, W - padL - padR, H - padT - padB)
 
+    // Marcas numéricas de los ejes
+    ctx.fillStyle = "#9ca3af"; ctx.font = "9px sans-serif"; ctx.textAlign = "center"
+    let lastLX = -Infinity
+    for (let v = Math.floor((centroX - maxAbs) / step) * step; v <= centroX + maxAbs; v += step) {
+      const px = tx(v)
+      if (px < padL || px > W - padR || px - lastLX < 32) continue
+      lastLX = px
+      const label = Math.abs(v) < 0.001 ? "0" : parseFloat(v.toFixed(2)).toString()
+      ctx.fillText(label, px, H - padB + 12)
+    }
+    ctx.textAlign = "right"
+    let lastLY = Infinity
+    for (let v = Math.floor((centroY - maxAbs) / step) * step; v <= centroY + maxAbs; v += step) {
+      const py = ty(v)
+      if (py < padT || py > H - padB || lastLY - py < 18) continue
+      lastLY = py
+      const label = Math.abs(v) < 0.001 ? "0" : parseFloat(v.toFixed(2)).toString()
+      ctx.fillText(label, padL - 4, py + 3)
+    }
+
     // Elementos (cables/barras)
-    elementosCalc.forEach((e, i) => {
+    elementosCalc.forEach((e) => {
       const A = getNodo(e.nodoA), B = getNodo(e.nodoB)
       const ax = tx(A.x), ay = ty(A.y), bx = tx(B.x), by = ty(B.y)
       ctx.strokeStyle = e.color; ctx.lineWidth = e.tipo === "barra" ? 4 : 2
-      if (e.tipo === "cable") ctx.setLineDash([])
       ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke()
 
-      const val = e.conocido ? e.valorConocido : (incognitas.findIndex(ii => ii.tipo === "elemento" && ii.refId === e.id) >= 0 ? valorIncognita(incognitas.findIndex(ii => ii.tipo === "elemento" && ii.refId === e.id)) : 0)
+      const idx = incognitas.findIndex(ii => ii.tipo === "elemento" && ii.refId === e.id)
+      const val = e.conocido ? e.valorConocido : (idx >= 0 ? valorIncognita(idx) : 0)
       ctx.fillStyle = e.color; ctx.font = "bold 10px sans-serif"; ctx.textAlign = "left"
       const lx = ax + (bx - ax) * 0.5, ly = ay + (by - ay) * 0.5
       ctx.fillText(`${e.nombre}=${fmt(val)} ${cfg.fuerza}`, lx + 4, ly - 4)
@@ -289,7 +299,11 @@ fuerzas.forEach(f => {
     nodos.forEach(n => {
       const nx = tx(n.x), ny = ty(n.y)
 
-      if (n.apoyo === "pasador") {
+      if (n.apoyo === "fijo") {
+        ctx.strokeStyle = "#475569"; ctx.lineWidth = 1.5
+        for (let k = -10; k <= 10; k += 5) { ctx.beginPath(); ctx.moveTo(nx + k, ny); ctx.lineTo(nx + k - 5, ny + 8); ctx.stroke() }
+        ctx.beginPath(); ctx.moveTo(nx - 10, ny); ctx.lineTo(nx + 10, ny); ctx.stroke()
+      } else if (n.apoyo === "pasador") {
         ctx.fillStyle = "#94a3b8"
         ctx.beginPath(); ctx.moveTo(nx, ny); ctx.lineTo(nx - 9, ny + 16); ctx.lineTo(nx + 9, ny + 16); ctx.closePath(); ctx.fill()
         for (let k = -8; k <= 8; k += 4) { ctx.strokeStyle = "#94a3b8"; ctx.beginPath(); ctx.moveTo(nx + k, ny + 16); ctx.lineTo(nx + k - 4, ny + 22); ctx.stroke() }
@@ -321,6 +335,8 @@ fuerzas.forEach(f => {
     fuerzas.forEach(f => {
       const n = getNodo(f.nodoId)
       const nx = tx(n.x), ny = ty(n.y)
+      const idx = incognitas.findIndex(ii => ii.tipo === "fuerzaExt" && ii.refId === f.id)
+      const magMostrar = f.conocida ? f.magnitud : (idx >= 0 ? valorIncognita(idx) : 0)
       const len = 65
       const fx = nx + len * Math.cos(f.angulo * Math.PI / 180)
       const fy = ny - len * Math.sin(f.angulo * Math.PI / 180)
@@ -333,7 +349,7 @@ fuerzas.forEach(f => {
       ctx.lineTo(fx - 10 * Math.cos(ang + 0.4), fy - 10 * Math.sin(ang + 0.4))
       ctx.closePath(); ctx.fill()
       ctx.font = "bold 10px sans-serif"; ctx.textAlign = "left"
-      ctx.fillText(`${f.nombre}=${fmt(f.magnitud)}`, fx + 4, fy + 4)
+      ctx.fillText(`${f.nombre}=${fmt(magMostrar)}`, fx + 4, fy + 4)
     })
 
     ctx.fillStyle = "#374151"; ctx.font = "bold 10px sans-serif"; ctx.textAlign = "left"
@@ -383,9 +399,9 @@ fuerzas.forEach(f => {
   }
 
   const agregarFuerza = (nodoId: number) => {
-  setFuerzas([...fuerzas, { id: nextFId, nodoId, nombre: `F${nextFId}`, magnitud: 100, angulo: 270, conocida: true, color: "#374151" }])
-  setNextFId(nextFId + 1)
-}
+    setFuerzas([...fuerzas, { id: nextFId, nodoId, nombre: `F${nextFId}`, magnitud: 100, angulo: 270, conocida: true, color: "#374151" }])
+    setNextFId(nextFId + 1)
+  }
   const eliminarFuerza = (id: number) => setFuerzas(fuerzas.filter(f => f.id !== id))
   const actualizarFuerza = (id: number, key: keyof FuerzaExterna, val: any) => {
     setFuerzas(fuerzas.map(f => f.id === id ? { ...f, [key]: val } : f))
@@ -452,10 +468,11 @@ fuerzas.forEach(f => {
                       <div className="text-xs text-gray-500 mb-1">Tipo de apoyo</div>
                       <select value={n.apoyo} onChange={e => actualizarNodo(n.id, "apoyo", e.target.value)}
                         className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs mb-2 focus:outline-none focus:border-blue-400">
-                        <option value="libre">Libre (nudo de equilibrio)</option>
-                        <option value="pasador">Pasador (2 reacciones)</option>
-                        <option value="rodillo">Rodillo (1 reacción)</option>
-                        <option value="empotrado">Empotrado (2 reacciones — sin momento aquí)</option>
+                        <option value="libre">Libre (nudo de equilibrio — calcula incógnitas)</option>
+                        <option value="fijo">Anclaje (pared, techo fijo — sin incógnitas)</option>
+                        <option value="pasador">Pasador (2 reacciones — cuerpo rígido)</option>
+                        <option value="rodillo">Rodillo (1 reacción — cuerpo rígido)</option>
+                        <option value="empotrado">Empotrado (2 reacciones — cuerpo rígido)</option>
                         <option value="polea">Polea (redirige cable)</option>
                       </select>
                       {n.apoyo === "rodillo" && (
@@ -532,54 +549,54 @@ fuerzas.forEach(f => {
               </div>
 
               {/* Fuerzas externas */}
-                <div className="bg-white border border-gray-200 rounded-xl p-5">
+              <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="flex items-center justify-between mb-3">
-                    <div className="text-xs text-gray-400 font-medium tracking-wider">FUERZAS EXTERNAS</div>
-                    {nodos.length > 0 && (
+                  <div className="text-xs text-gray-400 font-medium tracking-wider">FUERZAS EXTERNAS</div>
+                  {nodos.length > 0 && (
                     <button onClick={() => agregarFuerza(nodos[0].id)} className="text-xs bg-gray-700 text-white px-3 py-1.5 rounded-lg hover:bg-gray-800">+ Agregar fuerza</button>
-                    )}
+                  )}
                 </div>
                 {fuerzas.length === 0 && <div className="text-xs text-gray-400 text-center py-4">Sin fuerzas externas agregadas</div>}
                 <div className="flex flex-col gap-2">
-                    {fuerzas.map(f => (
+                  {fuerzas.map(f => (
                     <div key={f.id} className="p-3 rounded-xl border border-gray-100 bg-gray-50">
-                        <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2">
-                            <input value={f.nombre} onChange={e => actualizarFuerza(f.id, "nombre", e.target.value)}
+                          <input value={f.nombre} onChange={e => actualizarFuerza(f.id, "nombre", e.target.value)}
                             className="text-sm font-medium text-gray-800 bg-transparent w-14 focus:outline-none" />
-                            <select value={f.nodoId} onChange={e => actualizarFuerza(f.id, "nodoId", parseInt(e.target.value))}
+                          <select value={f.nodoId} onChange={e => actualizarFuerza(f.id, "nodoId", parseInt(e.target.value))}
                             className="text-xs border border-gray-300 rounded-lg px-2 py-1 focus:outline-none focus:border-blue-400">
                             {nodos.map(n => <option key={n.id} value={n.id}>en {n.nombre}</option>)}
-                            </select>
+                          </select>
                         </div>
                         <button onClick={() => eliminarFuerza(f.id)} className="text-xs text-red-400 hover:text-red-600">×</button>
-                        </div>
-                        <div className="grid grid-cols-2 gap-2 mb-2">
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 mb-2">
                         <div>
-                            <div className="text-xs text-gray-500 mb-1">Ángulo (°)</div>
-                            <input type="number" value={f.angulo} onChange={e => actualizarFuerza(f.id, "angulo", parseFloat(e.target.value) || 0)}
+                          <div className="text-xs text-gray-500 mb-1">Ángulo (°)</div>
+                          <input type="number" value={f.angulo} onChange={e => actualizarFuerza(f.id, "angulo", parseFloat(e.target.value) || 0)}
                             className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-blue-400" />
                         </div>
                         <div>
-                            <label className="flex items-center gap-1.5 text-xs text-gray-600 mt-5">
+                          <label className="flex items-center gap-1.5 text-xs text-gray-600 mt-5">
                             <input type="checkbox" checked={f.conocida} onChange={e => actualizarFuerza(f.id, "conocida", e.target.checked)} />
                             Magnitud conocida
-                            </label>
+                          </label>
                         </div>
-                        </div>
-                        {f.conocida ? (
+                      </div>
+                      {f.conocida ? (
                         <div>
-                            <div className="text-xs text-gray-500 mb-1">Magnitud ({cfg.fuerza})</div>
-                            <input type="number" value={f.magnitud} onChange={e => actualizarFuerza(f.id, "magnitud", parseFloat(e.target.value) || 0)}
+                          <div className="text-xs text-gray-500 mb-1">Magnitud ({cfg.fuerza})</div>
+                          <input type="number" value={f.magnitud} onChange={e => actualizarFuerza(f.id, "magnitud", parseFloat(e.target.value) || 0)}
                             className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-blue-400" />
                         </div>
-                        ) : (
+                      ) : (
                         <div className="text-xs text-amber-600 bg-amber-50 rounded-lg px-2 py-1.5">Magnitud será calculada como incógnita</div>
-                        )}
+                      )}
                     </div>
-                    ))}
+                  ))}
                 </div>
-                </div>
+              </div>
             </div>
 
             {/* Panel derecho */}
@@ -587,13 +604,13 @@ fuerzas.forEach(f => {
               <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">DIAGRAMA</div>
                 <canvas ref={canvasRef} className="w-full border border-gray-100 rounded-lg" style={{ height: 440 }} />
-                <div className="mt-2 text-xs text-gray-400">↻ Ángulos antihorario desde +x. Triángulo rayado = pasador. Triángulo con ruedas = rodillo. Bloque rayado = empotrado.</div>
+                <div className="mt-2 text-xs text-gray-400">↻ Ángulos antihorario desde +x. Rayado horizontal = anclaje. Triángulo rayado = pasador. Triángulo con ruedas = rodillo. Bloque rayado = empotrado.</div>
               </div>
 
               <div className={`rounded-xl p-4 border ${determinado ? "bg-green-50 border-green-200" : "bg-amber-50 border-amber-200"}`}>
                 <div className={`text-xs font-medium ${determinado ? "text-green-700" : "text-amber-700"}`}>
                   {determinado
-                    ? `✓ Sistema determinado — ${incognitas.length} incógnitas, ${numEcuaciones} ecuaciones (2 por nudo libre: ΣFx=0, ΣFy=0)`
+                    ? `✓ Sistema determinado — ${incognitas.length} incógnitas, ${numEcuaciones} ecuaciones (2 por nudo: ΣFx=0, ΣFy=0)`
                     : incognitas.length > numEcuaciones
                       ? `⚠ Sistema indeterminado — ${incognitas.length} incógnitas vs ${numEcuaciones} ecuaciones disponibles. Marca más valores como conocidos.`
                       : `⚠ Mecanismo — ${incognitas.length} incógnitas vs ${numEcuaciones} ecuaciones. Faltan elementos o apoyos para restringir el sistema.`}
@@ -605,8 +622,8 @@ fuerzas.forEach(f => {
                   <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">RESULTADOS</div>
                   <div className="grid grid-cols-2 gap-3">
                     {incognitas.map((inc, i) => (
-                      <div key={i} className="p-3 rounded-lg bg-blue-50 border-l-3 border-blue-600">
-                        <div className="text-xs text-blue-500">{inc.nombre} {inc.tipo === "elemento" ? "(elemento)" : "(reacción)"}</div>
+                      <div key={i} className="p-3 rounded-lg bg-blue-50 border-l-4 border-blue-600">
+                        <div className="text-xs text-blue-500">{inc.nombre} {inc.tipo === "elemento" ? "(elemento)" : inc.tipo === "fuerzaExt" ? "(fuerza)" : "(reacción)"}</div>
                         <div className="text-base font-bold text-blue-800">{fmt(solucion![i])} {cfg.fuerza}</div>
                         {inc.tipo === "elemento" && (
                           <div className="text-xs text-gray-400">{solucion![i] >= 0 ? "Tensión" : "Compresión"}</div>
