@@ -393,7 +393,7 @@ function CartaCasagrande({
 }: {
   wL: number; IP: number; resultado: ResultadoSUCS | null
 }) {
-  const W = 600, H = 400
+  const W = 440, H = 300
   const padL = 46, padR = 20, padT = 22, padB = 36
   const xMin = 0, xMax = 100, yMin = 0, yMax = 60
   const sx = (W - padL - padR) / (xMax - xMin)
@@ -508,7 +508,7 @@ function CartaCasagrande({
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} width="100%"
-      className="border border-gray-100 rounded-lg bg-white" style={{ maxHeight: 300 }}>
+      className="border border-gray-100 rounded-lg bg-white" style={{ maxHeight: 400 }}>
 
       {/* ── ZONAS COLOREADAS ── */}
       <polygon points={polyImposibleArriba} fill="#fef9c3" opacity="0.7" />
