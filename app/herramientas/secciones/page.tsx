@@ -344,7 +344,7 @@ function niceStep(range: number, targetTicks = 5): number {
   if (raw / base > 2) return base * 2
   return base
 }
-function dibujarCanvas(canvas: HTMLCanvasElement, elementos: Elemento[], resultado: ResultadoSeccion | null) {
+function dibujarCanvas(canvas: HTMLCanvasElement, elementos: Elemento[], resultado: ResultadoSeccion | null, unidad: string = "cm") {
   const ctx = canvas.getContext("2d")
   if (!ctx) return
 
@@ -354,7 +354,8 @@ function dibujarCanvas(canvas: HTMLCanvasElement, elementos: Elemento[], resulta
   canvas.width = W * dpr
   canvas.height = H * dpr
   ctx.scale(dpr, dpr)
-  ctx.clearRect(0, 0, W, H)
+  ctx.fillStyle = "#ffffff"
+  ctx.fillRect(0, 0, W, H)
 
   const todosLosPts: { x: number; y: number }[] = [{ x: 0, y: 0 }]
   for (const el of elementos) {
@@ -365,55 +366,83 @@ function dibujarCanvas(canvas: HTMLCanvasElement, elementos: Elemento[], resulta
       else todosLosPts.push(...pts)
     }
   }
-  let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity
-  for (const p of todosLosPts) {
-    if (p.x < xmin) xmin = p.x; if (p.x > xmax) xmax = p.x
-    if (p.y < ymin) ymin = p.y; if (p.y > ymax) ymax = p.y
+
+  const padL = 45, padR = 20, padT = 20, padB = 30
+  const allX = todosLosPts.map(p => p.x)
+  const allY = todosLosPts.map(p => p.y)
+  const maxAbsX = Math.max(...allX.map(Math.abs), 1)
+  const maxAbsY = Math.max(...allY.map(Math.abs), 1)
+  const maxAbs = Math.max(maxAbsX, maxAbsY) * 1.3
+
+  const scaleX = (W - padL - padR) / (2 * maxAbs)
+  const scaleY = (H - padT - padB) / (2 * maxAbs)
+  const sc = Math.min(scaleX, scaleY)
+
+  // Centro del plano basado en el centro de la geometría, no en (0,0) fijo
+  const centroX = (Math.min(...allX) + Math.max(...allX)) / 2
+  const centroY = (Math.min(...allY) + Math.max(...allY)) / 2
+  const cx = padL + (W - padL - padR) / 2
+  const cy = padT + (H - padT - padB) / 2
+
+  const tx = (x: number) => cx + (x - centroX) * sc
+  const ty = (y: number) => cy - (y - centroY) * sc
+
+  const rawStep = maxAbs / 3
+  const exp = Math.floor(Math.log10(rawStep || 1))
+  const base = Math.pow(10, exp)
+  const step = rawStep / base > 5 ? base * 5 : rawStep / base > 2 ? base * 2 : base
+
+  // Cuadrícula
+  ctx.strokeStyle = "#e2e8f0"; ctx.lineWidth = 0.5
+  const xStart = Math.floor((centroX - maxAbs) / step) * step
+  const xEnd = centroX + maxAbs
+  for (let v = xStart; v <= xEnd; v = parseFloat((v + step).toFixed(10))) {
+    ctx.beginPath(); ctx.moveTo(tx(v), padT); ctx.lineTo(tx(v), H - padB); ctx.stroke()
   }
-  if (xmax - xmin < 1) { xmin -= 5; xmax += 5 }
-  if (ymax - ymin < 1) { ymin -= 5; ymax += 5 }
-  const padL = 50, padR = 20, padT = 20, padB = 30
-  const WW = W - padL - padR, HH = H - padT - padB
-  const mg = 0.15
-  const scale = Math.min(WW / ((xmax - xmin) * (1 + mg * 2)), HH / ((ymax - ymin) * (1 + mg * 2)))
-  const ox = padL + (-xmin + (xmax - xmin) * mg) * scale
-  const oy = H - padB - (-ymin + (ymax - ymin) * mg) * scale
-  const tx = (x: number) => ox + x * scale
-  const ty = (y: number) => oy - y * scale
-  const stepX = niceStep(xmax - xmin), stepY = niceStep(ymax - ymin)
-  ctx.strokeStyle = "#e5e7eb"; ctx.lineWidth = 0.5
-  const x0g = Math.floor((xmin - (xmax - xmin) * mg) / stepX) * stepX
-  const x1g = xmax + (xmax - xmin) * mg + stepX * 2
-  for (let gx = x0g; gx <= x1g; gx = parseFloat((gx + stepX).toFixed(10))) {
-    ctx.beginPath(); ctx.moveTo(tx(gx), 0); ctx.lineTo(tx(gx), H); ctx.stroke()
+  const yStart = Math.floor((centroY - maxAbs) / step) * step
+  const yEnd = centroY + maxAbs
+  for (let v = yStart; v <= yEnd; v = parseFloat((v + step).toFixed(10))) {
+    ctx.beginPath(); ctx.moveTo(padL, ty(v)); ctx.lineTo(W - padR, ty(v)); ctx.stroke()
   }
-  const y0g = Math.floor((ymin - (ymax - ymin) * mg) / stepY) * stepY
-  const y1g = ymax + (ymax - ymin) * mg + stepY * 2
-  for (let gy = y0g; gy <= y1g; gy = parseFloat((gy + stepY).toFixed(10))) {
-    ctx.beginPath(); ctx.moveTo(0, ty(gy)); ctx.lineTo(W, ty(gy)); ctx.stroke()
-  }
+
+  // Etiquetas de ejes
   ctx.fillStyle = "#9ca3af"; ctx.font = "9px sans-serif"; ctx.textAlign = "center"
   let lastLX = -Infinity
-  for (let gx = x0g; gx <= x1g; gx = parseFloat((gx + stepX).toFixed(10))) {
-    const px = tx(gx)
-    if (px < padL || px > W - padR || px - lastLX < 30) continue
+  for (let v = xStart; v <= xEnd; v = parseFloat((v + step).toFixed(10))) {
+    const px = tx(v)
+    if (px < padL || px > W - padR || px - lastLX < 32) continue
     lastLX = px
-    ctx.fillText(Number.isInteger(gx) ? `${gx}` : `${parseFloat(gx.toFixed(2))}`, px, H - 6)
+    const label = Number.isInteger(v) ? `${v}` : parseFloat(v.toFixed(2)).toString()
+    ctx.fillText(label, px, H - padB + 12)
   }
   ctx.textAlign = "right"
   let lastLY = Infinity
-  for (let gy = y0g; gy <= y1g; gy = parseFloat((gy + stepY).toFixed(10))) {
-    const py = ty(gy)
-    if (py < padT || py > H - padB || lastLY - py < 20) continue
+  for (let v = yStart; v <= yEnd; v = parseFloat((v + step).toFixed(10))) {
+    const py = ty(v)
+    if (py < padT || py > H - padB || lastLY - py < 18) continue
     lastLY = py
-    ctx.fillText(Number.isInteger(gy) ? `${gy}` : `${parseFloat(gy.toFixed(2))}`, padL - 4, py + 3)
+    const label = Number.isInteger(v) ? `${v}` : parseFloat(v.toFixed(2)).toString()
+    ctx.fillText(label, padL - 4, py + 3)
   }
+
+  // Ejes principales (pasan por el origen real x=0, y=0 si está visible)
   ctx.strokeStyle = "#6b7280"; ctx.lineWidth = 1.2
-  ctx.beginPath(); ctx.moveTo(0, oy); ctx.lineTo(W, oy); ctx.stroke()
-  ctx.beginPath(); ctx.moveTo(ox, 0); ctx.lineTo(ox, H); ctx.stroke()
+  const oy0 = ty(0), ox0 = tx(0)
+  if (oy0 >= padT && oy0 <= H - padB) {
+    ctx.beginPath(); ctx.moveTo(padL, oy0); ctx.lineTo(W - padR, oy0); ctx.stroke()
+  }
+  if (ox0 >= padL && ox0 <= W - padR) {
+    ctx.beginPath(); ctx.moveTo(ox0, padT); ctx.lineTo(ox0, H - padB); ctx.stroke()
+  }
+  // Borde del área de dibujo
+  ctx.strokeStyle = "#cbd5e1"; ctx.lineWidth = 1
+  ctx.strokeRect(padL, padT, W - padL - padR, H - padT - padB)
+
   ctx.fillStyle = "#374151"; ctx.font = "bold 10px sans-serif"
-  ctx.textAlign = "left"; ctx.fillText("x (cm)", W - 38, oy - 4)
-  ctx.textAlign = "center"; ctx.fillText("y (cm)", ox + 4, padT - 6)
+  ctx.textAlign = "left"; ctx.fillText(`x (${unidad})`, W - padR - 30, padT - 6)
+  ctx.textAlign = "left"; ctx.fillText(`y (${unidad})`, padL + 4, padT - 6)
+
+  // Dibujar elementos
   const fills = ["rgba(59,130,246,0.2)", "rgba(16,185,129,0.2)", "rgba(245,158,11,0.2)", "rgba(239,68,68,0.2)", "rgba(139,92,246,0.2)"]
   const strokes = ["#1d4ed8", "#059669", "#d97706", "#dc2626", "#7c3aed"]
   elementos.forEach((el, idx) => {
@@ -439,15 +468,16 @@ function dibujarCanvas(canvas: HTMLCanvasElement, elementos: Elemento[], resulta
     ctx.fillStyle = stroke; ctx.font = "bold 10px sans-serif"; ctx.textAlign = "center"
     ctx.fillText(el.label, tx(el.x0 + 3), ty(el.y0 + 3))
   })
+
   if (resultado) {
-    const cx = tx(resultado.xc), cy = ty(resultado.yc)
+    const ccx = tx(resultado.xc), ccy = ty(resultado.yc)
     ctx.strokeStyle = "#dc2626"; ctx.lineWidth = 2
-    ctx.beginPath(); ctx.moveTo(cx - 10, cy); ctx.lineTo(cx + 10, cy); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(cx, cy - 10); ctx.lineTo(cx, cy + 10); ctx.stroke()
-    ctx.beginPath(); ctx.arc(cx, cy, 3.5, 0, Math.PI * 2)
+    ctx.beginPath(); ctx.moveTo(ccx - 10, ccy); ctx.lineTo(ccx + 10, ccy); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(ccx, ccy - 10); ctx.lineTo(ccx, ccy + 10); ctx.stroke()
+    ctx.beginPath(); ctx.arc(ccx, ccy, 3.5, 0, Math.PI * 2)
     ctx.fillStyle = "#dc2626"; ctx.fill()
     ctx.fillStyle = "#dc2626"; ctx.font = "bold 10px sans-serif"; ctx.textAlign = "left"
-    ctx.fillText(`C(${resultado.xc.toFixed(2)}, ${resultado.yc.toFixed(2)})`, cx + 7, cy - 5)
+    ctx.fillText(`C(${resultado.xc.toFixed(2)}, ${resultado.yc.toFixed(2)})`, ccx + 7, ccy - 5)
   }
 }
 
