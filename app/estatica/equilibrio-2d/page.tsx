@@ -34,6 +34,7 @@ type FuerzaExterna = {
   nombre: string
   magnitud: number
   angulo: number
+  conocida: boolean
   color: string
 }
 
@@ -82,8 +83,8 @@ export default function Equilibrio2D() {
     { id: 2, nombre: "T₂", nodoA: 3, nodoB: 2, tipo: "cable", conocido: false, valorConocido: 0, color: COLORES[1] },
   ])
   const [fuerzas, setFuerzas] = useState<FuerzaExterna[]>([
-    { id: 1, nodoId: 3, nombre: "W", magnitud: 500, angulo: 270, color: "#374151" },
-  ])
+  { id: 1, nodoId: 3, nombre: "W", magnitud: 500, angulo: 270, conocida: true, color: "#374151" },
+])
 
   const [nextNodoId, setNextNodoId] = useState(4)
   const [nextElId, setNextElId] = useState(3)
@@ -103,11 +104,14 @@ export default function Equilibrio2D() {
   })
 
   // ── Armar incógnitas: una por elemento no-conocido, más reacciones de apoyo ─
-  type Incognita = { tipo: "elemento" | "reaccionX" | "reaccionY"; refId: number; nombre: string }
+  type Incognita = { tipo: "elemento" | "reaccionX" | "reaccionY" | "fuerzaExt"; refId: number; nombre: string }
   const incognitas: Incognita[] = []
-  elementosCalc.forEach(e => {
-    if (!e.conocido) incognitas.push({ tipo: "elemento", refId: e.id, nombre: e.nombre })
-  })
+elementosCalc.forEach(e => {
+  if (!e.conocido) incognitas.push({ tipo: "elemento", refId: e.id, nombre: e.nombre })
+})
+fuerzas.forEach(f => {
+  if (!f.conocida) incognitas.push({ tipo: "fuerzaExt", refId: f.id, nombre: f.nombre })
+})
   nodos.forEach(n => {
     if (n.apoyo === "pasador" || n.apoyo === "empotrado") {
       incognitas.push({ tipo: "reaccionX", refId: n.id, nombre: `${n.nombre}x` })
@@ -167,14 +171,24 @@ export default function Equilibrio2D() {
         rowY[idxR] += Math.sin(angPerp)
       }
 
-      // Fuerzas externas en este nodo
-      fuerzas.filter(f => f.nodoId === n.id).forEach(f => {
-        knownX += f.magnitud * Math.cos(f.angulo * Math.PI / 180)
-        knownY += f.magnitud * Math.sin(f.angulo * Math.PI / 180)
-      })
+            // Fuerzas externas en este nodo
+        fuerzas.filter(f => f.nodoId === n.id).forEach(f => {
+        const cosA = Math.cos(f.angulo * Math.PI / 180)
+        const sinA = Math.sin(f.angulo * Math.PI / 180)
+        if (f.conocida) {
+            knownX += f.magnitud * cosA
+            knownY += f.magnitud * sinA
+        } else {
+            const idx = incognitas.findIndex(i => i.tipo === "fuerzaExt" && i.refId === f.id)
+            rowX[idx] += cosA
+            rowY[idx] += sinA
+        }
+        })
 
-      A.push(rowX); b.push(-knownX)
-      A.push(rowY); b.push(-knownY)
+      A.push(rowX)
+      b.push(-knownX)
+      A.push(rowY)
+      b.push(-knownY)
     })
 
     solucion = resolverSistema(A, b)
@@ -202,9 +216,10 @@ export default function Equilibrio2D() {
           fx += solucion![idxR] * Math.cos(angPerp)
           fy += solucion![idxR] * Math.sin(angPerp)
         }
-        fuerzas.filter(f => f.nodoId === n.id).forEach(f => {
-          fx += f.magnitud * Math.cos(f.angulo * Math.PI / 180)
-          fy += f.magnitud * Math.sin(f.angulo * Math.PI / 180)
+                fuerzas.filter(f => f.nodoId === n.id).forEach(f => {
+        const val = f.conocida ? f.magnitud : solucion![incognitas.findIndex(i => i.tipo === "fuerzaExt" && i.refId === f.id)]
+        fx += val * Math.cos(f.angulo * Math.PI / 180)
+        fy += val * Math.sin(f.angulo * Math.PI / 180)
         })
         return { nombre: n.nombre, fx, fy }
       })
@@ -368,9 +383,9 @@ export default function Equilibrio2D() {
   }
 
   const agregarFuerza = (nodoId: number) => {
-    setFuerzas([...fuerzas, { id: nextFId, nodoId, nombre: `F${nextFId}`, magnitud: 100, angulo: 270, color: "#374151" }])
-    setNextFId(nextFId + 1)
-  }
+  setFuerzas([...fuerzas, { id: nextFId, nodoId, nombre: `F${nextFId}`, magnitud: 100, angulo: 270, conocida: true, color: "#374151" }])
+  setNextFId(nextFId + 1)
+}
   const eliminarFuerza = (id: number) => setFuerzas(fuerzas.filter(f => f.id !== id))
   const actualizarFuerza = (id: number, key: keyof FuerzaExterna, val: any) => {
     setFuerzas(fuerzas.map(f => f.id === id ? { ...f, [key]: val } : f))
@@ -517,29 +532,54 @@ export default function Equilibrio2D() {
               </div>
 
               {/* Fuerzas externas */}
-              {fuerzas.length > 0 && (
                 <div className="bg-white border border-gray-200 rounded-xl p-5">
-                  <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">FUERZAS EXTERNAS</div>
-                  <div className="flex flex-col gap-2">
-                    {fuerzas.map(f => (
-                      <div key={f.id} className="p-3 rounded-xl border border-gray-100 bg-gray-50">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-xs text-gray-500">En nodo {getNodo(f.nodoId).nombre}</span>
-                          <button onClick={() => eliminarFuerza(f.id)} className="text-xs text-red-400 hover:text-red-600">×</button>
-                        </div>
-                        <div className="grid grid-cols-3 gap-2">
-                          <input value={f.nombre} onChange={e => actualizarFuerza(f.id, "nombre", e.target.value)}
-                            className="border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400" />
-                          <input type="number" value={f.magnitud} onChange={e => actualizarFuerza(f.id, "magnitud", parseFloat(e.target.value) || 0)}
-                            placeholder="Magnitud" className="border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400" />
-                          <input type="number" value={f.angulo} onChange={e => actualizarFuerza(f.id, "angulo", parseFloat(e.target.value) || 0)}
-                            placeholder="Ángulo" className="border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400" />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                <div className="flex items-center justify-between mb-3">
+                    <div className="text-xs text-gray-400 font-medium tracking-wider">FUERZAS EXTERNAS</div>
+                    {nodos.length > 0 && (
+                    <button onClick={() => agregarFuerza(nodos[0].id)} className="text-xs bg-gray-700 text-white px-3 py-1.5 rounded-lg hover:bg-gray-800">+ Agregar fuerza</button>
+                    )}
                 </div>
-              )}
+                {fuerzas.length === 0 && <div className="text-xs text-gray-400 text-center py-4">Sin fuerzas externas agregadas</div>}
+                <div className="flex flex-col gap-2">
+                    {fuerzas.map(f => (
+                    <div key={f.id} className="p-3 rounded-xl border border-gray-100 bg-gray-50">
+                        <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                            <input value={f.nombre} onChange={e => actualizarFuerza(f.id, "nombre", e.target.value)}
+                            className="text-sm font-medium text-gray-800 bg-transparent w-14 focus:outline-none" />
+                            <select value={f.nodoId} onChange={e => actualizarFuerza(f.id, "nodoId", parseInt(e.target.value))}
+                            className="text-xs border border-gray-300 rounded-lg px-2 py-1 focus:outline-none focus:border-blue-400">
+                            {nodos.map(n => <option key={n.id} value={n.id}>en {n.nombre}</option>)}
+                            </select>
+                        </div>
+                        <button onClick={() => eliminarFuerza(f.id)} className="text-xs text-red-400 hover:text-red-600">×</button>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 mb-2">
+                        <div>
+                            <div className="text-xs text-gray-500 mb-1">Ángulo (°)</div>
+                            <input type="number" value={f.angulo} onChange={e => actualizarFuerza(f.id, "angulo", parseFloat(e.target.value) || 0)}
+                            className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-blue-400" />
+                        </div>
+                        <div>
+                            <label className="flex items-center gap-1.5 text-xs text-gray-600 mt-5">
+                            <input type="checkbox" checked={f.conocida} onChange={e => actualizarFuerza(f.id, "conocida", e.target.checked)} />
+                            Magnitud conocida
+                            </label>
+                        </div>
+                        </div>
+                        {f.conocida ? (
+                        <div>
+                            <div className="text-xs text-gray-500 mb-1">Magnitud ({cfg.fuerza})</div>
+                            <input type="number" value={f.magnitud} onChange={e => actualizarFuerza(f.id, "magnitud", parseFloat(e.target.value) || 0)}
+                            className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-blue-400" />
+                        </div>
+                        ) : (
+                        <div className="text-xs text-amber-600 bg-amber-50 rounded-lg px-2 py-1.5">Magnitud será calculada como incógnita</div>
+                        )}
+                    </div>
+                    ))}
+                </div>
+                </div>
             </div>
 
             {/* Panel derecho */}
