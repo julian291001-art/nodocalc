@@ -381,75 +381,52 @@ function CartaCasagrande({
   const px = (w: number) => padL + (w - xMin) * sx
   const py = (ip: number) => H - padB - (ip - yMin) * sy
 
-  // ── ZONAS COLOREADAS ─────────────────────────────────────────────────────
   const lineaA = (w: number) => 0.73 * (w - 20)
   const lineaU = (w: number) => 0.9  * (w - 8)
 
-  // Puntos clave de las fronteras
-  // Linea A: arranca en wL=20 (IP=0), cruza IP=4 en wL=25.48, cruza IP=7 en wL=29.59
-  // Linea U: arranca en wL=8  (IP=0), cruza IP=7 en wL=15.78
+  // Clamp helper: nunca deja que IP salga del rango [0, yMax]
+  const clamp = (v: number) => Math.max(0, Math.min(yMax, v))
 
-  // ML — debajo de linea A, wL de 0 a 50
-  const zonaML = [
-    { x: px(0),    y: py(0) },
-    { x: px(50),   y: py(0) },
-    { x: px(50),   y: py(lineaA(50)) },
-    { x: px(29.59),y: py(7) },
-    { x: px(25.48),y: py(4) },
-    { x: px(0),    y: py(4) },
-  ]
+  // ── Construir una región rellenando entre dos funciones de borde ────────
+  // techo(w) y piso(w) son funciones que devuelven IP en cada wL
+  function region(wIni: number, wFin: number, techo: (w:number)=>number, piso: (w:number)=>number, paso = 1) {
+    const top: [number, number][] = []
+    const bot: [number, number][] = []
+    for (let w = wIni; w <= wFin; w += paso) {
+      top.push([w, clamp(techo(w))])
+      bot.push([w, clamp(piso(w))])
+    }
+    const pts = [...top, ...bot.reverse()]
+    return pts.map(([w, ip]) => `${px(w).toFixed(1)},${py(ip).toFixed(1)}`).join(" ")
+  }
 
-  // CL-ML — franja estrecha entre IP=4 e IP=7, acotada por linea A a la derecha
-  const zonaCLML = [
-    { x: px(0),     y: py(4) },
-    { x: px(25.48), y: py(4) },
-    { x: px(29.59), y: py(7) },
-    { x: px(0),     y: py(7) },
-  ]
+  // ML: debajo de linea A, IP entre 0 y 7 (recortado por linea A), wL de 0 a 50
+  const polyML = region(0, 50, w => Math.min(lineaA(w), yMax), () => 0)
 
-  // CL — entre linea A (abajo), linea U (arriba), desde wL=15.78 hasta wL=50
-  const zonaCL = [
-    { x: px(29.59), y: py(7)            },
-    { x: px(50),    y: py(lineaA(50))   },
-    { x: px(50),    y: py(lineaU(50))   },
-    { x: px(15.78), y: py(7)            },
-  ]
+  // CL-ML: franja entre IP=4 e IP=7, PERO solo hasta donde toca linea A (no mas alla)
+  // entre wL=0 y wL=29.59 (donde linea A cruza IP=7)
+  const polyCLML = region(0, 29.59, w => Math.min(lineaA(w), 7), () => 4)
 
-  // MH — debajo de linea A, wL de 50 a 100
-  const zonaMH = [
-    { x: px(50),   y: py(0)            },
-    { x: px(100),  y: py(0)            },
-    { x: px(100),  y: py(lineaA(100))  },
-    { x: px(50),   y: py(lineaA(50))   },
-  ]
+  // CL: entre linea A (techo de ML) y linea U (techo), desde wL=15.78 (linea U cruza IP=7) hasta 50
+  const polyCL = region(15.78, 50, w => lineaU(w), w => lineaA(w))
 
-  // CH — encima de linea A, wL de 50 a 100
-  const zonaCH = [
-    { x: px(50),   y: py(lineaA(50))   },
-    { x: px(100),  y: py(lineaA(100))  },
-    { x: px(100),  y: py(yMax)         },
-    { x: px(50),   y: py(yMax)         },
-  ]
+  // MH: debajo de linea A, wL de 50 a 100
+  const polyMH = region(50, 100, w => lineaA(w), () => 0)
 
-  // Zona imposible (amarillo) — encima de linea U, en todo el ancho del grafico
-  const zonaImposible = [
-    { x: px(8),    y: py(0)    },
-    { x: px(100),  y: py(lineaU(100)) },
-    { x: px(100),  y: py(yMax) },
-    { x: px(8),    y: py(yMax) },
-  ]
+  // CH: entre linea A y linea U, wL de 50 a 100
+  const polyCH = region(50, 100, w => lineaU(w), w => lineaA(w))
 
-  const toPolygon = (pts: {x:number; y:number}[]) =>
-    pts.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ")
+  // Zona imposible (amarillo): encima de linea U, TODO el ancho desde wL=0
+  const polyImposible = region(0, 100, () => yMax, w => lineaU(w))
 
-  // Lineas para path
+  // ── LÍNEAS COMPLETAS (de borde a borde, recortadas en y=[0, yMax]) ───────
   const ptA: [number, number][] = []
-  for (let w = 25.5; w <= 100; w += 1.5) {
+  for (let w = 0; w <= 100; w += 2) {
     const ip = lineaA(w)
     if (ip >= 0 && ip <= yMax) ptA.push([w, ip])
   }
   const ptU: [number, number][] = []
-  for (let w = 16; w <= 50; w += 1.5) {
+  for (let w = 0; w <= 100; w += 2) {
     const ip = lineaU(w)
     if (ip >= 0 && ip <= yMax) ptU.push([w, ip])
   }
@@ -470,12 +447,12 @@ function CartaCasagrande({
       className="border border-gray-100 rounded-lg bg-white" style={{ maxHeight: 300 }}>
 
       {/* ── ZONAS COLOREADAS ── */}
-      <polygon points={toPolygon(zonaImposible)} fill="#fef9c3" opacity="0.7" />
-      <polygon points={toPolygon(zonaML)}        fill="#d1fae5" opacity="0.8" />
-      <polygon points={toPolygon(zonaCLML)}      fill="#fed7aa" opacity="0.8" />
-      <polygon points={toPolygon(zonaCL)}        fill="#bfdbfe" opacity="0.8" />
-      <polygon points={toPolygon(zonaMH)}        fill="#ede9fe" opacity="0.7" />
-      <polygon points={toPolygon(zonaCH)}        fill="#bfdbfe" opacity="0.8" />
+      <polygon points={polyImposible} fill="#fef9c3" opacity="0.7" />
+      <polygon points={polyML}        fill="#d1fae5" opacity="0.8" />
+      <polygon points={polyCLML}      fill="#fed7aa" opacity="0.8" />
+      <polygon points={polyCL}        fill="#bfdbfe" opacity="0.8" />
+      <polygon points={polyMH}        fill="#ede9fe" opacity="0.7" />
+      <polygon points={polyCH}        fill="#fbcfe8" opacity="0.8" />
 
       {/* ── CUADRÍCULA ── */}
       {[10,20,30,40,50,60,70,80,90].map(w => (
@@ -502,10 +479,10 @@ function CartaCasagrande({
       <line x1={px(29.59)} y1={py(7)} x2={px(50)} y2={py(7)}
         stroke="#9ca3af" strokeWidth="0.8" strokeDasharray="2,2" />
 
-      {/* ── LÍNEA U ── */}
+      {/* ── LÍNEA U (completa) ── */}
       <path d={toPath(ptU)} fill="none" stroke="#6b7280" strokeWidth="1.2" strokeDasharray="5,3" />
 
-      {/* ── LÍNEA A ── */}
+      {/* ── LÍNEA A (completa) ── */}
       <path d={toPath(ptA)} fill="none" stroke="#1e3a8a" strokeWidth="1.8" />
 
       {/* ── LABELS DE ZONAS ── */}
@@ -513,7 +490,7 @@ function CartaCasagrande({
       <text x={px(38)} y={py(18)}  textAnchor="middle" fontSize="8.5" fill="#1e40af" fontWeight="700">CL</text>
       <text x={px(22)} y={py(5.5)} textAnchor="middle" fontSize="7.5" fill="#92400e" fontWeight="700">CL-ML</text>
       <text x={px(72)} y={py(4)}   textAnchor="middle" fontSize="8.5" fill="#5b21b6" fontWeight="700">MH</text>
-      <text x={px(72)} y={py(38)}  textAnchor="middle" fontSize="8.5" fill="#1e40af" fontWeight="700">CH</text>
+      <text x={px(72)} y={py(38)}  textAnchor="middle" fontSize="8.5" fill="#9d174d" fontWeight="700">CH</text>
 
       {/* ── LABELS EJES ── */}
       {[0,10,20,30,40,50,60,70,80,90,100].map(w => (
