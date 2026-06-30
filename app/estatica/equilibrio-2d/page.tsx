@@ -1,7 +1,7 @@
 "use client"
 import { useState, useRef, useEffect } from "react"
-import Sidebar from "../../../components/Sidebar"
-import { useUnidadesStore } from "../../../store/useUnidadesStore"
+import Sidebar from "../../components/Sidebar"
+import { useUnidadesStore } from "../../store/useUnidadesStore"
 
 // ── Tipos ──────────────────────────────────────────────────────────────────
 type TipoApoyo = "libre" | "pasador" | "rodillo" | "empotrado" | "polea"
