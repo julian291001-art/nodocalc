@@ -92,19 +92,6 @@ function calcularSUCS(
   const lineaU = 0.9  * (wL - 8)
   const sobreA = IP > lineaA
 
-  // Punto fisicamente imposible: por encima de linea U
-  if (!isNaN(wL) && !isNaN(wP) && IP > lineaU) {
-    return r("N/A", "Combinacion no posible", null as any, "El punto (wL, IP) cae por encima de la Linea U, lo cual no corresponde a ningun suelo real segun la carta de Casagrande. Verifica los valores de limite liquido y limite plastico.", "—", "—", "—", "—")
-  }
-  // Punto imposible abajo-izquierda: IP entre 4 y 7, a la izquierda de donde
-  // tanto linea A como linea U cruzan ese valor de IP
-  if (!isNaN(wL) && !isNaN(wP) && IP >= 4 && IP <= 7) {
-    const wL_en_A = 20 + IP / 0.73
-    const wL_en_U = 8 + IP / 0.9
-    if (wL < wL_en_U) {
-      return r("N/A", "Combinacion no posible", null as any, "El punto (wL, IP) cae fuera de las zonas validas de clasificacion segun la carta de plasticidad.", "—", "—", "—", "—")
-    }
-  }
   // FINOS
   if (P200 > 50) {
     if (isNaN(wL) || isNaN(wP)) return null
@@ -119,9 +106,9 @@ function calcularSUCS(
       return r("N/A", "Combinacion no posible", null as any, "El punto (wL, IP) cae por encima de la Linea U.", "—","—","—","—")
     }
 
-    // 2. Zona imposible abajo-izquierda: triangulo bajo linea A, IP < 4
-    if (IP < 4 && IP <= lineaA) {
-      return r("N/A", "Combinacion no posible", null as any, "El punto (wL, IP) cae fuera de las zonas validas de clasificacion.", "—","—","—","—")
+    // 2. Zona imposible: IP < 4 (por debajo del minimo de CL-ML, sin importar wL)
+    if (IP < 4) {
+      return r("N/A", "Combinacion no posible", null as any, "El punto (wL, IP) cae por debajo del limite minimo de plasticidad (IP=4) para suelos finos clasificables.", "—","—","—","—")
     }
 
     // 3. CL-ML: cuadrilatero IP entre 4 y 7, entre linea U (izq) y linea A (der)
@@ -142,6 +129,7 @@ function calcularSUCS(
     if (IP > lineaA) return r("CH", "Arcilla inorganica de alta plasticidad", "arcilla", "Arcilla gorda de alta plasticidad.", "Muy baja", "Alta a muy alta", "Baja", "Problematico para cimentaciones.")
     return                  r("MH", "Limo inorganico de alta plasticidad",    "limo",    "Limo elastico de alta plasticidad.", "Muy baja", "Alta",            "Baja", "No recomendado sin mejoramiento.")
   }
+
   // GRUESOS
   const pGrava      = 100 - P4
   const pArena      = P4 - P200
