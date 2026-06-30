@@ -508,7 +508,7 @@ function CartaCasagrande({
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} width="100%"
-      className="border border-gray-100 rounded-lg bg-white" style={{ maxHeight: 300 }}>
+      className="border border-gray-100 rounded-lg bg-white" style={{ maxHeight: 400 }}>
 
       {/* ── ZONAS COLOREADAS ── */}
       <polygon points={polyImposibleArriba} fill="#fef9c3" opacity="0.7" />
