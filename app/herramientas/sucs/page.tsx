@@ -393,7 +393,7 @@ function CartaCasagrande({
 }: {
   wL: number; IP: number; resultado: ResultadoSUCS | null
 }) {
-  const W = 600, H = 400
+  const W = 800, H = 500
   const padL = 46, padR = 20, padT = 22, padB = 36
   const xMin = 0, xMax = 100, yMin = 0, yMax = 60
   const sx = (W - padL - padR) / (xMax - xMin)
