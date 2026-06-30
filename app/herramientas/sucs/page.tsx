@@ -96,7 +96,15 @@ function calcularSUCS(
   if (!isNaN(wL) && !isNaN(wP) && IP > lineaU) {
     return r("N/A", "Combinacion no posible", null as any, "El punto (wL, IP) cae por encima de la Linea U, lo cual no corresponde a ningun suelo real segun la carta de Casagrande. Verifica los valores de limite liquido y limite plastico.", "—", "—", "—", "—")
   }
-
+  // Punto imposible abajo-izquierda: IP entre 4 y 7, a la izquierda de donde
+  // tanto linea A como linea U cruzan ese valor de IP
+  if (!isNaN(wL) && !isNaN(wP) && IP >= 4 && IP <= 7) {
+    const wL_en_A = 20 + IP / 0.73
+    const wL_en_U = 8 + IP / 0.9
+    if (wL < wL_en_U) {
+      return r("N/A", "Combinacion no posible", null as any, "El punto (wL, IP) cae fuera de las zonas validas de clasificacion segun la carta de plasticidad.", "—", "—", "—", "—")
+    }
+  }
   // FINOS
   if (P200 > 50) {
     if (isNaN(wL) || isNaN(wP)) return null
@@ -537,12 +545,28 @@ function CartaCasagrande({
       <path d={toPath(ptA)} fill="none" stroke="#1e3a8a" strokeWidth="1.8" />
 
       {/* ── LABELS DE ZONAS ── */}
-      <text x={px(40)} y={py(5)}  textAnchor="middle" fontSize="8.5" fill="#065f46" fontWeight="700">ML u OL</text>
-      <text x={px(35)} y={py(18)} textAnchor="middle" fontSize="8.5" fill="#1e40af" fontWeight="700">CL u OL</text>
-      <text x={px(20)} y={py(6)}  textAnchor="middle" fontSize="6.5" fill="#92400e" fontWeight="700">CL-ML</text>
-      <text x={px(75)} y={py(20)} textAnchor="middle" fontSize="8.5" fill="#5b21b6" fontWeight="700">MH u OH</text>
-      <text x={px(70)} y={py(45)} textAnchor="middle" fontSize="8.5" fill="#9d174d" fontWeight="700">CH u OH</text>
 
+      <text x={px(40)} y={py(5)} textAnchor="middle" fontSize="7.5" fill="#065f46" fontWeight="700">
+        <tspan x={px(40)} dy="0">ML</tspan>
+        <tspan x={px(40)} dy="9">u</tspan>
+        <tspan x={px(40)} dy="9">OL</tspan>
+      </text>
+      <text x={px(35)} y={py(18)} textAnchor="middle" fontSize="7.5" fill="#1e40af" fontWeight="700">
+        <tspan x={px(35)} dy="0">CL</tspan>
+        <tspan x={px(35)} dy="9">u</tspan>
+        <tspan x={px(35)} dy="9">OL</tspan>
+      </text>
+      <text x={px(20)} y={py(6)} textAnchor="middle" fontSize="6.5" fill="#92400e" fontWeight="700">CL-ML</text>
+      <text x={px(75)} y={py(20)} textAnchor="middle" fontSize="7.5" fill="#5b21b6" fontWeight="700">
+        <tspan x={px(75)} dy="0">MH</tspan>
+        <tspan x={px(75)} dy="9">u</tspan>
+        <tspan x={px(75)} dy="9">OH</tspan>
+      </text>
+      <text x={px(70)} y={py(45)} textAnchor="middle" fontSize="7.5" fill="#9d174d" fontWeight="700">
+        <tspan x={px(70)} dy="0">CH</tspan>
+        <tspan x={px(70)} dy="9">u</tspan>
+        <tspan x={px(70)} dy="9">OH</tspan>
+      </text>
       {/* ── LABELS EJES ── */}
       {[0,10,20,30,40,50,60,70,80,90,100].map(w => (
         <text key={`lx${w}`} x={px(w)} y={H-padB+13}
@@ -893,6 +917,20 @@ export default function ClasificacionSUCS() {
               </button>
             </div>
             {/* ── RESULTADO ── */}
+            {resultado && resultado.simbolo === "N/A" && (
+              <div className="bg-red-50 border-2 border-red-300 rounded-xl p-6">
+                <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">
+                  Clasificacion SUCS / ASTM D2487
+                </div>
+                <div className="text-3xl font-bold text-red-700 mb-2">
+                  Combinacion no posible
+                </div>
+                <p className="text-sm text-red-700 leading-relaxed">
+                  {resultado.descripcion}
+                </p>
+              </div>
+            )}
+
             {resultado && col && (
               <div className={`${col.bg} border-2 ${col.border} rounded-xl p-6`}>
                 <div className="flex items-start justify-between mb-4 flex-wrap gap-3">
