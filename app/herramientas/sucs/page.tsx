@@ -89,7 +89,13 @@ function calcularSUCS(
 
   const IP     = wL - wP
   const lineaA = 0.73 * (wL - 20)
-  const sobreA = IP >= lineaA
+  const lineaU = 0.9  * (wL - 8)
+  const sobreA = IP > lineaA
+
+  // Punto fisicamente imposible: por encima de linea U
+  if (!isNaN(wL) && !isNaN(wP) && IP > lineaU) {
+    return r("N/A", "Combinacion no posible", null as any, "El punto (wL, IP) cae por encima de la Linea U, lo cual no corresponde a ningun suelo real segun la carta de Casagrande. Verifica los valores de limite liquido y limite plastico.", "—", "—", "—", "—")
+  }
 
   // FINOS
   if (P200 > 50) {
@@ -192,7 +198,7 @@ function esGranular(simbolo: string) {
   return /^(G|S)/.test(simbolo)
 }
 function esDoble(simbolo: string) {
-  return simbolo.includes("-")
+  return simbolo.includes("-") && simbolo !== "CL-ML"
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -531,11 +537,11 @@ function CartaCasagrande({
       <path d={toPath(ptA)} fill="none" stroke="#1e3a8a" strokeWidth="1.8" />
 
       {/* ── LABELS DE ZONAS ── */}
-      <text x={px(20)} y={py(1.5)} textAnchor="middle" fontSize="8.5" fill="#065f46" fontWeight="700">ML</text>
-      <text x={px(38)} y={py(18)}  textAnchor="middle" fontSize="8.5" fill="#1e40af" fontWeight="700">CL</text>
-      <text x={px(20)} y={py(11)}  textAnchor="middle" fontSize="6.5" fill="#92400e" fontWeight="700">CL-ML</text>
-      <text x={px(72)} y={py(4)}   textAnchor="middle" fontSize="8.5" fill="#5b21b6" fontWeight="700">MH</text>
-      <text x={px(72)} y={py(38)}  textAnchor="middle" fontSize="8.5" fill="#9d174d" fontWeight="700">CH</text>
+      <text x={px(40)} y={py(5)}  textAnchor="middle" fontSize="8.5" fill="#065f46" fontWeight="700">ML u OL</text>
+      <text x={px(35)} y={py(18)} textAnchor="middle" fontSize="8.5" fill="#1e40af" fontWeight="700">CL u OL</text>
+      <text x={px(20)} y={py(6)}  textAnchor="middle" fontSize="6.5" fill="#92400e" fontWeight="700">CL-ML</text>
+      <text x={px(75)} y={py(20)} textAnchor="middle" fontSize="8.5" fill="#5b21b6" fontWeight="700">MH u OH</text>
+      <text x={px(70)} y={py(45)} textAnchor="middle" fontSize="8.5" fill="#9d174d" fontWeight="700">CH u OH</text>
 
       {/* ── LABELS EJES ── */}
       {[0,10,20,30,40,50,60,70,80,90,100].map(w => (
@@ -978,7 +984,7 @@ export default function ClasificacionSUCS() {
                 {REF_SUCS.map(({ s, n, c }) => (
                   <div key={s}
                     className={`flex items-center gap-3 px-3 py-2.5 rounded-lg ${c}
-                      ${resultado?.simbolo === s || resultado?.simbolo.includes(s)
+                      ${resultado?.simbolo === s ? "ring-2 ring-offset-1 ring-blue-400" : ""}
                         ? "ring-2 ring-offset-1 ring-blue-400" : ""}`}>
                     <span className="font-bold text-sm w-14 flex-shrink-0">{s}</span>
                     <span className="text-xs leading-snug">{n}</span>
