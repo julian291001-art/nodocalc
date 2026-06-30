@@ -381,75 +381,68 @@ function CartaCasagrande({
   const px = (w: number) => padL + (w - xMin) * sx
   const py = (ip: number) => H - padB - (ip - yMin) * sy
 
-  // Linea A: IP = 0.73*(wL - 20), arranca en wL=25.5 donde IP=4
-  // Linea U: IP = 0.9*(wL - 8),   arranca en wL=16   donde IP=7.2
+  // ── ZONAS COLOREADAS ─────────────────────────────────────────────────────
   const lineaA = (w: number) => 0.73 * (w - 20)
   const lineaU = (w: number) => 0.9  * (w - 8)
 
-  // ── ZONAS COLOREADAS ─────────────────────────────────────────────────────
-  // Construimos polígonos para cada zona
+  // Puntos clave de las fronteras
+  // Linea A: arranca en wL=20 (IP=0), cruza IP=4 en wL=25.48, cruza IP=7 en wL=29.59
+  // Linea U: arranca en wL=8  (IP=0), cruza IP=7 en wL=15.78
 
-  // Límite derecho del gráfico
-  const xR = W - padR
-  const yB = H - padB  // eje X (IP=0)
-
-  // Puntos clave
-  // Línea A cruza IP=4 en wL=25.5, cruza IP=7 en wL=29.6
-  // Línea U cruza IP=7 en wL=15.8
-  // Intersección línea A y línea U: 0.73(w-20)=0.9(w-8) → w=18.8, ip=-1 (fuera del gráfico)
-  // Zona CL-ML: IP entre 4 y 7, entre linea A y wL=25.5 aprox
-
-  // ML (bajo línea A, wL <= 50, IP >= 0)
-  // Polígono: (0,0)→(50,0)→(50, lineaA(50))→(25.5, 4)→(0,4) aproximado
-  // Simplificamos: todo lo que está debajo de línea A y wL<=50
-  const zonaCLML = [
-    // pequeño triangulo/trapecio cerca del origen
-    { x: px(25.5), y: py(4)   },
-    { x: px(29.6), y: py(7)   },
-    { x: px(25.5), y: py(7)   },
-  ]
-
+  // ML — debajo de linea A, wL de 0 a 50
   const zonaML = [
-    { x: px(0),    y: py(0)   },
-    { x: px(50),   y: py(0)   },
+    { x: px(0),    y: py(0) },
+    { x: px(50),   y: py(0) },
     { x: px(50),   y: py(lineaA(50)) },
-    { x: px(25.5), y: py(4)   },
-    { x: px(25.5), y: py(0)   },
+    { x: px(29.59),y: py(7) },
+    { x: px(25.48),y: py(4) },
+    { x: px(0),    y: py(4) },
   ]
 
+  // CL-ML — franja estrecha entre IP=4 e IP=7, acotada por linea A a la derecha
+  const zonaCLML = [
+    { x: px(0),     y: py(4) },
+    { x: px(25.48), y: py(4) },
+    { x: px(29.59), y: py(7) },
+    { x: px(0),     y: py(7) },
+  ]
+
+  // CL — entre linea A (abajo), linea U (arriba), desde wL=15.78 hasta wL=50
   const zonaCL = [
-    { x: px(25.5), y: py(4)   },
-    { x: px(50),   y: py(lineaA(50)) },
-    { x: px(50),   y: py(lineaU(50)) },
-    { x: px(29.6), y: py(7)   },
+    { x: px(29.59), y: py(7)            },
+    { x: px(50),    y: py(lineaA(50))   },
+    { x: px(50),    y: py(lineaU(50))   },
+    { x: px(15.78), y: py(7)            },
   ]
 
+  // MH — debajo de linea A, wL de 50 a 100
   const zonaMH = [
-    { x: px(50),   y: py(0)         },
-    { x: px(xMax), y: py(0)         },
-    { x: px(xMax), y: py(lineaA(xMax)) },
-    { x: px(50),   y: py(lineaA(50)) },
+    { x: px(50),   y: py(0)            },
+    { x: px(100),  y: py(0)            },
+    { x: px(100),  y: py(lineaA(100))  },
+    { x: px(50),   y: py(lineaA(50))   },
   ]
 
+  // CH — encima de linea A, wL de 50 a 100
   const zonaCH = [
     { x: px(50),   y: py(lineaA(50))   },
-    { x: px(xMax), y: py(lineaA(xMax)) },
-    { x: px(xMax), y: py(yMax)         },
+    { x: px(100),  y: py(lineaA(100))  },
+    { x: px(100),  y: py(yMax)         },
     { x: px(50),   y: py(yMax)         },
   ]
 
-  // Zona sobre línea U (amarillo claro) — encima de lineaU, wL>=30 aprox
-  const zonaSobreU = [
-    { x: px(16),   y: py(lineaU(16))  },
-    { x: px(50),   y: py(lineaU(50))  },
-    { x: px(50),   y: py(yMax)        },
-    { x: px(16),   y: py(yMax)        },
+  // Zona imposible (amarillo) — encima de linea U, en todo el ancho del grafico
+  const zonaImposible = [
+    { x: px(8),    y: py(0)    },
+    { x: px(100),  y: py(lineaU(100)) },
+    { x: px(100),  y: py(yMax) },
+    { x: px(8),    y: py(yMax) },
   ]
 
   const toPolygon = (pts: {x:number; y:number}[]) =>
     pts.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ")
 
-  // Líneas para path
+  // Lineas para path
   const ptA: [number, number][] = []
   for (let w = 25.5; w <= 100; w += 1.5) {
     const ip = lineaA(w)
@@ -477,12 +470,12 @@ function CartaCasagrande({
       className="border border-gray-100 rounded-lg bg-white" style={{ maxHeight: 300 }}>
 
       {/* ── ZONAS COLOREADAS ── */}
-      <polygon points={toPolygon(zonaML)}    fill="#d1fae5" opacity="0.7" />
-      <polygon points={toPolygon(zonaCL)}    fill="#bfdbfe" opacity="0.7" />
-      <polygon points={toPolygon(zonaCLML)}  fill="#fed7aa" opacity="0.7" />
-      <polygon points={toPolygon(zonaMH)}    fill="#ede9fe" opacity="0.7" />
-      <polygon points={toPolygon(zonaCH)}    fill="#bfdbfe" opacity="0.7" />
-      <polygon points={toPolygon(zonaSobreU)} fill="#fef9c3" opacity="0.7" />
+      <polygon points={toPolygon(zonaImposible)} fill="#fef9c3" opacity="0.7" />
+      <polygon points={toPolygon(zonaML)}        fill="#d1fae5" opacity="0.8" />
+      <polygon points={toPolygon(zonaCLML)}      fill="#fed7aa" opacity="0.8" />
+      <polygon points={toPolygon(zonaCL)}        fill="#bfdbfe" opacity="0.8" />
+      <polygon points={toPolygon(zonaMH)}        fill="#ede9fe" opacity="0.7" />
+      <polygon points={toPolygon(zonaCH)}        fill="#bfdbfe" opacity="0.8" />
 
       {/* ── CUADRÍCULA ── */}
       {[10,20,30,40,50,60,70,80,90].map(w => (
@@ -504,9 +497,9 @@ function CartaCasagrande({
       <text x={px(50)+3} y={padT+9} fontSize="7.5" fill="#9ca3af">wL=50</text>
 
       {/* ── LÍNEAS HORIZONTALES zona CL-ML (IP=4 e IP=7) ── */}
-      <line x1={px(25.5)} y1={py(4)} x2={px(50)} y2={py(4)}
+      <line x1={px(25.48)} y1={py(4)} x2={px(50)} y2={py(4)}
         stroke="#9ca3af" strokeWidth="0.8" strokeDasharray="2,2" />
-      <line x1={px(25.5)} y1={py(7)} x2={px(50)} y2={py(7)}
+      <line x1={px(29.59)} y1={py(7)} x2={px(50)} y2={py(7)}
         stroke="#9ca3af" strokeWidth="0.8" strokeDasharray="2,2" />
 
       {/* ── LÍNEA U ── */}
