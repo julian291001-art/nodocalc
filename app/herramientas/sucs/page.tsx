@@ -552,7 +552,7 @@ function CartaCasagrande({
 
       {/* ── LABELS DE ZONAS ── */}
 
-      <text x={px(40)} y={py(10)} textAnchor="middle" fontSize="7.5" fill="#065f46" fontWeight="700">
+      <text x={px(40)} y={py(8.5)} textAnchor="middle" fontSize="7.5" fill="#065f46" fontWeight="700">
         <tspan x={px(40)} dy="0">ML</tspan>
         <tspan x={px(40)} dy="9">u</tspan>
         <tspan x={px(40)} dy="9">OL</tspan>
@@ -562,13 +562,13 @@ function CartaCasagrande({
         <tspan x={px(35)} dy="9">u</tspan>
         <tspan x={px(35)} dy="9">OL</tspan>
       </text>
-      <text x={px(20)} y={py(4.5)} textAnchor="middle" fontSize="6.5" fill="#92400e" fontWeight="700">CL-ML</text>
+      <text x={px(20)} y={py(5)} textAnchor="middle" fontSize="6.5" fill="#92400e" fontWeight="700">CL-ML</text>
       <text x={px(75)} y={py(20)} textAnchor="middle" fontSize="7.5" fill="#5b21b6" fontWeight="700">
         <tspan x={px(75)} dy="0">MH</tspan>
         <tspan x={px(75)} dy="9">u</tspan>
         <tspan x={px(75)} dy="9">OH</tspan>
       </text>
-      <text x={px(70)} y={py(49)} textAnchor="middle" fontSize="7.5" fill="#9d174d" fontWeight="700">
+      <text x={px(70)} y={py(47.5)} textAnchor="middle" fontSize="7.5" fill="#9d174d" fontWeight="700">
         <tspan x={px(70)} dy="0">CH</tspan>
         <tspan x={px(70)} dy="9">u</tspan>
         <tspan x={px(70)} dy="9">OH</tspan>
