@@ -96,23 +96,20 @@ function calcularSUCS(
   if (P200 > 50) {
     if (isNaN(wL) || isNaN(wP)) return null
 
-    const wA_en_4 = 20 + 4 / 0.73   // ≈ 25.48
-    const wA_en_7 = 20 + 7 / 0.73   // ≈ 29.59
     const wU_en_4 = 8  + 4 / 0.9    // ≈ 12.44
-    const wU_en_7 = 8  + 7 / 0.9    // ≈ 15.78
 
     // 1. Zona imposible arriba: por encima de linea U
     if (IP > lineaU) {
       return r("N/A", "Combinacion no posible", null as any, "El punto (wL, IP) cae por encima de la Linea U.", "—","—","—","—")
     }
 
-    // 2. Zona imposible: IP < 4 (por debajo del minimo de CL-ML, sin importar wL)
-    if (IP < 4) {
+    // 2. Zona imposible: IP < 4 Y encima de linea A (no llega a ser ML ni CL-ML)
+    if (IP < 4 && IP > lineaA) {
       return r("N/A", "Combinacion no posible", null as any, "El punto (wL, IP) cae por debajo del limite minimo de plasticidad (IP=4) para suelos finos clasificables.", "—","—","—","—")
     }
 
-    // 3. CL-ML: cuadrilatero IP entre 4 y 7, entre linea U (izq) y linea A (der)
-    if (IP >= 4 && IP <= 7 && IP <= lineaA && wL >= wU_en_4) {
+    // 3. CL-ML: IP entre 4 y 7, ENCIMA de linea A (o sobre ella), debajo de linea U
+    if (IP >= 4 && IP <= 7 && IP > lineaA && wL >= wU_en_4) {
       return r("CL-ML", "Arcilla limosa (frontera CL-ML)", "arcilla", "Suelo en la frontera CL/ML.", "Baja", "Media", "Media", "Evaluar caso por caso.")
     }
 
