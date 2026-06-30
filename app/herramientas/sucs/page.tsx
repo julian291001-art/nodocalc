@@ -397,32 +397,40 @@ function CartaCasagrande({
     return pts.map(([w, ip]) => `${px(w).toFixed(1)},${py(ip).toFixed(1)}`).join(" ")
   }
 
-  // wL donde linea A cruza IP=4, IP=7
-  const wA_en_4 = 20 + 4 / 0.73   // ≈ 25.48
-  const wA_en_7 = 20 + 7 / 0.73   // ≈ 29.59
-  // wL donde linea U cruza IP=7
-  const wU_en_7 = 8 + 7 / 0.9     // ≈ 15.78
+  // Puntos de cruce clave
+  const wA_en_4  = 20 + 4 / 0.73   // ≈ 25.48 -- linea A cruza IP=4
+  const wA_en_7  = 20 + 7 / 0.73   // ≈ 29.59 -- linea A cruza IP=7
+  const wU_en_4  = 8  + 4 / 0.9    // ≈ 12.44 -- linea U cruza IP=4
+  const wU_en_7  = 8  + 7 / 0.9    // ≈ 15.78 -- linea U cruza IP=7
 
-  // ML: debajo de linea A. De wL=0 a wA_en_4, techo es IP=4 (limite con CL-ML).
-  // De wA_en_4 a 50, techo sigue linea A (zona se va angostando).
-  const polyML_a = region(0, wA_en_4, () => 4, () => 0)
-  const polyML_b = region(wA_en_4, 50, w => lineaA(w), () => 0)
+  // ── NO POSIBLE (abajo): debajo de IP=4, a la izquierda de donde A cruza IP=4 ──
+  // Triangulo entre el origen, wA_en_4 y el eje
+  const polyNoPosibleAbajo = region(0, wA_en_4, () => 4, () => 0)
 
-  // CL-ML: SOLO existe entre wA_en_4 y wA_en_7 (donde linea A va de IP=4 a IP=7)
-  // techo = linea A (o 7, lo que sea menor), piso = 4
-  const polyCLML = region(wA_en_4, wA_en_7, w => Math.min(lineaA(w), 7), () => 4)
+  // ── ML: triangulo entre eje X, linea A y wL=50 ──
+  // techo = linea A, piso = 0, desde wA_en_4 (donde A cruza IP=4) hasta 50
+  const polyML = region(wA_en_4, 50, w => lineaA(w), () => 0)
 
-  // CL: entre linea A (piso) y linea U (techo), desde wU_en_7 hasta 50
-  const polyCL = region(wU_en_7, 50, w => lineaU(w), w => Math.max(lineaA(w), 0))
+  // ── CL-ML: franja entre IP=4 e IP=7, entre linea U (izquierda/techo) y linea A (derecha) ──
+  // Va de wU_en_4 a wA_en_7, techo=min(7, lineaA o yMax), piso=4
+  // Pero realmente el limite izquierdo de la franja es done U cruza 4, y el derecho donde A cruza 7
+  const polyCLML = region(wU_en_4, wA_en_7, w => Math.min(lineaA(w), 7), () => 4)
 
-  // MH: debajo de linea A, wL 50 a 100
+  // ── CL: entre linea A (piso) y linea U (techo), IP>=7, desde wU_en_7 hasta 50 ──
+  const polyCL = region(wU_en_7, 50, w => lineaU(w), w => Math.max(lineaA(w), 7))
+
+  // ── MH: debajo linea A, wL 50 a 100 ──
   const polyMH = region(50, 100, w => lineaA(w), () => 0)
 
-  // CH: entre linea A y linea U, wL 50 a 100
+  // ── CH: entre linea A y linea U, wL 50 a 100 ──
   const polyCH = region(50, 100, w => lineaU(w), w => lineaA(w))
 
-  // Zona imposible (amarillo): encima de linea U, todo el ancho
-  const polyImposible = region(0, 100, () => yMax, w => lineaU(w))
+  // ── Zona imposible arriba (amarillo): encima de linea U, todo el ancho ──
+  const polyImposibleArriba = region(0, 100, () => yMax, w => lineaU(w))
+
+  // ── Zona imposible abajo-izquierda (amarillo tambien): debajo de linea U
+  //    Y debajo de IP=4, a la izquierda de wU_en_4 ──
+  const polyImposibleIzq = region(0, wU_en_4, () => 4, () => 0)
 
   // ── LÍNEAS COMPLETAS ──────────────────────────────────────────────────
   const ptA: [number, number][] = []
@@ -452,13 +460,14 @@ function CartaCasagrande({
       className="border border-gray-100 rounded-lg bg-white" style={{ maxHeight: 300 }}>
 
       {/* ── ZONAS COLOREADAS (orden: fondo -> detalle) ── */}
-      <polygon points={polyImposible} fill="#fef9c3" opacity="0.7" />
-      <polygon points={polyML_a}      fill="#d1fae5" opacity="0.8" />
-      <polygon points={polyML_b}      fill="#d1fae5" opacity="0.8" />
-      <polygon points={polyMH}        fill="#ede9fe" opacity="0.7" />
-      <polygon points={polyCH}        fill="#fbcfe8" opacity="0.8" />
-      <polygon points={polyCL}        fill="#bfdbfe" opacity="0.8" />
-      <polygon points={polyCLML}      fill="#fed7aa" opacity="0.9" />
+      <polygon points={polyImposibleArriba} fill="#fef9c3" opacity="0.7" />
+      <polygon points={polyImposibleIzq}    fill="#fef9c3" opacity="0.7" />
+      <polygon points={polyML}              fill="#d1fae5" opacity="0.8" />
+      <polygon points={polyMH}              fill="#ede9fe" opacity="0.7" />
+      <polygon points={polyCH}              fill="#fbcfe8" opacity="0.8" />
+      <polygon points={polyCL}              fill="#bfdbfe" opacity="0.8" />
+      <polygon points={polyCLML}            fill="#fed7aa" opacity="0.9" />
+      <polygon points={polyNoPosibleAbajo}  fill="#fef9c3" opacity="0.7" />
 
       {/* ── CUADRÍCULA ── */}
       {[10,20,30,40,50,60,70,80,90].map(w => (
@@ -479,10 +488,8 @@ function CartaCasagrande({
         stroke="#9ca3af" strokeWidth="1" strokeDasharray="3,3" />
       <text x={px(50)+3} y={padT+9} fontSize="7.5" fill="#9ca3af">wL=50</text>
 
-      {/* ── LÍNEAS HORIZONTALES IP=4 e IP=7, SOLO dentro de la franja CL-ML ── */}
-      <line x1={px(wA_en_4)} y1={py(4)} x2={px(wU_en_7)} y2={py(7)}
-        stroke="none" />
-      <line x1={px(wA_en_4)} y1={py(4)} x2={px(wA_en_7)} y2={py(4)}
+      {/* ── LÍNEAS HORIZONTALES IP=4 e IP=7, dentro de la franja CL-ML ── */}
+      <line x1={px(wU_en_4)} y1={py(4)} x2={px(wA_en_4)} y2={py(4)}
         stroke="#9ca3af" strokeWidth="0.8" strokeDasharray="2,2" />
       <line x1={px(wU_en_7)} y1={py(7)} x2={px(wA_en_7)} y2={py(7)}
         stroke="#9ca3af" strokeWidth="0.8" strokeDasharray="2,2" />
@@ -496,7 +503,7 @@ function CartaCasagrande({
       {/* ── LABELS DE ZONAS ── */}
       <text x={px(20)} y={py(1.5)} textAnchor="middle" fontSize="8.5" fill="#065f46" fontWeight="700">ML</text>
       <text x={px(38)} y={py(18)}  textAnchor="middle" fontSize="8.5" fill="#1e40af" fontWeight="700">CL</text>
-      <text x={px(27)} y={py(9)}   textAnchor="middle" fontSize="7" fill="#92400e" fontWeight="700">CL-ML</text>
+      <text x={px(20)} y={py(8.5)} textAnchor="middle" fontSize="6.5" fill="#92400e" fontWeight="700">CL-ML</text>
       <text x={px(72)} y={py(4)}   textAnchor="middle" fontSize="8.5" fill="#5b21b6" fontWeight="700">MH</text>
       <text x={px(72)} y={py(38)}  textAnchor="middle" fontSize="8.5" fill="#9d174d" fontWeight="700">CH</text>
 
