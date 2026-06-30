@@ -108,19 +108,40 @@ function calcularSUCS(
   // FINOS
   if (P200 > 50) {
     if (isNaN(wL) || isNaN(wP)) return null
-    if (organico) {
-      if (wL < 50) return r("OL", "Arcilla organica / Limo organico de baja plasticidad",  "organico", "Suelo organico de baja plasticidad. Se identifica cuando wL(horno)/wL(orig) < 0.75.", "Baja a muy baja", "Media a alta",   "Baja",     "No recomendado para cimentaciones. Requiere tratamiento.")
-      return             r("OH", "Arcilla organica / Limo organico de alta plasticidad",   "organico", "Suelo organico de alta plasticidad. Alta compresibilidad y baja resistencia.",          "Muy baja",        "Muy alta",       "Muy baja", "No apto para construccion sin mejoramiento significativo.")
-    }
-    if (wL < 50) {
-      if (sobreA && IP > 7)  return r("CL",    "Arcilla inorganica de baja plasticidad", "arcilla", "Arcilla de baja plasticidad. Buena resistencia en seco, sensible al agua.",          "Baja",         "Media",        "Media a alta", "Aceptable para subrasante, terraplenes y nucleos de presas.")
-      if (!sobreA && IP < 4) return r("ML",    "Limo inorganico de baja plasticidad",    "limo",    "Limo de baja plasticidad. Sensible a cambios de humedad.",                           "Media a baja", "Media a alta", "Baja a media", "Subrasante con control estricto de compactacion y drenaje.")
-      return                        r("CL-ML", "Arcilla limosa (frontera CL-ML)",         "arcilla", "Suelo en la frontera CL/ML. Clasificacion dual, requiere juicio ingenieril.",         "Baja",         "Media",        "Media",        "Evaluar caso por caso. Se recomienda ensayos adicionales.")
-    }
-    if (sobreA) return r("CH", "Arcilla inorganica de alta plasticidad", "arcilla", "Arcilla gorda de alta plasticidad. Alta expansion con cambios de humedad.", "Muy baja", "Alta a muy alta", "Baja", "Problematico para cimentaciones. Requiere mejoramiento.")
-    return             r("MH", "Limo inorganico de alta plasticidad",    "limo",    "Limo elastico de alta plasticidad. Comportamiento similar a arcilla gorda.", "Muy baja", "Alta",            "Baja", "No recomendado sin mejoramiento. Sensible a variaciones de humedad.")
-  }
 
+    const wA_en_4 = 20 + 4 / 0.73   // ≈ 25.48
+    const wA_en_7 = 20 + 7 / 0.73   // ≈ 29.59
+    const wU_en_4 = 8  + 4 / 0.9    // ≈ 12.44
+    const wU_en_7 = 8  + 7 / 0.9    // ≈ 15.78
+
+    // 1. Zona imposible arriba: por encima de linea U
+    if (IP > lineaU) {
+      return r("N/A", "Combinacion no posible", null as any, "El punto (wL, IP) cae por encima de la Linea U.", "—","—","—","—")
+    }
+
+    // 2. Zona imposible abajo-izquierda: triangulo bajo linea A, IP < 4
+    if (IP < 4 && IP <= lineaA) {
+      return r("N/A", "Combinacion no posible", null as any, "El punto (wL, IP) cae fuera de las zonas validas de clasificacion.", "—","—","—","—")
+    }
+
+    // 3. CL-ML: cuadrilatero IP entre 4 y 7, entre linea U (izq) y linea A (der)
+    if (IP >= 4 && IP <= 7 && IP <= lineaA && wL >= wU_en_4) {
+      return r("CL-ML", "Arcilla limosa (frontera CL-ML)", "arcilla", "Suelo en la frontera CL/ML.", "Baja", "Media", "Media", "Evaluar caso por caso.")
+    }
+
+    if (organico) {
+      if (wL <= 50) return r("OL", "Arcilla organica / Limo organico de baja plasticidad",  "organico", "Suelo organico de baja plasticidad.",  "Baja a muy baja", "Media a alta",   "Baja",      "No recomendado para cimentaciones.")
+      return             r("OH", "Arcilla organica / Limo organico de alta plasticidad",    "organico", "Suelo organico de alta plasticidad.",  "Muy baja",        "Muy alta",       "Muy baja",  "No apto para construccion sin mejoramiento.")
+    }
+
+    if (wL <= 50) {
+      if (IP > lineaA) return r("CL", "Arcilla inorganica de baja plasticidad",  "arcilla", "Arcilla de baja plasticidad.", "Baja",         "Media",        "Media a alta", "Aceptable para subrasante con control de humedad.")
+      return                  r("ML", "Limo inorganico de baja plasticidad",     "limo",    "Limo de baja plasticidad.",    "Media a baja", "Media a alta", "Baja a media", "Subrasante con control estricto de compactacion.")
+    }
+
+    if (IP > lineaA) return r("CH", "Arcilla inorganica de alta plasticidad", "arcilla", "Arcilla gorda de alta plasticidad.", "Muy baja", "Alta a muy alta", "Baja", "Problematico para cimentaciones.")
+    return                  r("MH", "Limo inorganico de alta plasticidad",    "limo",    "Limo elastico de alta plasticidad.", "Muy baja", "Alta",            "Baja", "No recomendado sin mejoramiento.")
+  }
   // GRUESOS
   const pGrava      = 100 - P4
   const pArena      = P4 - P200
