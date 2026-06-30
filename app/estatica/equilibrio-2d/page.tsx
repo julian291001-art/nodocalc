@@ -70,6 +70,15 @@ function resolverSistema(A: number[][], b: number[]): number[] | null {
   return x
 }
 
+function combinaciones(arr: number[], k: number): number[][] {
+  if (k === 0) return [[]]
+  if (arr.length === 0) return []
+  const [first, ...rest] = arr
+  const withFirst = combinaciones(rest, k - 1).map(c => [first, ...c])
+  const withoutFirst = combinaciones(rest, k)
+  return [...withFirst, ...withoutFirst]
+}
+
 export default function Equilibrio2D() {
   const cfg = useUnidadesStore(s => s.config)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -84,7 +93,7 @@ export default function Equilibrio2D() {
     { id: 2, nombre: "T₂", nodoA: 3, nodoB: 2, tipo: "cable", conocido: true, valorConocido: 250, color: COLORES[1] },
   ])
   const [fuerzas, setFuerzas] = useState<FuerzaExterna[]>([
-    { id: 1, nodoId: 3, nombre: "W", magnitud: 500, angulo: 270, modo: "soloMagnitud", color: "#374151" },
+    { id: 1, nodoId: 3, nombre: "F2", magnitud: 100, angulo: 270, modo: "soloMagnitud", color: "#374151" },
   ])
 
   const [nextNodoId, setNextNodoId] = useState(4)
@@ -127,7 +136,7 @@ export default function Equilibrio2D() {
 
   const nodosConEcuacion = nodos.filter(n => n.apoyo !== "fijo")
   const numEcuaciones = nodosConEcuacion.length * 2
-  const determinado = incognitas.length === numEcuaciones && incognitas.length > 0
+  const determinado = incognitas.length <= numEcuaciones && incognitas.length > 0
 
   let solucion: number[] | null = null
   let checkPorNodo: { nombre: string; fx: number; fy: number }[] = []
@@ -192,7 +201,26 @@ export default function Equilibrio2D() {
       A.push(rowY); b.push(-knownY)
     })
 
-    solucion = resolverSistema(A, b)
+    const n = incognitas.length
+    if (n === numEcuaciones) {
+      solucion = resolverSistema(A, b)
+    } else {
+      // Tomar las primeras filas no triviales (que tienen al menos un coeficiente no nulo)
+      const filasValidas: number[] = []
+      for (let i = 0; i < A.length && filasValidas.length < n; i++) {
+        if (A[i].some(v => Math.abs(v) > 1e-9)) filasValidas.push(i)
+      }
+      if (filasValidas.length === n) {
+        solucion = resolverSistema(filasValidas.map(i => A[i]), filasValidas.map(i => b[i]))
+      }
+      if (!solucion) {
+        const idxAll = A.map((_, i) => i)
+        for (const combo of combinaciones(idxAll, n)) {
+          const sol = resolverSistema(combo.map(i => A[i]), combo.map(i => b[i]))
+          if (sol) { solucion = sol; break }
+        }
+      }
+    }
 
     if (solucion) {
       checkPorNodo = nodosConEcuacion.map(n => {
@@ -234,7 +262,6 @@ export default function Equilibrio2D() {
     }
   }
 
-  // Verificación de cables en compresión (no físicamente válido)
   const cablesInvalidos = elementosCalc.filter(e => {
     if (e.tipo !== "cable") return false
     const idx = incognitas.findIndex(i => i.tipo === "elemento" && i.refId === e.id)
@@ -646,10 +673,10 @@ export default function Equilibrio2D() {
               <div className={`rounded-xl p-4 border ${determinado ? "bg-green-50 border-green-200" : "bg-amber-50 border-amber-200"}`}>
                 <div className={`text-xs font-medium ${determinado ? "text-green-700" : "text-amber-700"}`}>
                   {determinado
-                    ? `✓ Sistema determinado — ${incognitas.length} incógnitas, ${numEcuaciones} ecuaciones (2 por nudo: ΣFx=0, ΣFy=0)`
-                    : incognitas.length > numEcuaciones
-                      ? `⚠ Sistema indeterminado — ${incognitas.length} incógnitas vs ${numEcuaciones} ecuaciones disponibles. Marca más valores como conocidos.`
-                      : `⚠ Mecanismo — ${incognitas.length} incógnitas vs ${numEcuaciones} ecuaciones. Faltan elementos, apoyos o fuerzas para restringir el sistema.`}
+                    ? incognitas.length === numEcuaciones
+                      ? `✓ Sistema determinado — ${incognitas.length} incógnitas, ${numEcuaciones} ecuaciones (2 por nudo: ΣFx=0, ΣFy=0)`
+                      : `✓ Sistema resuelto — ${incognitas.length} incógnita(s) con ${numEcuaciones} ecuaciones disponibles (algunas ecuaciones se usan como verificación)`
+                    : `⚠ Mecanismo — ${incognitas.length} incógnitas vs ${numEcuaciones} ecuaciones. Faltan elementos, apoyos o fuerzas para restringir el sistema.`}
                 </div>
               </div>
 
