@@ -28,13 +28,15 @@ type Elemento = {
   color: string
 }
 
+type ModoFuerza = "completa" | "soloMagnitud" | "resultante"
+
 type FuerzaExterna = {
   id: number
   nodoId: number
   nombre: string
   magnitud: number
   angulo: number
-  conocida: boolean
+  modo: ModoFuerza
   color: string
 }
 
@@ -45,7 +47,6 @@ function fmt(n: number, dec = 2) {
   return n.toFixed(dec)
 }
 
-// ── Solver de Gauss generalizado ────────────────────────────────────────────
 function resolverSistema(A: number[][], b: number[]): number[] | null {
   const n = b.length
   if (n === 0) return []
@@ -83,7 +84,7 @@ export default function Equilibrio2D() {
     { id: 2, nombre: "T₂", nodoA: 3, nodoB: 2, tipo: "cable", conocido: true, valorConocido: 250, color: COLORES[1] },
   ])
   const [fuerzas, setFuerzas] = useState<FuerzaExterna[]>([
-    { id: 1, nodoId: 3, nombre: "W", magnitud: 500, angulo: 270, conocida: false, color: "#374151" },
+    { id: 1, nodoId: 3, nombre: "W", magnitud: 500, angulo: 270, modo: "soloMagnitud", color: "#374151" },
   ])
 
   const [nextNodoId, setNextNodoId] = useState(4)
@@ -102,16 +103,17 @@ export default function Equilibrio2D() {
     return { ...e, angDesdeA, longitud }
   })
 
-  // ── Incógnitas ──────────────────────────────────────────────────────────
-  type Incognita = { tipo: "elemento" | "reaccionX" | "reaccionY" | "resultanteX" | "resultanteY"; refId: number; nombre: string }
+  type Incognita = { tipo: "elemento" | "reaccionX" | "reaccionY" | "resultanteX" | "resultanteY" | "fuerzaMag"; refId: number; nombre: string }
   const incognitas: Incognita[] = []
   elementosCalc.forEach(e => {
     if (!e.conocido) incognitas.push({ tipo: "elemento", refId: e.id, nombre: e.nombre })
   })
   fuerzas.forEach(f => {
-    if (!f.conocida) {
+    if (f.modo === "resultante") {
       incognitas.push({ tipo: "resultanteX", refId: f.id, nombre: `${f.nombre}x` })
       incognitas.push({ tipo: "resultanteY", refId: f.id, nombre: `${f.nombre}y` })
+    } else if (f.modo === "soloMagnitud") {
+      incognitas.push({ tipo: "fuerzaMag", refId: f.id, nombre: f.nombre })
     }
   })
   nodos.forEach(n => {
@@ -171,9 +173,13 @@ export default function Equilibrio2D() {
       }
 
       fuerzas.filter(f => f.nodoId === n.id).forEach(f => {
-        if (f.conocida) {
+        if (f.modo === "completa") {
           knownX += f.magnitud * Math.cos(f.angulo * Math.PI / 180)
           knownY += f.magnitud * Math.sin(f.angulo * Math.PI / 180)
+        } else if (f.modo === "soloMagnitud") {
+          const idx = incognitas.findIndex(i => i.tipo === "fuerzaMag" && i.refId === f.id)
+          rowX[idx] += Math.cos(f.angulo * Math.PI / 180)
+          rowY[idx] += Math.sin(f.angulo * Math.PI / 180)
         } else {
           const idxX = incognitas.findIndex(i => i.tipo === "resultanteX" && i.refId === f.id)
           const idxY = incognitas.findIndex(i => i.tipo === "resultanteY" && i.refId === f.id)
@@ -211,9 +217,13 @@ export default function Equilibrio2D() {
           fy += solucion![idxR] * Math.sin(angPerp)
         }
         fuerzas.filter(f => f.nodoId === n.id).forEach(f => {
-          if (f.conocida) {
+          if (f.modo === "completa") {
             fx += f.magnitud * Math.cos(f.angulo * Math.PI / 180)
             fy += f.magnitud * Math.sin(f.angulo * Math.PI / 180)
+          } else if (f.modo === "soloMagnitud") {
+            const val = solucion![incognitas.findIndex(i => i.tipo === "fuerzaMag" && i.refId === f.id)]
+            fx += val * Math.cos(f.angulo * Math.PI / 180)
+            fy += val * Math.sin(f.angulo * Math.PI / 180)
           } else {
             fx += solucion![incognitas.findIndex(i => i.tipo === "resultanteX" && i.refId === f.id)]
             fy += solucion![incognitas.findIndex(i => i.tipo === "resultanteY" && i.refId === f.id)]
@@ -224,9 +234,16 @@ export default function Equilibrio2D() {
     }
   }
 
+  // Verificación de cables en compresión (no físicamente válido)
+  const cablesInvalidos = elementosCalc.filter(e => {
+    if (e.tipo !== "cable") return false
+    const idx = incognitas.findIndex(i => i.tipo === "elemento" && i.refId === e.id)
+    const val = e.conocido ? e.valorConocido : (solucion && idx >= 0 ? solucion[idx] : 0)
+    return val < -0.01
+  })
+
   const valorIncognita = (idx: number) => solucion ? solucion[idx] : 0
 
-  // ── Dibujo ─────────────────────────────────────────────────────────────────
   useEffect(() => { dibujar() }, [nodos, elementos, fuerzas, solucion])
 
   const dibujar = () => {
@@ -289,14 +306,18 @@ export default function Equilibrio2D() {
     elementosCalc.forEach((e) => {
       const A = getNodo(e.nodoA), B = getNodo(e.nodoB)
       const ax = tx(A.x), ay = ty(A.y), bx = tx(B.x), by = ty(B.y)
-      ctx.strokeStyle = e.color; ctx.lineWidth = e.tipo === "barra" ? 4 : 2
-      ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke()
-
       const idx = incognitas.findIndex(ii => ii.tipo === "elemento" && ii.refId === e.id)
       const val = e.conocido ? e.valorConocido : (idx >= 0 ? valorIncognita(idx) : 0)
-      ctx.fillStyle = e.color; ctx.font = "bold 10px sans-serif"; ctx.textAlign = "left"
+      const esInvalido = e.tipo === "cable" && val < -0.01
+      ctx.strokeStyle = esInvalido ? "#dc2626" : e.color
+      ctx.lineWidth = e.tipo === "barra" ? 4 : 2
+      if (esInvalido) ctx.setLineDash([5, 3])
+      ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke()
+      ctx.setLineDash([])
+
+      ctx.fillStyle = esInvalido ? "#dc2626" : e.color; ctx.font = "bold 10px sans-serif"; ctx.textAlign = "left"
       const lx = ax + (bx - ax) * 0.5, ly = ay + (by - ay) * 0.5
-      ctx.fillText(`${e.nombre}=${fmt(val)} ${cfg.fuerza}`, lx + 4, ly - 4)
+      ctx.fillText(`${e.nombre}=${fmt(val)} ${cfg.fuerza}${esInvalido ? " ⚠" : ""}`, lx + 4, ly - 4)
     })
 
     nodos.forEach(n => {
@@ -339,12 +360,14 @@ export default function Equilibrio2D() {
       const nx = tx(n.x), ny = ty(n.y)
       let magMostrar = f.magnitud
       let angMostrar = f.angulo
-      if (!f.conocida && solucion) {
+      if (f.modo === "resultante" && solucion) {
         const idxX = incognitas.findIndex(ii => ii.tipo === "resultanteX" && ii.refId === f.id)
         const idxY = incognitas.findIndex(ii => ii.tipo === "resultanteY" && ii.refId === f.id)
         const rx = solucion[idxX], ry = solucion[idxY]
         magMostrar = Math.sqrt(rx * rx + ry * ry)
         angMostrar = Math.atan2(ry, rx) * 180 / Math.PI
+      } else if (f.modo === "soloMagnitud" && solucion) {
+        magMostrar = solucion[incognitas.findIndex(ii => ii.tipo === "fuerzaMag" && ii.refId === f.id)]
       }
       const len = 65
       const fx = nx + len * Math.cos(angMostrar * Math.PI / 180)
@@ -366,7 +389,6 @@ export default function Equilibrio2D() {
     ctx.fillText(`y (${cfg.longitud})`, padL + 4, padT - 6)
   }
 
-  // ── Acciones ───────────────────────────────────────────────────────────────
   const [nuevoNodoNombre, setNuevoNodoNombre] = useState("")
   const [nuevoNodoX, setNuevoNodoX] = useState("0")
   const [nuevoNodoY, setNuevoNodoY] = useState("0")
@@ -408,7 +430,7 @@ export default function Equilibrio2D() {
   }
 
   const agregarFuerza = (nodoId: number) => {
-    setFuerzas([...fuerzas, { id: nextFId, nodoId, nombre: `F${nextFId}`, magnitud: 100, angulo: 270, conocida: true, color: "#374151" }])
+    setFuerzas([...fuerzas, { id: nextFId, nodoId, nombre: `F${nextFId}`, magnitud: 100, angulo: 270, modo: "completa", color: "#374151" }])
     setNextFId(nextFId + 1)
   }
   const eliminarFuerza = (id: number) => setFuerzas(fuerzas.filter(f => f.id !== id))
@@ -428,10 +450,8 @@ export default function Equilibrio2D() {
         <div className="flex-1 overflow-y-auto p-6">
           <div className="grid grid-cols-2 gap-6">
 
-            {/* Panel izquierdo */}
             <div className="flex flex-col gap-4">
 
-              {/* Nodos */}
               <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="flex items-center justify-between mb-3">
                   <div className="text-xs text-gray-400 font-medium tracking-wider">NODOS</div>
@@ -497,7 +517,6 @@ export default function Equilibrio2D() {
                 </div>
               </div>
 
-              {/* Elementos */}
               <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="flex items-center justify-between mb-3">
                   <div className="text-xs text-gray-400 font-medium tracking-wider">ELEMENTOS (cables / barras)</div>
@@ -557,7 +576,6 @@ export default function Equilibrio2D() {
                 </div>
               </div>
 
-              {/* Fuerzas externas */}
               <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="flex items-center justify-between mb-3">
                   <div className="text-xs text-gray-400 font-medium tracking-wider">FUERZAS EXTERNAS</div>
@@ -580,11 +598,14 @@ export default function Equilibrio2D() {
                         </div>
                         <button onClick={() => eliminarFuerza(f.id)} className="text-xs text-red-400 hover:text-red-600">×</button>
                       </div>
-                      <label className="flex items-center gap-1.5 text-xs text-gray-600 mb-2">
-                        <input type="checkbox" checked={f.conocida} onChange={e => actualizarFuerza(f.id, "conocida", e.target.checked)} />
-                        Magnitud y dirección conocidas
-                      </label>
-                      {f.conocida ? (
+                      <div className="text-xs text-gray-500 mb-1">Qué se conoce</div>
+                      <select value={f.modo} onChange={e => actualizarFuerza(f.id, "modo", e.target.value)}
+                        className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs mb-2 focus:outline-none focus:border-blue-400">
+                        <option value="completa">Magnitud y ángulo conocidos (dato completo)</option>
+                        <option value="soloMagnitud">Solo ángulo conocido — magnitud incógnita</option>
+                        <option value="resultante">Nada conocido — magnitud y ángulo incógnitas</option>
+                      </select>
+                      {f.modo === "completa" && (
                         <div className="grid grid-cols-2 gap-2">
                           <div>
                             <div className="text-xs text-gray-500 mb-1">Magnitud ({cfg.fuerza})</div>
@@ -597,8 +618,17 @@ export default function Equilibrio2D() {
                               className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-blue-400" />
                           </div>
                         </div>
-                      ) : (
-                        <div className="text-xs text-amber-600 bg-amber-50 rounded-lg px-2 py-1.5">Magnitud y ángulo (resultante) se calculan como incógnita — usa esto cuando quieras hallar la carga que equilibra el sistema</div>
+                      )}
+                      {f.modo === "soloMagnitud" && (
+                        <div>
+                          <div className="text-xs text-gray-500 mb-1">Ángulo conocido (°)</div>
+                          <input type="number" value={f.angulo} onChange={e => actualizarFuerza(f.id, "angulo", parseFloat(e.target.value) || 0)}
+                            className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-blue-400" />
+                          <div className="text-xs text-amber-600 bg-amber-50 rounded-lg px-2 py-1.5 mt-2">Magnitud se calcula como incógnita</div>
+                        </div>
+                      )}
+                      {f.modo === "resultante" && (
+                        <div className="text-xs text-amber-600 bg-amber-50 rounded-lg px-2 py-1.5">Magnitud y ángulo (resultante completa) se calculan como incógnita</div>
                       )}
                     </div>
                   ))}
@@ -606,12 +636,11 @@ export default function Equilibrio2D() {
               </div>
             </div>
 
-            {/* Panel derecho */}
             <div className="flex flex-col gap-4">
               <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">DIAGRAMA</div>
                 <canvas ref={canvasRef} className="w-full border border-gray-100 rounded-lg" style={{ height: 440 }} />
-                <div className="mt-2 text-xs text-gray-400">↻ Ángulos antihorario desde +x. Rayado horizontal = anclaje. Triángulo rayado = pasador. Triángulo con ruedas = rodillo. Bloque rayado = empotrado.</div>
+                <div className="mt-2 text-xs text-gray-400">↻ Ángulos antihorario desde +x. Rayado horizontal = anclaje. Triángulo rayado = pasador. Triángulo con ruedas = rodillo. Bloque rayado = empotrado. Línea roja punteada = cable en compresión (no válido).</div>
               </div>
 
               <div className={`rounded-xl p-4 border ${determinado ? "bg-green-50 border-green-200" : "bg-amber-50 border-amber-200"}`}>
@@ -623,6 +652,14 @@ export default function Equilibrio2D() {
                       : `⚠ Mecanismo — ${incognitas.length} incógnitas vs ${numEcuaciones} ecuaciones. Faltan elementos, apoyos o fuerzas para restringir el sistema.`}
                 </div>
               </div>
+
+              {cablesInvalidos.length > 0 && (
+                <div className="rounded-xl p-4 border bg-red-50 border-red-200">
+                  <div className="text-xs font-medium text-red-700">
+                    ⚠ {cablesInvalidos.map(c => c.nombre).join(", ")} resulta en compresión (valor negativo) — un cable no puede empujar, solo tirar. Revisa la geometría o las cargas del problema.
+                  </div>
+                </div>
+              )}
 
               {determinado && solucion && (
                 <div className="bg-white border border-gray-200 rounded-xl p-5">
@@ -648,12 +685,21 @@ export default function Equilibrio2D() {
                             </div>
                           )
                         }
+                        if (inc.tipo === "fuerzaMag") {
+                          const f = fuerzas.find(ff => ff.id === inc.refId)!
+                          return (
+                            <div key={idx} className="p-3 rounded-lg bg-blue-50 border-l-4 border-blue-600">
+                              <div className="text-xs text-blue-500">{f.nombre} (magnitud — incógnita, ∠ {fmt(f.angulo, 1)}° conocido)</div>
+                              <div className="text-base font-bold text-blue-800">{fmt(solucion![idx])} {cfg.fuerza}</div>
+                            </div>
+                          )
+                        }
                         return (
                           <div key={idx} className="p-3 rounded-lg bg-blue-50 border-l-4 border-blue-600">
                             <div className="text-xs text-blue-500">{inc.nombre} {inc.tipo === "elemento" ? "(elemento)" : "(reacción)"}</div>
                             <div className="text-base font-bold text-blue-800">{fmt(solucion![idx])} {cfg.fuerza}</div>
                             {inc.tipo === "elemento" && (
-                              <div className="text-xs text-gray-400">{solucion![idx] >= 0 ? "Tensión" : "Compresión"}</div>
+                              <div className="text-xs text-gray-400">{solucion![idx] >= 0 ? "Tensión" : "Compresión ⚠"}</div>
                             )}
                           </div>
                         )
