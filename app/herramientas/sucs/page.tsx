@@ -112,9 +112,9 @@ function calcularSUCS(
       return r("N/A", "Combinacion no posible", null as any, "El punto (wL, IP) cae por encima de la Linea U.", "—","—","—","—")
     }
 
-    // 2. Zona imposible: IP < 4 Y encima de linea A (no llega a ser ML ni CL-ML)
+    // 2. ML por debajo de CL-ML
     if (IP < 4 && IP > lineaA) {
-      return r("N/A", "Combinacion no posible", null as any, "El punto (wL, IP) cae por debajo del limite minimo de plasticidad (IP=4) para suelos finos clasificables.", "—","—","—","—")
+      return r("ML", "Limo inorganico de baja plasticidad", "limo", "Limo de baja plasticidad. IP menor a 4.", "Media a baja", "Media a alta", "Baja a media", "Subrasante con control estricto de compactacion.")
     }
 
     // 3. CL-ML: IP entre 4 y 7, ENCIMA de linea A (o sobre ella), debajo de linea U
@@ -494,12 +494,11 @@ function CartaCasagrande({
   // Es todo el espacio entre el eje X y el limite inferior real de CL-ML/ML, a la izquierda de wA_en_4
   // Triangulo: (0,0) -> (wU_en_4, 0)? en realidad el piso de "no posible" es 0, techo es linea A
   // hasta wA_en_0, luego sigue como techo=4 hasta wU_en_4 (limite con CL-ML)
-  const polyImposibleAbajo = [
-    pt(0, 0),
-    pt(wA_en_0, 0),
-    pt(wA_en_4, 4),
+  const polyMLAbajo = [
+    pt(wU_en_0, 0),
     pt(wU_en_4, 4),
-    pt(0, lineaU(0) > 0 ? lineaU(0) : 0),
+    pt(wA_en_4, 4),
+    pt(wA_en_0, 0),
   ].join(" ")
 
   // ── LÍNEAS COMPLETAS ──────────────────────────────────────────────────
@@ -531,8 +530,8 @@ function CartaCasagrande({
 
       {/* ── ZONAS COLOREADAS ── */}
       <polygon points={polyImposibleArriba} fill="#fef9c3" opacity="0.7" />
-      <polygon points={polyImposibleAbajo}  fill="#fef9c3" opacity="0.7" />
       <polygon points={polyML}              fill="#d1fae5" opacity="0.8" />
+      <polygon points={polyMLAbajo}         fill="#d1fae5" opacity="0.8" />
       <polygon points={polyMH}              fill="#ede9fe" opacity="0.7" />
       <polygon points={polyCH}              fill="#fbcfe8" opacity="0.8" />
       <polygon points={polyCL}              fill="#bfdbfe" opacity="0.8" />
