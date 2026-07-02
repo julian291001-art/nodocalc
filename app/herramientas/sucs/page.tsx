@@ -149,12 +149,12 @@ function calcularSUCS(
 
   if (esGrava) {
     if (finos < 5) {
-      if (!hasCuCc)    return r("G?", "Grava (Cu/Cc requeridos)", "grava", "Ingresa Cu y Cc para distinguir GW de GP.", "—","—","—","—")
+      if (!hasCuCc)    return null
       if (bienSurtido) return r("GW", "Grava bien gradada",       "grava", "Grava limpia bien gradada con mezcla de tamanos.",      "Alta", "Muy baja", "Alta", "Excelente para bases, sub-bases, drenajes y rellenos estructurales.")
       return                  r("GP", "Grava mal gradada",        "grava", "Grava limpia mal gradada o de tamano uniforme.",         "Alta", "Muy baja", "Alta", "Buena para drenajes. Menos adecuada para bases sin tratamiento.")
     }
     if (finos > 12) {
-      if (isNaN(wL) || isNaN(wP)) return r("G?", "Grava (Atterberg requeridos)", "grava", "Ingresa wL y wP para distinguir GC de GM.", "—","—","—","—")
+      if (isNaN(wL) || isNaN(wP)) return null
       if (sobreA && IP > 7) return r("GC", "Grava arcillosa", "grava", "Grava con finos plasticos (arcilla).", "Baja a media", "Baja", "Media a alta", "Nucleos impermeables de presas, subrasante.")
       return                  r("GM", "Grava limosa",        "grava", "Grava con finos no plasticos (limo).", "Baja a media", "Baja", "Media a alta", "Terraplenes, subrasante. Susceptible a helada.")
     }
@@ -167,7 +167,7 @@ function calcularSUCS(
         }
         return r("GP-GM", "Grava mal gradada con limo", "grava", "Simbolo doble asumido mal gradado: P200 > 10% impide calcular D10.", "Media a alta","Baja","Media a alta","Rellenos y bases.")
       }
-      return r("G??", "Grava doble simbolo (Cu/Cc requeridos)", "grava", "Ingresa Cu y Cc manualmente para determinar simbolo doble.", "—","—","—","—")
+      return null
     }
     if (!isNaN(wL) && !isNaN(wP)) {
       const enCLML = esZonaCLML(wL, wP)
@@ -186,12 +186,12 @@ function calcularSUCS(
 
   // ARENAS
   if (finos < 5) {
-    if (!hasCuCc)    return r("S?", "Arena (Cu/Cc requeridos)", "arena", "Ingresa Cu y Cc para distinguir SW de SP.", "—","—","—","—")
+    if (!hasCuCc)    return null
     if (bienSurtido) return r("SW", "Arena bien gradada",       "arena", "Arena limpia bien gradada. Buena distribucion de tamanos.",          "Alta", "Muy baja",    "Media a alta", "Excelente para bases, rellenos estructurales y concreto.")
     return                  r("SP", "Arena mal gradada",        "arena", "Arena limpia mal gradada o uniforme. Susceptible a licuacion.",       "Alta", "Baja",        "Media",        "Rellenos no estructurales. Evaluar licuacion en zonas sismicas.")
   }
   if (finos > 12) {
-    if (isNaN(wL) || isNaN(wP)) return r("S?", "Arena (Atterberg requeridos)", "arena", "Ingresa wL y wP para distinguir SC de SM.", "—","—","—","—")
+    if (isNaN(wL) || isNaN(wP)) return null
     if (sobreA && IP > 7) return r("SC", "Arena arcillosa", "arena", "Arena con finos plasticos. Buena cohesion aparente.",            "Baja a media", "Media",       "Media", "Subrasante y terraplenes con control de humedad.")
     return                  r("SM", "Arena limosa",        "arena", "Arena con finos no plasticos. Susceptible a cambios de humedad.", "Media",        "Baja a media","Media", "Subrasante. Evaluar compactacion y drenaje.")
   }
@@ -204,7 +204,7 @@ function calcularSUCS(
       }
       return r("SP-SM", "Arena mal gradada con limo", "arena", "Simbolo doble asumido mal gradado: P200 > 10% impide calcular D10.", "Media a alta","Baja","Media","Rellenos. Evaluar licuacion.")
     }
-    return r("S??", "Arena doble simbolo (Cu/Cc requeridos)", "arena", "Ingresa Cu y Cc manualmente para determinar simbolo doble.", "—","—","—","—")
+    return null
   }
   if (!isNaN(wL) && !isNaN(wP)) {
     const enCLML = esZonaCLML(wL, wP)
@@ -691,6 +691,7 @@ export default function ClasificacionSUCS() {
   // Resultado
   const [resultado, setResultado] = useState<ResultadoSUCS | null>(null)
   const [error, setError] = useState("")
+  const [intentoClasificar, setIntentoClasificar] = useState(false)
 
   // ── Derivados de tamices ──────────────────────────────────────────────────
   const puntosActivos: PuntoCurva[] = useMemo(() =>
@@ -737,6 +738,7 @@ export default function ClasificacionSUCS() {
   // ── Clasificar ────────────────────────────────────────────────────────────
   const calcular = () => {
     setError("")
+    setIntentoClasificar(true)
     if (isNaN(P200) || isNaN(P4)) {
       setError("Ingresa los valores de % pasa #200 y #4 en la tabla de tamices.")
       return
@@ -765,14 +767,18 @@ export default function ClasificacionSUCS() {
     setTamices(TAMICES_INIT)
     setWL(""); setWP(""); setOrganico(false)
     setResultado(null); setError("")
+    setIntentoClasificar(false)
   }
 
   const col = resultado?.tipo ? C[resultado.tipo] : null
 
   // ── Qué mostrar ───────────────────────────────────────────────────────────
   const mostrarCurva    = resultado !== null && (esGranular(resultado.simbolo) || esDoble(resultado.simbolo))
-  const mostrarCarta    = resultado !== null && (esFino(resultado.simbolo)     || esDoble(resultado.simbolo))
-
+  const mostrarCarta = resultado !== null && (
+    esFino(resultado.simbolo) ||
+    esDoble(resultado.simbolo) ||
+    ["GC","GM","SC","SM"].includes(resultado.simbolo)
+  )
   // ─────────────────────────────────────────────────────────────────────────
   return (
     <div className="flex h-screen bg-gray-100 font-sans">
@@ -925,6 +931,14 @@ export default function ClasificacionSUCS() {
             {error && (
               <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2.5">
                 {error}
+              </div>
+            )}
+
+            {intentoClasificar && resultado === null && !error && (
+              <div className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-4 py-2.5">
+                Informacion insuficiente para clasificar el suelo. Verifica que hayas ingresado
+                todos los datos necesarios: para suelos con menos del 5% de finos se requieren
+                Cu y Cc, y para suelos con mas del 12% de finos se requieren los limites de Atterberg.
               </div>
             )}
 
