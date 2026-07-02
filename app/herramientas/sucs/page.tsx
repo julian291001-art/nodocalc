@@ -81,6 +81,15 @@ function r(
   return { simbolo, nombre, tipo, descripcion, permeabilidad, compresibilidad, resistencia, uso }
 }
 
+function esZonaCLML(wL: number, wP: number): boolean {
+  if (isNaN(wL) || isNaN(wP)) return false
+  const IP = wL - wP
+  const lineaA = 0.73 * (wL - 20)
+  const lineaU = 0.9  * (wL - 8)
+  const wU_en_4 = 8 + 4 / 0.9
+  return IP >= 4 && IP <= 7 && IP > lineaA && IP <= lineaU && wL >= wU_en_4
+}
+
 function calcularSUCS(
   P200: number, P4: number, wL: number, wP: number,
   Cu: number, Cc: number, organico: boolean
@@ -161,6 +170,11 @@ function calcularSUCS(
       return r("G??", "Grava doble simbolo (Cu/Cc requeridos)", "grava", "Ingresa Cu y Cc manualmente para determinar simbolo doble.", "—","—","—","—")
     }
     if (!isNaN(wL) && !isNaN(wP)) {
+      const enCLML = esZonaCLML(wL, wP)
+      if (enCLML) {
+        if (bienSurtido) return r("GW-GC-GM", "Grava bien gradada con arcilla limosa", "grava", "Grava bien gradada con 5-12% finos en la frontera CL-ML (plasticidad ambigua).", "Media",      "Baja", "Alta",         "Bases y sub-bases con control de compactacion.")
+        return                   r("GP-GC-GM", "Grava mal gradada con arcilla limosa", "grava", "Grava mal gradada con 5-12% finos en la frontera CL-ML (plasticidad ambigua).", "Media a alta","Baja", "Media a alta", "Rellenos con control de compactacion.")
+      }
       if (bienSurtido && sobreA)  return r("GW-GC", "Grava bien gradada con arcilla", "grava", "Grava bien gradada con 5-12% finos plasticos.",     "Media",      "Baja","Alta",         "Bases y sub-bases con control de compactacion.")
       if (bienSurtido && !sobreA) return r("GW-GM", "Grava bien gradada con limo",   "grava", "Grava bien gradada con 5-12% finos no plasticos.",   "Media a alta","Baja","Alta",         "Bases y sub-bases.")
       if (!bienSurtido && sobreA) return r("GP-GC", "Grava mal gradada con arcilla", "grava", "Grava mal gradada con 5-12% finos plasticos.",       "Media",      "Baja","Media a alta", "Rellenos con control.")
@@ -193,6 +207,11 @@ function calcularSUCS(
     return r("S??", "Arena doble simbolo (Cu/Cc requeridos)", "arena", "Ingresa Cu y Cc manualmente para determinar simbolo doble.", "—","—","—","—")
   }
   if (!isNaN(wL) && !isNaN(wP)) {
+    const enCLML = esZonaCLML(wL, wP)
+    if (enCLML) {
+      if (bienSurtido) return r("SW-SC-SM", "Arena bien gradada con arcilla limosa", "arena", "Arena bien gradada con 5-12% finos en la frontera CL-ML (plasticidad ambigua).", "Media",       "Baja a media","Media a alta","Bases y rellenos con compactacion controlada.")
+      return                   r("SP-SC-SM", "Arena mal gradada con arcilla limosa", "arena", "Arena mal gradada con 5-12% finos en la frontera CL-ML (plasticidad ambigua).",  "Media a alta","Baja",         "Media",       "Rellenos. Evaluar licuacion.")
+    }
     if (bienSurtido && sobreA)  return r("SW-SC", "Arena bien gradada con arcilla", "arena", "Arena bien gradada con 5-12% finos plasticos.",    "Media",      "Baja a media","Media a alta","Bases y rellenos con compactacion controlada.")
     if (bienSurtido && !sobreA) return r("SW-SM", "Arena bien gradada con limo",   "arena", "Arena bien gradada con 5-12% finos no plasticos.",  "Media a alta","Baja",         "Media a alta","Rellenos y bases.")
     if (!bienSurtido && sobreA) return r("SP-SC", "Arena mal gradada con arcilla", "arena", "Arena mal gradada con 5-12% finos plasticos.",      "Media",      "Media",        "Media",       "Rellenos con control.")
