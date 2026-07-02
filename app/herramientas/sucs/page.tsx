@@ -934,13 +934,37 @@ export default function ClasificacionSUCS() {
               </div>
             )}
 
-            {intentoClasificar && resultado === null && !error && (
-              <div className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-4 py-2.5">
-                Informacion insuficiente para clasificar el suelo. Verifica que hayas ingresado
-                todos los datos necesarios: para suelos con menos del 5% de finos se requieren
-                Cu y Cc, y para suelos con mas del 12% de finos se requieren los limites de Atterberg.
-              </div>
-            )}
+            {intentoClasificar && resultado === null && !error && (() => {
+              const p200 = P200
+              const p4 = P4
+              const pGrava = 100 - p4
+              const pArena = p4 - p200
+              const fracGruesa = pGrava + pArena
+              const esGravaRender = fracGruesa > 0 && pGrava > fracGruesa / 2
+              const finos = p200
+
+              let mensaje = ""
+
+              if (!isNaN(p200) && !isNaN(p4) && p200 <= 50) {
+                if (finos < 5 && (!CuCalc || !CcCalc)) {
+                  mensaje = `Suelo granular con menos del 5% de finos: se requieren Cu y Cc para distinguir ${esGravaRender ? "GW de GP" : "SW de SP"}. La curva granulometrica no cubre suficientes puntos para interpolar D10, D30 y D60. Activa mas tamices e ingresa sus valores para que la curva pueda calcularlos automaticamente.`
+                } else if (finos >= 5 && finos <= 12 && (!CuCalc || !CcCalc)) {
+                  mensaje = `Suelo granular con finos entre 5% y 12% (simbolo doble): se requieren Cu y Cc para determinar la gradacion. La curva granulometrica no cubre suficientes puntos para interpolar D10, D30 y D60. Activa mas tamices e ingresa sus valores.`
+                } else if (finos > 12 && (isNaN(parseFloat(wL)) || isNaN(parseFloat(wP)))) {
+                  mensaje = `Suelo granular con mas del 12% de finos: se requieren los limites de Atterberg (wL y wP) para distinguir ${esGravaRender ? "GC de GM" : "SC de SM"}.`
+                } else {
+                  mensaje = "Informacion insuficiente para clasificar el suelo. Verifica los datos ingresados."
+                }
+              } else {
+                mensaje = "Informacion insuficiente para clasificar el suelo. Verifica los datos ingresados."
+              }
+
+              return (
+                <div className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-4 py-2.5 leading-relaxed">
+                  {mensaje}
+                </div>
+              )
+            })()}
 
             {/* ── BOTONES ── */}
             <div className="flex gap-3">
