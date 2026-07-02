@@ -155,8 +155,10 @@ function calcularSUCS(
     }
     if (finos > 12) {
       if (isNaN(wL) || isNaN(wP)) return null
+      if (IP > lineaU) return r("N/A", "Combinacion no posible", null as any, "El punto (wL, IP) cae por encima de la Linea U.", "—","—","—","—")
+      if (IP < 4 && IP > lineaA) return r("GM", "Grava limosa", "grava", "Grava con finos no plasticos (limo).", "Baja a media", "Baja", "Media a alta", "Terraplenes, subrasante.")
       if (sobreA && IP > 7) return r("GC", "Grava arcillosa", "grava", "Grava con finos plasticos (arcilla).", "Baja a media", "Baja", "Media a alta", "Nucleos impermeables de presas, subrasante.")
-      return                  r("GM", "Grava limosa",        "grava", "Grava con finos no plasticos (limo).", "Baja a media", "Baja", "Media a alta", "Terraplenes, subrasante. Susceptible a helada.")
+      return                  r("GM", "Grava limosa", "grava", "Grava con finos no plasticos (limo).", "Baja a media", "Baja", "Media a alta", "Terraplenes, subrasante.")
     }
     // 5 <= finos <= 12 -> doble simbolo
     if (!hasCuCc) {
@@ -170,15 +172,17 @@ function calcularSUCS(
       return null
     }
     if (!isNaN(wL) && !isNaN(wP)) {
+      if (IP > lineaU) return r("N/A", "Combinacion no posible", null as any, "El punto (wL, IP) cae por encima de la Linea U.", "—","—","—","—")
+      if (IP < 4 && IP > lineaA) return bienSurtido ? r("GW-GM", "Grava bien gradada con limo", "grava", "Grava bien gradada con finos en zona ML.", "Media a alta","Baja","Alta","Bases y sub-bases.") : r("GP-GM", "Grava mal gradada con limo", "grava", "Grava mal gradada con finos en zona ML.", "Media a alta","Baja","Media a alta","Rellenos y bases.")
       const enCLML = esZonaCLML(wL, wP)
       if (enCLML) {
-        if (bienSurtido) return r("GW-GC-GM", "Grava bien gradada con arcilla limosa", "grava", "Grava bien gradada con 5-12% finos en la frontera CL-ML (plasticidad ambigua).", "Media",      "Baja", "Alta",         "Bases y sub-bases con control de compactacion.")
-        return                   r("GP-GC-GM", "Grava mal gradada con arcilla limosa", "grava", "Grava mal gradada con 5-12% finos en la frontera CL-ML (plasticidad ambigua).", "Media a alta","Baja", "Media a alta", "Rellenos con control de compactacion.")
+        if (bienSurtido) return r("GW-GC-GM", "Grava bien gradada con arcilla limosa", "grava", "Grava bien gradada con 5-12% finos en la frontera CL-ML.", "Media","Baja","Alta","Bases y sub-bases con control de compactacion.")
+        return                   r("GP-GC-GM", "Grava mal gradada con arcilla limosa",  "grava", "Grava mal gradada con 5-12% finos en la frontera CL-ML.",  "Media a alta","Baja","Media a alta","Rellenos con control.")
       }
-      if (bienSurtido && sobreA)  return r("GW-GC", "Grava bien gradada con arcilla", "grava", "Grava bien gradada con 5-12% finos plasticos.",     "Media",      "Baja","Alta",         "Bases y sub-bases con control de compactacion.")
-      if (bienSurtido && !sobreA) return r("GW-GM", "Grava bien gradada con limo",   "grava", "Grava bien gradada con 5-12% finos no plasticos.",   "Media a alta","Baja","Alta",         "Bases y sub-bases.")
-      if (!bienSurtido && sobreA) return r("GP-GC", "Grava mal gradada con arcilla", "grava", "Grava mal gradada con 5-12% finos plasticos.",       "Media",      "Baja","Media a alta", "Rellenos con control.")
-      return                             r("GP-GM", "Grava mal gradada con limo",    "grava", "Grava mal gradada con 5-12% finos no plasticos.",    "Media a alta","Baja","Media a alta", "Rellenos y bases con tratamiento.")
+      if (bienSurtido && sobreA)  return r("GW-GC", "Grava bien gradada con arcilla", "grava", "Grava bien gradada con 5-12% finos plasticos.",   "Media",      "Baja","Alta",         "Bases y sub-bases con control de compactacion.")
+      if (bienSurtido && !sobreA) return r("GW-GM", "Grava bien gradada con limo",   "grava", "Grava bien gradada con 5-12% finos no plasticos.", "Media a alta","Baja","Alta",         "Bases y sub-bases.")
+      if (!bienSurtido && sobreA) return r("GP-GC", "Grava mal gradada con arcilla", "grava", "Grava mal gradada con 5-12% finos plasticos.",     "Media",      "Baja","Media a alta", "Rellenos con control.")
+      return                             r("GP-GM", "Grava mal gradada con limo",    "grava", "Grava mal gradada con 5-12% finos no plasticos.",  "Media a alta","Baja","Media a alta", "Rellenos y bases con tratamiento.")
     }
     if (bienSurtido) return r("GW-GM","Grava bien gradada con limo","grava","Grava bien gradada con 5-12% finos (Atterberg no ingresados).","Media a alta","Baja","Alta","Bases y sub-bases.")
     return                  r("GP-GM","Grava mal gradada con limo", "grava","Grava mal gradada con 5-12% finos (Atterberg no ingresados).","Media a alta","Baja","Media a alta","Rellenos y bases.")
@@ -192,8 +196,10 @@ function calcularSUCS(
   }
   if (finos > 12) {
     if (isNaN(wL) || isNaN(wP)) return null
-    if (sobreA && IP > 7) return r("SC", "Arena arcillosa", "arena", "Arena con finos plasticos. Buena cohesion aparente.",            "Baja a media", "Media",       "Media", "Subrasante y terraplenes con control de humedad.")
-    return                  r("SM", "Arena limosa",        "arena", "Arena con finos no plasticos. Susceptible a cambios de humedad.", "Media",        "Baja a media","Media", "Subrasante. Evaluar compactacion y drenaje.")
+    if (IP > lineaU) return r("N/A", "Combinacion no posible", null as any, "El punto (wL, IP) cae por encima de la Linea U.", "—","—","—","—")
+    if (IP < 4 && IP > lineaA) return r("SM", "Arena limosa", "arena", "Arena con finos no plasticos (limo).", "Media", "Baja a media", "Media", "Subrasante. Evaluar compactacion.")
+    if (sobreA && IP > 7) return r("SC", "Arena arcillosa", "arena", "Arena con finos plasticos (arcilla).", "Baja a media", "Media", "Media", "Subrasante y terraplenes con control de humedad.")
+  return                  r("SM", "Arena limosa", "arena", "Arena con finos no plasticos (limo).", "Media", "Baja a media", "Media", "Subrasante. Evaluar compactacion.")
   }
   // 5 <= finos <= 12 -> doble simbolo
   if (!hasCuCc) {
@@ -207,10 +213,12 @@ function calcularSUCS(
     return null
   }
   if (!isNaN(wL) && !isNaN(wP)) {
+    if (IP > lineaU) return r("N/A", "Combinacion no posible", null as any, "El punto (wL, IP) cae por encima de la Linea U.", "—","—","—","—")
+    if (IP < 4 && IP > lineaA) return bienSurtido ? r("SW-SM", "Arena bien gradada con limo", "arena", "Arena bien gradada con finos en zona ML.", "Media a alta","Baja","Media a alta","Rellenos y bases.") : r("SP-SM", "Arena mal gradada con limo", "arena", "Arena mal gradada con finos en zona ML.", "Media a alta","Baja","Media","Rellenos. Evaluar licuacion.")
     const enCLML = esZonaCLML(wL, wP)
     if (enCLML) {
-      if (bienSurtido) return r("SW-SC-SM", "Arena bien gradada con arcilla limosa", "arena", "Arena bien gradada con 5-12% finos en la frontera CL-ML (plasticidad ambigua).", "Media",       "Baja a media","Media a alta","Bases y rellenos con compactacion controlada.")
-      return                   r("SP-SC-SM", "Arena mal gradada con arcilla limosa", "arena", "Arena mal gradada con 5-12% finos en la frontera CL-ML (plasticidad ambigua).",  "Media a alta","Baja",         "Media",       "Rellenos. Evaluar licuacion.")
+      if (bienSurtido) return r("SW-SC-SM", "Arena bien gradada con arcilla limosa", "arena", "Arena bien gradada con 5-12% finos en la frontera CL-ML.", "Media","Baja a media","Media a alta","Bases y rellenos con compactacion controlada.")
+      return                   r("SP-SC-SM", "Arena mal gradada con arcilla limosa",  "arena", "Arena mal gradada con 5-12% finos en la frontera CL-ML.",  "Media a alta","Baja","Media","Rellenos. Evaluar licuacion.")
     }
     if (bienSurtido && sobreA)  return r("SW-SC", "Arena bien gradada con arcilla", "arena", "Arena bien gradada con 5-12% finos plasticos.",    "Media",      "Baja a media","Media a alta","Bases y rellenos con compactacion controlada.")
     if (bienSurtido && !sobreA) return r("SW-SM", "Arena bien gradada con limo",   "arena", "Arena bien gradada con 5-12% finos no plasticos.",  "Media a alta","Baja",         "Media a alta","Rellenos y bases.")
