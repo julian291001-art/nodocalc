@@ -70,7 +70,7 @@ function calcularAASHTO(
         return r("A-1-a", "Fragmentos de roca, grava y arena", "granular",
           "Material granular grueso bien graduado con pocos finos no plasticos a poco plasticos.",
           "Fragmentos de roca, grava y arena",
-          "Excelente a bueno", GI,
+          "Excelente a buena", GI,
           "Bases, sub-bases y rellenos estructurales de alta calidad.")
       }
       // A-1-b
@@ -79,7 +79,7 @@ function calcularAASHTO(
         return r("A-1-b", "Arena gruesa a fina con grava", "granular",
           "Material granular con finos no plasticos a poco plasticos.",
           "Arena gruesa a fina, con o sin grava",
-          "Excelente a bueno", GI,
+          "Excelente a buena", GI,
           "Bases y sub-bases; calidad ligeramente menor que A-1-a.")
       }
       // A-3
@@ -87,7 +87,7 @@ function calcularAASHTO(
         return r("A-3", "Arena fina uniforme", "granular",
           "Arena fina de granulometria uniforme, no plastica.",
           "Arena fina de playa o duna",
-          "Excelente a bueno", 0,
+          "Excelente a buena", 0,
           "Rellenos y sub-bases; baja cohesion, requiere confinamiento.")
       }
     }
@@ -99,14 +99,14 @@ function calcularAASHTO(
         return r("A-2-4", "Grava y arena limosa o arcillosa (LL bajo, IP bajo)", "granular",
           "Material granular con 5-35% de finos poco plasticos y limite liquido bajo.",
           "Grava y arena con limo o arcilla",
-          "Aceptable a mala", GI,
+          "Excelente a buena", GI,
           "Subrasante buena; base con control de finos.")
       }
       if (LL >= 41 && piEfectivo <= 10) {
         return r("A-2-5", "Grava y arena limosa o arcillosa (LL alto, IP bajo)", "granular",
           "Material granular con 5-35% de finos poco plasticos y limite liquido alto.",
           "Grava y arena con limo o arcilla",
-          "Aceptable a mala", GI,
+          "Excelente a buena", GI,
           "Subrasante buena; sensible a humedad por LL alto.")
       }
       if (LL <= 40 && piEfectivo >= 11) {
@@ -197,8 +197,8 @@ const COLUMNAS: ColumnaAASHTO[] = [
   { grupo: "A-1-a", tipo: "granular", p10: "≤ 50", p40: "≤ 30", p200: "≤ 15", ll: "—",     pi: "≤ 6",     giMax: "0",   tipologia: "Fragmentos de piedra, grava y arena", calidad: "Excelente a buena" },
   { grupo: "A-1-b", tipo: "granular", p10: "—",    p40: "≤ 50", p200: "≤ 25", ll: "—",     pi: "≤ 6",     giMax: "0",   tipologia: "Fragmentos de piedra, grava y arena", calidad: "Excelente a buena" },
   { grupo: "A-3",   tipo: "granular", p10: "—",    p40: "≥ 51", p200: "≤ 10", ll: "—",     pi: "0 (NP)",  giMax: "0",   tipologia: "Arena fina",                          calidad: "Excelente a buena" },
-  { grupo: "A-2-4", tipo: "granular", p10: "—",    p40: "—",    p200: "≤ 35", ll: "≤ 40",  pi: "≤ 10",    giMax: "≤ 4", tipologia: "Gravas y arenas limosas o arcillosas", calidad: "Aceptable a mala"  },
-  { grupo: "A-2-5", tipo: "granular", p10: "—",    p40: "—",    p200: "≤ 35", ll: "≥ 41",  pi: "≤ 10",    giMax: "≤ 4", tipologia: "Gravas y arenas limosas o arcillosas", calidad: "Aceptable a mala"  },
+  { grupo: "A-2-4", tipo: "granular", p10: "—",    p40: "—",    p200: "≤ 35", ll: "≤ 40",  pi: "≤ 10",    giMax: "≤ 4", tipologia: "Gravas y arenas limosas o arcillosas", calidad: "Excelente a buena"  },
+  { grupo: "A-2-5", tipo: "granular", p10: "—",    p40: "—",    p200: "≤ 35", ll: "≥ 41",  pi: "≤ 10",    giMax: "≤ 4", tipologia: "Gravas y arenas limosas o arcillosas", calidad: "Excelente a buena"  },
   { grupo: "A-2-6", tipo: "granular", p10: "—",    p40: "—",    p200: "≤ 35", ll: "≤ 40",  pi: "≥ 11",    giMax: "≤ 4", tipologia: "Gravas y arenas limosas o arcillosas", calidad: "Aceptable a mala"  },
   { grupo: "A-2-7", tipo: "granular", p10: "—",    p40: "—",    p200: "≤ 35", ll: "≥ 41",  pi: "≥ 11",    giMax: "≤ 4", tipologia: "Gravas y arenas limosas o arcillosas", calidad: "Aceptable a mala"  },
   { grupo: "A-4",   tipo: "fino",     p10: "—",    p40: "—",    p200: "≥ 36", ll: "≤ 40",  pi: "≤ 10",    giMax: "≤ 8", tipologia: "Suelos limosos",                      calidad: "Aceptable a mala"  },
