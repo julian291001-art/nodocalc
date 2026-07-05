@@ -13,7 +13,7 @@ export default function Herramientas() {
           <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">SUELOS</div>
           <div className="grid grid-cols-2 gap-4 mb-6">
             <a href="/herramientas/sucs"><HerramientaCard nombre="Clasificación SUCS" desc="Clasifica el suelo según el Sistema Unificado de Clasificación de Suelos." tag="Suelos" /></a>
-            <HerramientaCard nombre="Clasificación AASHTO" desc="Clasifica el suelo según el método AASHTO para uso en carreteras." tag="Suelos" />
+            <a href="/herramientas/aashto"><HerramientaCard nombre="Clasificación AASHTO" desc="Clasifica el suelo según el método AASHTO para uso en carreteras." tag="Suelos" /></a>
             <HerramientaCard nombre="Carta de Casagrande" desc="Grafica el suelo en la carta de plasticidad para identificar arcillas y limos." tag="Suelos" />
             <HerramientaCard nombre="Relaciones de fase" desc="Diagrama de fases interactivo. Ingresa 2 parámetros y calcula todos los demás." tag="Suelos" />
             <HerramientaCard nombre="Correcciones SPT" desc="Aplica correcciones N60, (N1)60 por energía, sobrecarga y diámetro." tag="Suelos" />
