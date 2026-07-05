@@ -99,28 +99,28 @@ function calcularAASHTO(
         return r("A-2-4", "Grava y arena limosa o arcillosa (LL bajo, IP bajo)", "granular",
           "Material granular con 5-35% de finos poco plasticos y limite liquido bajo.",
           "Grava y arena con limo o arcilla",
-          "Excelente a bueno", GI,
+          "Aceptable a mala", GI,
           "Subrasante buena; base con control de finos.")
       }
       if (LL >= 41 && piEfectivo <= 10) {
         return r("A-2-5", "Grava y arena limosa o arcillosa (LL alto, IP bajo)", "granular",
           "Material granular con 5-35% de finos poco plasticos y limite liquido alto.",
           "Grava y arena con limo o arcilla",
-          "Excelente a bueno", GI,
+          "Aceptable a mala", GI,
           "Subrasante buena; sensible a humedad por LL alto.")
       }
       if (LL <= 40 && piEfectivo >= 11) {
         return r("A-2-6", "Grava y arena arcillosa (LL bajo, IP alto)", "granular",
           "Material granular con 5-35% de finos plasticos y limite liquido bajo.",
           "Grava y arena con arcilla",
-          "Excelente a bueno", GI,
+          "Aceptable a mala", GI,
           "Subrasante buena; vigilar plasticidad de los finos.")
       }
       if (LL >= 41 && piEfectivo >= 11) {
         return r("A-2-7", "Grava y arena arcillosa (LL alto, IP alto)", "granular",
           "Material granular con 5-35% de finos plasticos y limite liquido alto.",
           "Grava y arena con arcilla",
-          "Excelente a bueno", GI,
+          "Aceptable a mala", GI,
           "Subrasante aceptable; el menos favorable del grupo A-2.")
       }
     }
@@ -188,21 +188,24 @@ type ColumnaAASHTO = {
   p200: string
   ll: string
   pi: string
+  giMax: string
+  tipologia: string
+  calidad: string
 }
 
 const COLUMNAS: ColumnaAASHTO[] = [
-  { grupo: "A-1-a", tipo: "granular", p10: "≤ 50", p40: "≤ 30", p200: "≤ 15", ll: "—",     pi: "≤ 6"      },
-  { grupo: "A-1-b", tipo: "granular", p10: "—",    p40: "≤ 50", p200: "≤ 25", ll: "—",     pi: "≤ 6"      },
-  { grupo: "A-3",   tipo: "granular", p10: "—",    p40: "≥ 51", p200: "≤ 10", ll: "—",     pi: "0 (NP)"   },
-  { grupo: "A-2-4", tipo: "granular", p10: "—",    p40: "—",    p200: "≤ 35", ll: "≤ 40",  pi: "≤ 10"     },
-  { grupo: "A-2-5", tipo: "granular", p10: "—",    p40: "—",    p200: "≤ 35", ll: "≥ 41",  pi: "≤ 10"     },
-  { grupo: "A-2-6", tipo: "granular", p10: "—",    p40: "—",    p200: "≤ 35", ll: "≤ 40",  pi: "≥ 11"     },
-  { grupo: "A-2-7", tipo: "granular", p10: "—",    p40: "—",    p200: "≤ 35", ll: "≥ 41",  pi: "≥ 11"     },
-  { grupo: "A-4",   tipo: "fino",     p10: "—",    p40: "—",    p200: "≥ 36", ll: "≤ 40",  pi: "≤ 10"     },
-  { grupo: "A-5",   tipo: "fino",     p10: "—",    p40: "—",    p200: "≥ 36", ll: "≥ 41",  pi: "≤ 10"     },
-  { grupo: "A-6",   tipo: "fino",     p10: "—",    p40: "—",    p200: "≥ 36", ll: "≤ 40",  pi: "≥ 11"     },
-  { grupo: "A-7-5", tipo: "fino",     p10: "—",    p40: "—",    p200: "≥ 36", ll: "≥ 41",  pi: "≥ 11 *"   },
-  { grupo: "A-7-6", tipo: "fino",     p10: "—",    p40: "—",    p200: "≥ 36", ll: "≥ 41",  pi: "≥ 11 **"  },
+  { grupo: "A-1-a", tipo: "granular", p10: "≤ 50", p40: "≤ 30", p200: "≤ 15", ll: "—",     pi: "≤ 6",     giMax: "0",   tipologia: "Fragmentos de piedra, grava y arena", calidad: "Excelente a buena" },
+  { grupo: "A-1-b", tipo: "granular", p10: "—",    p40: "≤ 50", p200: "≤ 25", ll: "—",     pi: "≤ 6",     giMax: "0",   tipologia: "Fragmentos de piedra, grava y arena", calidad: "Excelente a buena" },
+  { grupo: "A-3",   tipo: "granular", p10: "—",    p40: "≥ 51", p200: "≤ 10", ll: "—",     pi: "0 (NP)",  giMax: "0",   tipologia: "Arena fina",                          calidad: "Excelente a buena" },
+  { grupo: "A-2-4", tipo: "granular", p10: "—",    p40: "—",    p200: "≤ 35", ll: "≤ 40",  pi: "≤ 10",    giMax: "≤ 4", tipologia: "Gravas y arenas limosas o arcillosas", calidad: "Aceptable a mala"  },
+  { grupo: "A-2-5", tipo: "granular", p10: "—",    p40: "—",    p200: "≤ 35", ll: "≥ 41",  pi: "≤ 10",    giMax: "≤ 4", tipologia: "Gravas y arenas limosas o arcillosas", calidad: "Aceptable a mala"  },
+  { grupo: "A-2-6", tipo: "granular", p10: "—",    p40: "—",    p200: "≤ 35", ll: "≤ 40",  pi: "≥ 11",    giMax: "≤ 4", tipologia: "Gravas y arenas limosas o arcillosas", calidad: "Aceptable a mala"  },
+  { grupo: "A-2-7", tipo: "granular", p10: "—",    p40: "—",    p200: "≤ 35", ll: "≥ 41",  pi: "≥ 11",    giMax: "≤ 4", tipologia: "Gravas y arenas limosas o arcillosas", calidad: "Aceptable a mala"  },
+  { grupo: "A-4",   tipo: "fino",     p10: "—",    p40: "—",    p200: "≥ 36", ll: "≤ 40",  pi: "≤ 10",    giMax: "≤ 8", tipologia: "Suelos limosos",                      calidad: "Aceptable a mala"  },
+  { grupo: "A-5",   tipo: "fino",     p10: "—",    p40: "—",    p200: "≥ 36", ll: "≥ 41",  pi: "≤ 10",    giMax: "≤ 12",tipologia: "Suelos limosos",                      calidad: "Aceptable a mala"  },
+  { grupo: "A-6",   tipo: "fino",     p10: "—",    p40: "—",    p200: "≥ 36", ll: "≤ 40",  pi: "≥ 11",    giMax: "≤ 20",tipologia: "Suelos arcillosos",                   calidad: "Aceptable a mala"  },
+  { grupo: "A-7-5", tipo: "fino",     p10: "—",    p40: "—",    p200: "≥ 36", ll: "≥ 41",  pi: "≥ 11 *",  giMax: "≤ 20",tipologia: "Suelos arcillosos",                   calidad: "Aceptable a mala"  },
+  { grupo: "A-7-6", tipo: "fino",     p10: "—",    p40: "—",    p200: "≥ 36", ll: "≥ 41",  pi: "≥ 11 **", giMax: "≤ 20",tipologia: "Suelos arcillosos",                   calidad: "Aceptable a mala"  },
 ]
 
 function TablaEliminacion({ grupoActivo }: { grupoActivo: string | null }) {
@@ -225,17 +228,21 @@ function TablaEliminacion({ grupoActivo }: { grupoActivo: string | null }) {
         </thead>
         <tbody>
           {[
-            { label: "% pasa #10",  key: "p10" as const },
-            { label: "% pasa #40",  key: "p40" as const },
-            { label: "% pasa #200", key: "p200" as const },
-            { label: "LL (%)",      key: "ll" as const },
-            { label: "IP",          key: "pi" as const },
+            { label: "% pasa #10",       key: "p10" as const },
+            { label: "% pasa #40",       key: "p40" as const },
+            { label: "% pasa #200",      key: "p200" as const },
+            { label: "LL (%)",           key: "ll" as const },
+            { label: "IP",               key: "pi" as const },
+            { label: "Índice de grupo",  key: "giMax" as const },
+            { label: "Tipología",        key: "tipologia" as const },
+            { label: "Calidad",          key: "calidad" as const },
           ].map(row => (
             <tr key={row.key} className="border-t border-gray-100">
               <td className="py-2 pr-3 text-gray-500 whitespace-nowrap">{row.label}</td>
               {COLUMNAS.map(c => (
                 <td key={c.grupo}
-                  className={`py-2 px-2 text-center whitespace-nowrap
+                  className={`py-2 px-2 text-center
+                    ${row.key === "tipologia" || row.key === "calidad" ? "whitespace-normal" : "whitespace-nowrap"}
                     ${grupoActivo === c.grupo ? "font-bold text-gray-800" : "text-gray-400"}`}>
                   {c[row.key]}
                 </td>
