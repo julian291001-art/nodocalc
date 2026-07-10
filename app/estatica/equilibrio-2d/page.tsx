@@ -60,7 +60,6 @@ function combinaciones(arr: number[], k: number): number[][] {
   return [...combinaciones(rest, k - 1).map(c => [first, ...c]), ...combinaciones(rest, k)]
 }
 
-// ── Función pura de cálculo (separada del render) ──────────────────────────
 function calcularSistema(nodos: Nodo[], elementos: Elemento[], fuerzas: FuerzaExterna[], modoDiseno: boolean) {
   const getNodo = (id: number) => nodos.find(n => n.id === id)!
 
@@ -70,10 +69,15 @@ function calcularSistema(nodos: Nodo[], elementos: Elemento[], fuerzas: FuerzaEx
     return { ...e, angDesdeA: Math.atan2(dy, dx) * 180 / Math.PI, longitud: Math.sqrt(dx*dx+dy*dy) }
   })
 
+  // En modo diseño: convertir fuerzas soloMagnitud a completa con magnitud=1 para calcular factores k
+  const fuerzasCalc = modoDiseno
+    ? fuerzas.map(f => f.modo === "soloMagnitud" ? { ...f, modo: "completa" as ModoFuerza, magnitud: 1 } : f)
+    : fuerzas
+
   type Incognita = { tipo: "elemento"|"reaccionX"|"reaccionY"|"resultanteX"|"resultanteY"|"fuerzaMag"; refId: number; nombre: string }
   const incognitas: Incognita[] = []
   elementosCalc.forEach(e => { if (!e.conocido) incognitas.push({ tipo: "elemento", refId: e.id, nombre: e.nombre }) })
-  fuerzas.forEach(f => {
+  fuerzasCalc.forEach(f => {
     if (f.modo === "resultante") {
       incognitas.push({ tipo: "resultanteX", refId: f.id, nombre: `${f.nombre}x` })
       incognitas.push({ tipo: "resultanteY", refId: f.id, nombre: `${f.nombre}y` })
@@ -131,7 +135,7 @@ function calcularSistema(nodos: Nodo[], elementos: Elemento[], fuerzas: FuerzaEx
         rowX[iR] += Math.cos(angPerp); rowY[iR] += Math.sin(angPerp)
       }
 
-      fuerzas.filter(f => f.nodoId === n.id).forEach(f => {
+      fuerzasCalc.filter(f => f.nodoId === n.id).forEach(f => {
         if (f.modo === "completa") {
           knownX += f.magnitud * Math.cos(f.angulo * Math.PI / 180)
           knownY += f.magnitud * Math.sin(f.angulo * Math.PI / 180)
@@ -190,7 +194,7 @@ function calcularSistema(nodos: Nodo[], elementos: Elemento[], fuerzas: FuerzaEx
           fx += solucion![iR] * Math.cos((n.anguloRodillo + 90) * Math.PI / 180)
           fy += solucion![iR] * Math.sin((n.anguloRodillo + 90) * Math.PI / 180)
         }
-        fuerzas.filter(f => f.nodoId === n.id).forEach(f => {
+        fuerzasCalc.filter(f => f.nodoId === n.id).forEach(f => {
           if (f.modo === "completa") {
             fx += f.magnitud * Math.cos(f.angulo * Math.PI / 180)
             fy += f.magnitud * Math.sin(f.angulo * Math.PI / 180)
@@ -217,24 +221,18 @@ function calcularSistema(nodos: Nodo[], elementos: Elemento[], fuerzas: FuerzaEx
 
   let disenoResultado: { wMax: number; factoresK: { nombre: string; k: number; wMaxIndividual: number }[]; cableGobernante: string } | null = null
   if (modoDiseno && solucion) {
-    const fuerzaPeso = fuerzas.find(f => f.modo === "soloMagnitud")
-    if (fuerzaPeso) {
-      const idx = incognitas.findIndex(i => i.tipo === "fuerzaMag" && i.refId === fuerzaPeso.id)
-      const wActual = idx >= 0 ? solucion[idx] : 0
-      if (Math.abs(wActual) > 0.001) {
-        const factoresK = elementosCalc.filter(e => e.tipo === "cable" && !e.conocido).map(e => {
-          const ei = incognitas.findIndex(i => i.tipo === "elemento" && i.refId === e.id)
-          const tActual = ei >= 0 ? solucion![ei] : 0
-          const k = tActual / wActual
-          const wMaxInd = k > 0 ? e.tensionAdmisible / k : Infinity
-          return { nombre: e.nombre, k, wMaxIndividual: wMaxInd }
-        })
-        const validos = factoresK.filter(f => f.wMaxIndividual > 0 && isFinite(f.wMaxIndividual))
-        if (validos.length > 0) {
-          const wMax = Math.min(...validos.map(f => f.wMaxIndividual))
-          disenoResultado = { wMax, factoresK, cableGobernante: validos.find(f => f.wMaxIndividual === wMax)?.nombre || "" }
-        }
-      }
+    // Con W=1 de referencia, k_i = T_i / 1 = T_i
+    // W_max_i = T_adm_i / k_i
+    const factoresK = elementosCalc.filter(e => e.tipo === "cable" && !e.conocido).map(e => {
+      const ei = incognitas.findIndex(i => i.tipo === "elemento" && i.refId === e.id)
+      const k = ei >= 0 ? solucion![ei] : 0  // k = T_i/W con W=1
+      const wMaxInd = k > 0 ? e.tensionAdmisible / k : Infinity
+      return { nombre: e.nombre, k, wMaxIndividual: wMaxInd }
+    })
+    const validos = factoresK.filter(f => f.wMaxIndividual > 0 && isFinite(f.wMaxIndividual))
+    if (validos.length > 0) {
+      const wMax = Math.min(...validos.map(f => f.wMaxIndividual))
+      disenoResultado = { wMax, factoresK, cableGobernante: validos.find(f => f.wMaxIndividual === wMax)?.nombre || "" }
     }
   }
 
@@ -255,7 +253,7 @@ export default function Equilibrio2D() {
     { id: 2, nombre: "T₂", nodoA: 3, nodoB: 2, tipo: "cable", conocido: false, valorConocido: 0, tensionAdmisible: 500, color: COLORES[1] },
   ])
   const [fuerzas, setFuerzas] = useState<FuerzaExterna[]>([
-    { id: 1, nodoId: 3, nombre: "W", magnitud: 500, angulo: 270, modo: "completa", color: "#374151" },
+    { id: 1, nodoId: 3, nombre: "W", magnitud: 500, angulo: 270, modo: "soloMagnitud", color: "#374151" },
   ])
   const [modoDiseno, setModoDiseno] = useState(false)
   const [resultado, setResultado] = useState<ReturnType<typeof calcularSistema> | null>(null)
@@ -268,7 +266,6 @@ export default function Equilibrio2D() {
 
   const getNodo = (id: number) => nodos.find(n => n.id === id)!
 
-  // Calcular ángulos para mostrar en UI (sin afectar resultados)
   const elementosCalcUI = elementos.map(e => {
     const A = getNodo(e.nodoA), B = getNodo(e.nodoB)
     const dx = B.x - A.x, dy = B.y - A.y
@@ -375,7 +372,7 @@ export default function Equilibrio2D() {
         const iY = incognitas.findIndex(ii=>ii.tipo==="resultanteY"&&ii.refId===f.id)
         magMostrar = Math.sqrt(solucion[iX]**2+solucion[iY]**2)
         angMostrar = Math.atan2(solucion[iY],solucion[iX])*180/Math.PI
-      } else if (f.modo==="soloMagnitud"&&solucion) {
+      } else if (f.modo==="soloMagnitud"&&solucion&&!modoDiseno) {
         const idx = incognitas.findIndex(ii=>ii.tipo==="fuerzaMag"&&ii.refId===f.id)
         if (idx>=0) magMostrar = solucion[idx]
       }
@@ -389,7 +386,7 @@ export default function Equilibrio2D() {
       ctx.lineTo(fx2-10*Math.cos(ang2+0.4),fy2-10*Math.sin(ang2+0.4))
       ctx.closePath();ctx.fill()
       ctx.font="bold 10px sans-serif";ctx.textAlign="left"
-      ctx.fillText(`${f.nombre}=${fmt(magMostrar)}`,fx2+4,fy2+4)
+      ctx.fillText(`${f.nombre}`,fx2+4,fy2+4)
     })
 
     ctx.fillStyle="#374151";ctx.font="bold 10px sans-serif";ctx.textAlign="left"
@@ -443,19 +440,25 @@ export default function Equilibrio2D() {
 
         <div className="flex-1 overflow-y-auto p-6">
           <div className="grid grid-cols-2 gap-6">
-
             <div className="flex flex-col gap-4">
 
+              {/* Modo diseño */}
               <div className="bg-white border border-gray-200 rounded-xl p-4">
                 <label className="flex items-start gap-2 cursor-pointer">
                   <input type="checkbox" checked={modoDiseno} onChange={e=>setModoDiseno(e.target.checked)} className="mt-0.5"/>
                   <div>
                     <div className="text-sm font-medium text-gray-800">Modo diseño: peso máximo según tensión admisible</div>
-                    <div className="text-xs text-gray-500 mt-0.5">Marca cada cable con su tensión máxima admisible. El sistema calcula el peso máximo que puede soportar sin sobrepasar esa tensión.</div>
+                    <div className="text-xs text-gray-500 mt-0.5">Deja los cables como incógnitas y la fuerza W en modo "Solo ángulo conocido". El sistema resuelve con W=1 de referencia, calcula los factores k=T/W y determina el W máximo según la tensión admisible de cada cable.</div>
                   </div>
                 </label>
+                {modoDiseno && (
+                  <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200 text-xs text-blue-700">
+                    ✓ En modo diseño: cables como incógnitas + W en "Solo ángulo conocido" → el sistema calcula W máximo admisible automáticamente al presionar Calcular.
+                  </div>
+                )}
               </div>
 
+              {/* Nodos */}
               <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="flex items-center justify-between mb-3">
                   <div className="text-xs text-gray-400 font-medium tracking-wider">NODOS</div>
@@ -512,6 +515,7 @@ export default function Equilibrio2D() {
                 </div>
               </div>
 
+              {/* Elementos */}
               <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="flex items-center justify-between mb-3">
                   <div className="text-xs text-gray-400 font-medium tracking-wider">ELEMENTOS (cables / barras)</div>
@@ -550,7 +554,7 @@ export default function Equilibrio2D() {
                         </div>
                         <button onClick={()=>eliminarElemento(e.id)} className="text-xs text-red-400 hover:text-red-600">×</button>
                       </div>
-                      <div className="text-xs text-gray-400 mb-2">{e.tipo==="cable"?"Cable":"Barra rígida"} — longitud: {fmt(e.longitud,2)} {cfg.longitud} — ángulo: {fmt(e.angDesdeA,1)}°</div>
+                      <div className="text-xs text-gray-400 mb-2">{e.tipo==="cable"?"Cable":"Barra rígida"} — L: {fmt(e.longitud,2)} {cfg.longitud} — θ: {fmt(e.angDesdeA,1)}°</div>
                       {modoDiseno&&e.tipo==="cable"?(
                         <div>
                           <div className="text-xs text-gray-500 mb-1">Tensión admisible ({cfg.fuerza})</div>
@@ -572,6 +576,7 @@ export default function Equilibrio2D() {
                 </div>
               </div>
 
+              {/* Fuerzas externas */}
               <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="flex items-center justify-between mb-3">
                   <div className="text-xs text-gray-400 font-medium tracking-wider">FUERZAS EXTERNAS</div>
@@ -613,7 +618,7 @@ export default function Equilibrio2D() {
                           <div className="text-xs text-gray-500 mb-1">Ángulo conocido (°)</div>
                           <input type="number" value={f.angulo} onChange={e=>actualizarFuerza(f.id,"angulo",parseFloat(e.target.value)||0)} className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-blue-400"/>
                           {modoDiseno?(
-                            <div className="text-xs text-blue-600 bg-blue-50 rounded-lg px-2 py-1.5 mt-2">Esta fuerza se usa como referencia (W) para calcular el peso máximo en modo diseño</div>
+                            <div className="text-xs text-blue-600 bg-blue-50 rounded-lg px-2 py-1.5 mt-2">✓ En modo diseño: se usa W=1 como referencia para calcular los factores k y determinar W máximo</div>
                           ):(
                             <div className="text-xs text-amber-600 bg-amber-50 rounded-lg px-2 py-1.5 mt-2">Magnitud se calcula como incógnita</div>
                           )}
@@ -633,6 +638,7 @@ export default function Equilibrio2D() {
 
             </div>
 
+            {/* Panel derecho */}
             <div className="flex flex-col gap-4">
               <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">DIAGRAMA</div>
@@ -645,7 +651,7 @@ export default function Equilibrio2D() {
                   {determinado
                     ? incognitas.length===numEcuaciones
                       ? `✓ Sistema determinado — ${incognitas.length} incógnitas, ${numEcuaciones} ecuaciones (2 por nudo: ΣFx=0, ΣFy=0)`
-                      : `✓ Sistema resuelto — ${incognitas.length} incógnita(s) con ${numEcuaciones} ecuaciones disponibles`
+                      : `✓ Sistema resuelto — ${incognitas.length} incógnita(s), ${numEcuaciones} ecuaciones disponibles`
                     : `⚠ Mecanismo — ${incognitas.length} incógnitas vs ${numEcuaciones} ecuaciones. Faltan elementos, apoyos o fuerzas.`}
                 </div>
               </div>
@@ -662,14 +668,14 @@ export default function Equilibrio2D() {
                 <div className="bg-white border-2 border-green-300 rounded-xl p-5">
                   <div className="text-xs text-green-600 font-medium tracking-wider mb-3">RESULTADO DE DISEÑO — PESO MÁXIMO ADMISIBLE</div>
                   <div className="p-4 bg-green-50 rounded-xl border border-green-200 mb-3">
-                    <div className="text-xs text-green-600 mb-1">Peso máximo que el sistema puede soportar</div>
+                    <div className="text-xs text-green-600 mb-1">Peso máximo W que el sistema puede soportar</div>
                     <div className="text-2xl font-bold text-green-800">{fmt(disenoResultado.wMax)} {cfg.fuerza}</div>
                     <div className="text-xs text-green-600 mt-1">Cable gobernante: {disenoResultado.cableGobernante} (alcanza su tensión admisible primero)</div>
                   </div>
                   <div className="flex flex-col gap-2">
                     {disenoResultado.factoresK.map(f=>(
                       <div key={f.nombre} className="flex items-center justify-between text-xs p-2 bg-gray-50 rounded-lg">
-                        <span className="text-gray-600">{f.nombre}: factor k = {fmt(f.k,4)} (T = k·W)</span>
+                        <span className="text-gray-600">{f.nombre}: k = {fmt(f.k,4)} → T = k·W</span>
                         <span className="font-medium text-gray-800">W_max = {fmt(f.wMaxIndividual)} {cfg.fuerza}</span>
                       </div>
                     ))}
@@ -677,7 +683,7 @@ export default function Equilibrio2D() {
                 </div>
               )}
 
-              {determinado&&solucion&&(
+              {determinado&&solucion&&!modoDiseno&&(
                 <div className="bg-white border border-gray-200 rounded-xl p-5">
                   <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">RESULTADOS</div>
                   <div className="grid grid-cols-2 gap-3">
@@ -725,6 +731,23 @@ export default function Equilibrio2D() {
                     {checkPorNodo.map(c=>(
                       <div key={c.nombre}>Nudo {c.nombre}: ΣFx={fmt(c.fx,4)}  ΣFy={fmt(c.fy,4)} {Math.abs(c.fx)<0.01&&Math.abs(c.fy)<0.01?"✓":""}</div>
                     ))}
+                  </div>
+                </div>
+              )}
+
+              {determinado&&solucion&&modoDiseno&&!disenoResultado&&(
+                <div className="bg-white border border-gray-200 rounded-xl p-5">
+                  <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">RESULTADOS (factores k con W=1)</div>
+                  <div className="grid grid-cols-2 gap-3">
+                    {incognitas.filter(inc=>inc.tipo==="elemento").map((inc,i)=>(
+                      <div key={i} className="p-3 rounded-lg bg-blue-50 border-l-4 border-blue-600">
+                        <div className="text-xs text-blue-500">{inc.nombre} / W</div>
+                        <div className="text-base font-bold text-blue-800">k = {fmt(solucion![incognitas.findIndex(ii=>ii===inc)],4)}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-3 p-3 bg-amber-50 rounded-lg text-xs text-amber-700">
+                    Agrega tensiones admisibles a los cables para ver el W máximo.
                   </div>
                 </div>
               )}
