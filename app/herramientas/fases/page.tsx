@@ -36,7 +36,7 @@ const META: Record<VarKey, VarMeta> = {
   Gs:       { key: "Gs",       labelHtml: "Gravedad específica de sólidos G<sub>s</sub>",   grupo: "indices",   esPorcentaje: false, esUnitario: false, esPeso: false, esVolumen: false },
   e:        { key: "e",        labelHtml: "Relación de vacíos e",                            grupo: "indices",   esPorcentaje: false, esUnitario: false, esPeso: false, esVolumen: false },
   n:        { key: "n",        labelHtml: "Porosidad n (%)",                                 grupo: "indices",   esPorcentaje: true,  esUnitario: false, esPeso: false, esVolumen: false },
-  w:        { key: "w",        labelHtml: "Contenido de humedad w (%)",                      grupo: "indices",   esPorcentaje: true,  esUnitario: false, esPeso: false, esVolumen: false },
+  w:        { key: "w",        labelHtml: "Contenido de agua w (%)",                          grupo: "indices",   esPorcentaje: true,  esUnitario: false, esPeso: false, esVolumen: false },
   S:        { key: "S",        labelHtml: "Grado de saturación S (%)",                       grupo: "indices",   esPorcentaje: true,  esUnitario: false, esPeso: false, esVolumen: false },
   gamma:    { key: "gamma",    labelHtml: "Peso unitario total γ",                           grupo: "unitarios", esPorcentaje: false, esUnitario: true,  esPeso: false, esVolumen: false },
   gammad:   { key: "gammad",   labelHtml: "Peso unitario seco γ<sub>d</sub>",                 grupo: "unitarios", esPorcentaje: false, esUnitario: true,  esPeso: false, esVolumen: false },
@@ -224,72 +224,182 @@ function ResultCard({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DIAGRAMA DE FASES (SVG)
+// FRACCIONES DE FASE (a partir de e/n y S — no requiere valores absolutos)
+// ─────────────────────────────────────────────────────────────────────────────
+type Fracciones =
+  | { modo: "sin_datos" }
+  | { modo: "indiferenciado"; solido: number; vacios: number }
+  | { modo: "seco"; solido: number; aire: number }
+  | { modo: "saturado"; solido: number; agua: number }
+  | { modo: "completo"; solido: number; agua: number; aire: number }
+
+function calcularFracciones(v: Vars): Fracciones {
+  let n = v.n
+  if (n === undefined && v.e !== undefined && Number.isFinite(v.e)) n = v.e / (1 + v.e)
+  if (n === undefined || !Number.isFinite(n) || n < 0 || n > 1) return { modo: "sin_datos" }
+
+  const solido = 1 - n
+  const S = v.S
+
+  if (S === undefined || !Number.isFinite(S)) return { modo: "indiferenciado", solido, vacios: n }
+  if (S <= 1e-6) return { modo: "seco", solido, aire: n }
+  if (S >= 1 - 1e-6) return { modo: "saturado", solido, agua: n }
+  return { modo: "completo", solido, agua: S * n, aire: n - S * n }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DIAGRAMA DE FASES (SVG) — volúmenes a la izquierda, pesos a la derecha
 // ─────────────────────────────────────────────────────────────────────────────
 function DiagramaFases({
-  V, Vs, Vw, Va, Ws, Ww, unidadPeso, unidadVol,
+  fracciones, absolutos, unidadPeso, unidadVol, titulo,
 }: {
-  V: number; Vs: number; Vw: number; Va: number
-  Ws: number; Ww: number
+  fracciones: Fracciones
+  absolutos?: { V?: number; Vs?: number; Vw?: number; Va?: number; Ws?: number; Ww?: number }
   unidadPeso: string; unidadVol: string
+  titulo?: string
 }) {
-  const w = 460, h = 300
+  if (fracciones.modo === "sin_datos") {
+    return (
+      <div className="text-xs text-gray-400 border border-dashed border-gray-200 rounded-lg p-6 text-center">
+        Ingresa al menos e (o n) para ver el diagrama de fases. Agrega S para diferenciar agua y aire.
+      </div>
+    )
+  }
+
+  const fracAire   = fracciones.modo === "completo" ? fracciones.aire   : fracciones.modo === "seco" ? fracciones.aire : 0
+  const fracAgua   = fracciones.modo === "completo" ? fracciones.agua   : fracciones.modo === "saturado" ? fracciones.agua : 0
+  const fracVacios = fracciones.modo === "indiferenciado" ? fracciones.vacios : 0
+  const fracSolido = fracciones.solido
+
+  const w = 460, h = 320
   const colVolX = 150, colPesoX = 300, colAncho = 90
   const topY = 25, alturaTotal = 230
 
-  const hAire   = (Va / V) * alturaTotal
-  const hAgua   = (Vw / V) * alturaTotal
-  const hSolido = (Vs / V) * alturaTotal
+  const hAire    = fracAire * alturaTotal
+  const hAgua    = fracAgua * alturaTotal
+  const hVacios  = fracVacios * alturaTotal
+  const hSolido  = fracSolido * alturaTotal
 
-  const yAireTop = topY
+  const yTop = topY
+  const yVaciosTop = topY
   const yAguaTop = topY + hAire
-  const ySolidoTop = topY + hAire + hAgua
+  const ySolidoTop = topY + hAire + hAgua + hVacios
   const yBase = topY + alturaTotal
 
-  const fmtV = (x: number) => `${x.toFixed(4)} ${unidadVol}`
-  const fmtP = (x: number) => `${x.toFixed(4)} ${unidadPeso}`
+  const fmtV = (x?: number) => (x !== undefined && Number.isFinite(x) ? `${x.toFixed(4)} ${unidadVol}` : null)
+  const fmtP = (x?: number) => (x !== undefined && Number.isFinite(x) ? `${x.toFixed(4)} ${unidadPeso}` : null)
+
+  const Va = absolutos?.Va, Vw = absolutos?.Vw, Vs = absolutos?.Vs, V = absolutos?.V
+  const Ws = absolutos?.Ws, Ww = absolutos?.Ww
 
   return (
-    <svg viewBox={`0 0 ${w} ${h}`} width="100%" className="border border-gray-100 rounded-lg bg-white" style={{ maxHeight: 340 }}>
-      {/* Columna de volúmenes */}
-      <rect x={colVolX} y={yAireTop} width={colAncho} height={hAire} fill="#e0f2fe" stroke="#38bdf8" strokeWidth="1" />
-      <rect x={colVolX} y={yAguaTop} width={colAncho} height={hAgua} fill="#bfdbfe" stroke="#3b82f6" strokeWidth="1" />
-      <rect x={colVolX} y={ySolidoTop} width={colAncho} height={hSolido} fill="#d6d3d1" stroke="#78716c" strokeWidth="1" />
+    <div>
+      {titulo && <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">{titulo}</div>}
+      <svg viewBox={`0 0 ${w} ${h}`} width="100%" className="border border-gray-100 rounded-lg bg-white" style={{ maxHeight: 360 }}>
+        <defs>
+          <pattern id="hatchVacios" patternUnits="userSpaceOnUse" width="6" height="6" patternTransform="rotate(45)">
+            <line x1="0" y1="0" x2="0" y2="6" stroke="#93c5fd" strokeWidth="2" />
+          </pattern>
+        </defs>
 
-      {/* Columna de pesos (mismas alturas, para lectura pareada) */}
-      <rect x={colPesoX} y={yAireTop} width={colAncho} height={hAire} fill="#f8fafc" stroke="#cbd5e1" strokeWidth="1" strokeDasharray="3,2" />
-      <rect x={colPesoX} y={yAguaTop} width={colAncho} height={hAgua} fill="#bfdbfe" stroke="#3b82f6" strokeWidth="1" />
-      <rect x={colPesoX} y={ySolidoTop} width={colAncho} height={hSolido} fill="#d6d3d1" stroke="#78716c" strokeWidth="1" />
+        {/* ── Columna de volúmenes ── */}
+        {fracciones.modo === "completo" && (
+          <>
+            <rect x={colVolX} y={yTop} width={colAncho} height={hAire} fill="#e0f2fe" stroke="#38bdf8" strokeWidth="1" />
+            <rect x={colVolX} y={yTop + hAire} width={colAncho} height={hAgua} fill="#bfdbfe" stroke="#3b82f6" strokeWidth="1" />
+          </>
+        )}
+        {fracciones.modo === "seco" && (
+          <rect x={colVolX} y={yTop} width={colAncho} height={hAire} fill="#e0f2fe" stroke="#38bdf8" strokeWidth="1" />
+        )}
+        {fracciones.modo === "saturado" && (
+          <rect x={colVolX} y={yTop} width={colAncho} height={hAgua} fill="#bfdbfe" stroke="#3b82f6" strokeWidth="1" />
+        )}
+        {fracciones.modo === "indiferenciado" && (
+          <rect x={colVolX} y={yTop} width={colAncho} height={hVacios} fill="url(#hatchVacios)" stroke="#93c5fd" strokeWidth="1" />
+        )}
+        <rect x={colVolX} y={ySolidoTop} width={colAncho} height={hSolido} fill="#d6d3d1" stroke="#78716c" strokeWidth="1" />
 
-      {/* Encabezados */}
-      <text x={colVolX + colAncho / 2} y={16} textAnchor="middle" fontSize="10" fill="#6b7280" fontWeight="600">VOLUMEN</text>
-      <text x={colPesoX + colAncho / 2} y={16} textAnchor="middle" fontSize="10" fill="#6b7280" fontWeight="600">PESO</text>
+        {/* ── Columna de pesos (mismas alturas, lectura pareada) ── */}
+        {fracciones.modo === "completo" && (
+          <>
+            <rect x={colPesoX} y={yTop} width={colAncho} height={hAire} fill="#f8fafc" stroke="#cbd5e1" strokeWidth="1" strokeDasharray="3,2" />
+            <rect x={colPesoX} y={yTop + hAire} width={colAncho} height={hAgua} fill="#bfdbfe" stroke="#3b82f6" strokeWidth="1" />
+          </>
+        )}
+        {fracciones.modo === "seco" && (
+          <rect x={colPesoX} y={yTop} width={colAncho} height={hAire} fill="#f8fafc" stroke="#cbd5e1" strokeWidth="1" strokeDasharray="3,2" />
+        )}
+        {fracciones.modo === "saturado" && (
+          <rect x={colPesoX} y={yTop} width={colAncho} height={hAgua} fill="#bfdbfe" stroke="#3b82f6" strokeWidth="1" />
+        )}
+        {fracciones.modo === "indiferenciado" && (
+          <rect x={colPesoX} y={yTop} width={colAncho} height={hVacios} fill="url(#hatchVacios)" stroke="#93c5fd" strokeWidth="1" />
+        )}
+        <rect x={colPesoX} y={ySolidoTop} width={colAncho} height={hSolido} fill="#d6d3d1" stroke="#78716c" strokeWidth="1" />
 
-      {/* Etiquetas de fase (izquierda) */}
-      {hAire > 12 && <text x={colVolX - 8} y={yAireTop + hAire / 2 + 3} textAnchor="end" fontSize="9" fill="#0ea5e9">Aire</text>}
-      <text x={colVolX - 8} y={yAguaTop + hAgua / 2 + 3} textAnchor="end" fontSize="9" fill="#2563eb">Agua</text>
-      <text x={colVolX - 8} y={ySolidoTop + hSolido / 2 + 3} textAnchor="end" fontSize="9" fill="#57534e">Sólidos</text>
+        {/* Encabezados */}
+        <text x={colVolX + colAncho / 2} y={16} textAnchor="middle" fontSize="10" fill="#6b7280" fontWeight="600">VOLUMEN</text>
+        <text x={colPesoX + colAncho / 2} y={16} textAnchor="middle" fontSize="10" fill="#6b7280" fontWeight="600">PESO</text>
 
-      {/* Valores de volumen dentro de cada bloque */}
-      {hAire > 12 && <text x={colVolX + colAncho / 2} y={yAireTop + hAire / 2 + 3} textAnchor="middle" fontSize="8" fill="#0369a1">{fmtV(Va)}</text>}
-      <text x={colVolX + colAncho / 2} y={yAguaTop + hAgua / 2 + 3} textAnchor="middle" fontSize="8" fill="#1d4ed8">{fmtV(Vw)}</text>
-      <text x={colVolX + colAncho / 2} y={ySolidoTop + hSolido / 2 + 3} textAnchor="middle" fontSize="8" fill="#44403c">{fmtV(Vs)}</text>
+        {/* Etiquetas de fase (izquierda) y valores dentro de bloques */}
+        {fracciones.modo === "completo" && (
+          <>
+            {hAire > 12 && <text x={colVolX - 8} y={yTop + hAire / 2 + 3} textAnchor="end" fontSize="9" fill="#0ea5e9">Aire</text>}
+            <text x={colVolX - 8} y={yTop + hAire + hAgua / 2 + 3} textAnchor="end" fontSize="9" fill="#2563eb">Agua</text>
+            {hAire > 12 && <text x={colVolX + colAncho / 2} y={yTop + hAire / 2 + 3} textAnchor="middle" fontSize="8" fill="#0369a1">{fmtV(Va) ?? "Va"}</text>}
+            <text x={colVolX + colAncho / 2} y={yTop + hAire + hAgua / 2 + 3} textAnchor="middle" fontSize="8" fill="#1d4ed8">{fmtV(Vw) ?? "Vw"}</text>
+            {hAire > 12 && <text x={colPesoX + colAncho / 2} y={yTop + hAire / 2 + 3} textAnchor="middle" fontSize="8" fill="#94a3b8">≈ 0</text>}
+            <text x={colPesoX + colAncho / 2} y={yTop + hAire + hAgua / 2 + 3} textAnchor="middle" fontSize="8" fill="#1d4ed8">{fmtP(Ww) ?? "Ww"}</text>
+          </>
+        )}
+        {fracciones.modo === "seco" && (
+          <>
+            <text x={colVolX - 8} y={yTop + hAire / 2 + 3} textAnchor="end" fontSize="9" fill="#0ea5e9">Aire</text>
+            <text x={colVolX + colAncho / 2} y={yTop + hAire / 2 + 3} textAnchor="middle" fontSize="8" fill="#0369a1">{fmtV(Va) ?? "Va"}</text>
+            <text x={colPesoX + colAncho / 2} y={yTop + hAire / 2 + 3} textAnchor="middle" fontSize="8" fill="#94a3b8">≈ 0</text>
+            <text x={colVolX + colAncho / 2 + 130} y={yTop + 14} fontSize="8" fill="#0ea5e9">Suelo seco (S = 0): solo 2 fases</text>
+          </>
+        )}
+        {fracciones.modo === "saturado" && (
+          <>
+            <text x={colVolX - 8} y={yTop + hAgua / 2 + 3} textAnchor="end" fontSize="9" fill="#2563eb">Agua</text>
+            <text x={colVolX + colAncho / 2} y={yTop + hAgua / 2 + 3} textAnchor="middle" fontSize="8" fill="#1d4ed8">{fmtV(Vw) ?? "Vw"}</text>
+            <text x={colPesoX + colAncho / 2} y={yTop + hAgua / 2 + 3} textAnchor="middle" fontSize="8" fill="#1d4ed8">{fmtP(Ww) ?? "Ww"}</text>
+            <text x={colVolX + colAncho / 2 + 130} y={yTop + 14} fontSize="8" fill="#2563eb">Suelo saturado (S = 100%): solo 2 fases</text>
+          </>
+        )}
+        {fracciones.modo === "indiferenciado" && (
+          <>
+            <text x={colVolX - 8} y={yTop + hVacios / 2 + 3} textAnchor="end" fontSize="9" fill="#3b82f6">Vacíos</text>
+            <text x={colVolX + colAncho / 2} y={yTop + hVacios / 2 + 3} textAnchor="middle" fontSize="8" fill="#1d4ed8">agua + aire</text>
+            <text x={colPesoX + colAncho / 2} y={yTop + hVacios / 2 + 3} textAnchor="middle" fontSize="8" fill="#1d4ed8">agua + ≈0</text>
+            <text x={colVolX + colAncho / 2 + 130} y={yTop + 14} fontSize="8" fill="#3b82f6">Falta S para separar agua y aire</text>
+          </>
+        )}
+        <text x={colVolX - 8} y={ySolidoTop + hSolido / 2 + 3} textAnchor="end" fontSize="9" fill="#57534e">Sólidos</text>
+        <text x={colVolX + colAncho / 2} y={ySolidoTop + hSolido / 2 + 3} textAnchor="middle" fontSize="8" fill="#44403c">{fmtV(Vs) ?? "Vs"}</text>
+        <text x={colPesoX + colAncho / 2} y={ySolidoTop + hSolido / 2 + 3} textAnchor="middle" fontSize="8" fill="#44403c">{fmtP(Ws) ?? "Ws"}</text>
 
-      {/* Valores de peso dentro de cada bloque */}
-      {hAire > 12 && <text x={colPesoX + colAncho / 2} y={yAireTop + hAire / 2 + 3} textAnchor="middle" fontSize="8" fill="#94a3b8">≈ 0</text>}
-      <text x={colPesoX + colAncho / 2} y={yAguaTop + hAgua / 2 + 3} textAnchor="middle" fontSize="8" fill="#1d4ed8">{fmtP(Ww)}</text>
-      <text x={colPesoX + colAncho / 2} y={ySolidoTop + hSolido / 2 + 3} textAnchor="middle" fontSize="8" fill="#44403c">{fmtP(Ws)}</text>
+        {/* Corchete de vacíos (Va+Vw o Vv) a la izquierda, solo si hay 3 fases o indiferenciado */}
+        {(fracciones.modo === "completo" || fracciones.modo === "indiferenciado") && (
+          <>
+            <line x1={colVolX - 30} y1={yTop} x2={colVolX - 30} y2={ySolidoTop} stroke="#9ca3af" strokeWidth="1" />
+            <line x1={colVolX - 34} y1={yTop} x2={colVolX - 30} y2={yTop} stroke="#9ca3af" strokeWidth="1" />
+            <line x1={colVolX - 34} y1={ySolidoTop} x2={colVolX - 30} y2={ySolidoTop} stroke="#9ca3af" strokeWidth="1" />
+            <text x={colVolX - 38} y={(yTop + ySolidoTop) / 2 + 3} textAnchor="end" fontSize="8" fill="#9ca3af">Vv</text>
+          </>
+        )}
 
-      {/* Corchete Vv a la izquierda */}
-      <line x1={colVolX - 30} y1={yAireTop} x2={colVolX - 30} y2={yAguaTop + hAgua} stroke="#9ca3af" strokeWidth="1" />
-      <line x1={colVolX - 34} y1={yAireTop} x2={colVolX - 30} y2={yAireTop} stroke="#9ca3af" strokeWidth="1" />
-      <line x1={colVolX - 34} y1={yAguaTop + hAgua} x2={colVolX - 30} y2={yAguaTop + hAgua} stroke="#9ca3af" strokeWidth="1" />
-      <text x={colVolX - 38} y={(yAireTop + yAguaTop + hAgua) / 2 + 3} textAnchor="end" fontSize="8" fill="#9ca3af">Vv</text>
-
-      {/* Total V y W debajo */}
-      <text x={colVolX + colAncho / 2} y={yBase + 16} textAnchor="middle" fontSize="9" fill="#374151" fontWeight="600">V = {fmtV(V)}</text>
-      <text x={colPesoX + colAncho / 2} y={yBase + 16} textAnchor="middle" fontSize="9" fill="#374151" fontWeight="600">W = {fmtP(Ws + Ww)}</text>
-    </svg>
+        {/* Totales V y W debajo */}
+        <text x={colVolX + colAncho / 2} y={yBase + 18} textAnchor="middle" fontSize="9" fill="#374151" fontWeight="600">
+          V {fmtV(V) ? `= ${fmtV(V)}` : ""}
+        </text>
+        <text x={colPesoX + colAncho / 2} y={yBase + 18} textAnchor="middle" fontSize="9" fill="#374151" fontWeight="600">
+          W {fmtP(Ws !== undefined && Ww !== undefined ? Ws + Ww : undefined) ? `= ${fmtP(Ws! + Ww!)}` : ""}
+        </text>
+      </svg>
+    </div>
   )
 }
 
@@ -324,25 +434,30 @@ export default function RelacionesFases() {
     [conocidos, entradas]
   )
 
+  const buildBase = (): Vars => {
+    const base: Vars = {}
+    for (const k of ALL_VARS) {
+      if (!conocidos[k] || entradas[k] === "" || isNaN(parseFloat(entradas[k]))) continue
+      const raw = parseFloat(entradas[k])
+      base[k] = META[k].esPorcentaje ? raw / 100 : raw
+    }
+    return base
+  }
+
+  // Cálculo en vivo: se recalcula en cada tecleo, sin necesidad de presionar el botón.
+  // Alimenta la vista previa del diagrama de fases mientras se ingresan datos.
+  const vivo = useMemo(() => resolverFases(buildBase(), yw), [entradas, conocidos, yw])
+  const fraccionesVivo = useMemo(() => calcularFracciones(vivo), [vivo])
+
   const calcular = () => {
     setError("")
-    const seleccionados = ALL_VARS.filter(k => conocidos[k])
-    const conValor = seleccionados.filter(k => entradas[k] !== "" && !isNaN(parseFloat(entradas[k])))
-
-    if (conValor.length < 2) {
+    const base = buildBase()
+    if (Object.keys(base).length < 2) {
       setError("Selecciona e ingresa al menos 2 datos conocidos (recomendado: 3, usualmente Gs + dos más).")
       setResultado(null)
       return
     }
-
-    const base: Vars = {}
-    for (const k of conValor) {
-      const raw = parseFloat(entradas[k])
-      base[k] = META[k].esPorcentaje ? raw / 100 : raw
-    }
-
-    const res = resolverFases(base, yw)
-    setResultado(res)
+    setResultado(resolverFases(base, yw))
   }
 
   const limpiar = () => {
@@ -366,9 +481,7 @@ export default function RelacionesFases() {
 
   const varsResueltas = resultado ? ALL_VARS.filter(k => resultado[k] !== undefined && Number.isFinite(resultado[k]!)).length : 0
 
-  const mostrarDiagrama = resultado
-    && Number.isFinite(resultado.V) && resultado.V! > 0
-    && Number.isFinite(resultado.Vs) && Number.isFinite(resultado.Vw) && Number.isFinite(resultado.Va)
+  const fraccionesResultado = resultado ? calcularFracciones(resultado) : null
 
   const sufijo = (meta: VarMeta) =>
     meta.esUnitario ? uni.unitario : meta.esPeso ? uni.peso : meta.esVolumen ? uni.volumen : ""
@@ -450,6 +563,16 @@ export default function RelacionesFases() {
               </div>
             </div>
 
+            {/* ── VISTA PREVIA EN VIVO DEL DIAGRAMA DE FASES ── */}
+            <div className="bg-white border border-gray-200 rounded-xl p-5">
+              <DiagramaFases
+                titulo="VISTA PREVIA EN VIVO — se actualiza mientras ingresas datos"
+                fracciones={fraccionesVivo}
+                absolutos={{ V: vivo.V, Vs: vivo.Vs, Vw: vivo.Vw, Va: vivo.Va, Ws: vivo.Ws, Ww: vivo.Ww }}
+                unidadPeso={uni.peso} unidadVol={uni.volumen}
+              />
+            </div>
+
             {/* ── ERROR ── */}
             {error && (
               <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2.5">
@@ -516,15 +639,13 @@ export default function RelacionesFases() {
               </div>
             )}
 
-            {/* ── DIAGRAMA DE FASES ── */}
-            {mostrarDiagrama && (
+            {/* ── DIAGRAMA DE FASES (resultado final) ── */}
+            {resultado && fraccionesResultado && (
               <div className="bg-white border border-gray-200 rounded-xl p-5">
-                <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">
-                  DIAGRAMA DE FASES
-                </div>
                 <DiagramaFases
-                  V={resultado!.V!} Vs={resultado!.Vs!} Vw={resultado!.Vw!} Va={resultado!.Va!}
-                  Ws={resultado!.Ws ?? 0} Ww={resultado!.Ww ?? 0}
+                  titulo="DIAGRAMA DE FASES — RESULTADO"
+                  fracciones={fraccionesResultado}
+                  absolutos={{ V: resultado.V, Vs: resultado.Vs, Vw: resultado.Vw, Va: resultado.Va, Ws: resultado.Ws, Ww: resultado.Ww }}
                   unidadPeso={uni.peso} unidadVol={uni.volumen}
                 />
               </div>
