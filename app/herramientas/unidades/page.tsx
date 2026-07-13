@@ -27,6 +27,10 @@ const conversiones: Record<string, { unidades: string[]; factores: number[] }> =
     unidades: ["mm²", "cm²", "m²", "in²", "ft²"],
     factores: [1e-6, 1e-4, 1, 0.00064516, 0.092903]
   },
+  "Volumen": {
+    unidades: ["cm³", "m³", "L", "ft³", "in³", "gal (US)"],
+    factores: [1e-6, 1, 1e-3, 0.0283168, 1.63871e-5, 0.00378541]
+  },
   "Momento de inercia": {
     unidades: ["mm⁴", "cm⁴", "m⁴", "in⁴", "ft⁴"],
     factores: [1e-12, 1e-8, 1, 4.16231e-7, 8.63097e-3]

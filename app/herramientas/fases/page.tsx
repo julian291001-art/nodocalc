@@ -1,6 +1,12 @@
 "use client"
 import { useState, useMemo } from "react"
 import Sidebar from "../../components/Sidebar"
+import { conversiones } from "../../lib/conversiones"
+
+const CAT_PESO = "Fuerza"
+const CAT_VOL = "Volumen"
+const factorPeso = (u: string) => conversiones[CAT_PESO].factores[conversiones[CAT_PESO].unidades.indexOf(u)]
+const factorVol  = (u: string) => conversiones[CAT_VOL].factores[conversiones[CAT_VOL].unidades.indexOf(u)]
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TIPOS
@@ -58,17 +64,6 @@ const GRUPOS: { id: Grupo; titulo: string }[] = [
   { id: "pesos",     titulo: "Pesos" },
   { id: "volumenes", titulo: "Volúmenes" },
 ]
-
-// ─────────────────────────────────────────────────────────────────────────────
-// UNIDADES (según γw seleccionado)
-// ─────────────────────────────────────────────────────────────────────────────
-type PresetId = "kNm3" | "gcm3" | "kgm3"
-
-const PRESETS: Record<PresetId, { yw: number; label: string; peso: string; volumen: string; unitario: string }> = {
-  kNm3: { yw: 9.81, label: "kN/m³  (γw = 9.81)", peso: "kN", volumen: "m³", unitario: "kN/m³" },
-  gcm3: { yw: 1,    label: "g/cm³  (γw = 1)",     peso: "g",  volumen: "cm³", unitario: "g/cm³" },
-  kgm3: { yw: 1000, label: "kg/m³  (γw = 1000)",  peso: "kg", volumen: "m³", unitario: "kg/m³" },
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MOTOR DE RESOLUCIÓN (reglas + punto fijo)
@@ -413,12 +408,29 @@ export default function RelacionesFases() {
   const [entradas, setEntradas] = useState<Record<VarKey, string>>(
     Object.fromEntries(ALL_VARS.map(k => [k, ""])) as Record<VarKey, string>
   )
-  const [preset, setPreset] = useState<PresetId>("kNm3")
+  const [unidadPeso, setUnidadPeso] = useState(conversiones[CAT_PESO].unidades[1])       // kN por defecto
+  const [unidadVolumen, setUnidadVolumen] = useState(conversiones[CAT_VOL].unidades[1])   // m³ por defecto
   const [resultado, setResultado] = useState<Vars | null>(null)
   const [error, setError] = useState("")
 
-  const yw = PRESETS[preset].yw
-  const uni = PRESETS[preset]
+  // γw fijo en la base interna (N/m³). Todo se resuelve internamente en N y m³;
+  // la conversión a la unidad elegida por el usuario ocurre solo al mostrar/ingresar datos.
+  const yw = 9810
+  const aBase = (k: VarKey, valorMostrado: number): number => {
+    const meta = META[k]
+    if (meta.esPorcentaje) return valorMostrado / 100
+    if (meta.esPeso) return valorMostrado * factorPeso(unidadPeso)
+    if (meta.esVolumen) return valorMostrado * factorVol(unidadVolumen)
+    if (meta.esUnitario) return (valorMostrado * factorPeso(unidadPeso)) / factorVol(unidadVolumen)
+    return valorMostrado // Gs, e (adimensionales)
+  }
+  const aMostrar = (k: VarKey, valorBase: number): number => {
+    const meta = META[k]
+    if (meta.esPeso) return valorBase / factorPeso(unidadPeso)
+    if (meta.esVolumen) return valorBase / factorVol(unidadVolumen)
+    if (meta.esUnitario) return (valorBase * factorVol(unidadVolumen)) / factorPeso(unidadPeso)
+    return valorBase // Gs, e, y los porcentuales (n, w, S) que ResultCard ya multiplica por 100
+  }
 
   const toggleConocido = (k: VarKey) => {
     setConocidos(prev => ({ ...prev, [k]: !prev[k] }))
@@ -438,15 +450,14 @@ export default function RelacionesFases() {
     const base: Vars = {}
     for (const k of ALL_VARS) {
       if (!conocidos[k] || entradas[k] === "" || isNaN(parseFloat(entradas[k]))) continue
-      const raw = parseFloat(entradas[k])
-      base[k] = META[k].esPorcentaje ? raw / 100 : raw
+      base[k] = aBase(k, parseFloat(entradas[k]))
     }
     return base
   }
 
   // Cálculo en vivo: se recalcula en cada tecleo, sin necesidad de presionar el botón.
   // Alimenta la vista previa del diagrama de fases mientras se ingresan datos.
-  const vivo = useMemo(() => resolverFases(buildBase(), yw), [entradas, conocidos, yw])
+  const vivo = useMemo(() => resolverFases(buildBase(), yw), [entradas, conocidos, unidadPeso, unidadVolumen])
   const fraccionesVivo = useMemo(() => calcularFracciones(vivo), [vivo])
 
   const calcular = () => {
@@ -484,7 +495,7 @@ export default function RelacionesFases() {
   const fraccionesResultado = resultado ? calcularFracciones(resultado) : null
 
   const sufijo = (meta: VarMeta) =>
-    meta.esUnitario ? uni.unitario : meta.esPeso ? uni.peso : meta.esVolumen ? uni.volumen : ""
+    meta.esUnitario ? `${unidadPeso}/${unidadVolumen}` : meta.esPeso ? unidadPeso : meta.esVolumen ? unidadVolumen : ""
 
   return (
     <div className="flex h-screen bg-gray-100 font-sans">
@@ -505,17 +516,33 @@ export default function RelacionesFases() {
               <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">
                 SISTEMA DE UNIDADES
               </div>
-              <div className="flex gap-3 flex-wrap">
-                {(Object.keys(PRESETS) as PresetId[]).map(p => (
-                  <button key={p} onClick={() => setPreset(p)}
-                    className={`text-sm px-4 py-2 rounded-lg border transition-colors
-                      ${preset === p
-                        ? "bg-blue-700 text-white border-blue-700"
-                        : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"}`}>
-                    {PRESETS[p].label}
-                  </button>
-                ))}
+              <div className="grid grid-cols-2 gap-4 max-w-md">
+                <div>
+                  <div className="text-xs text-gray-500 mb-1">Unidad de peso</div>
+                  <select value={unidadPeso} onChange={e => setUnidadPeso(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm
+                      focus:outline-none focus:border-blue-400">
+                    {conversiones[CAT_PESO].unidades.map(u => (
+                      <option key={u} value={u}>{u}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <div className="text-xs text-gray-500 mb-1">Unidad de volumen</div>
+                  <select value={unidadVolumen} onChange={e => setUnidadVolumen(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm
+                      focus:outline-none focus:border-blue-400">
+                    {conversiones[CAT_VOL].unidades.map(u => (
+                      <option key={u} value={u}>{u}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
+              <p className="text-xs text-gray-400 mt-3">
+                Los pesos unitarios se muestran como {unidadPeso}/{unidadVolumen}. Internamente todo se
+                resuelve en N y m³ (γ<sub>w</sub> = 9810 N/m³) y se convierte automáticamente a las
+                unidades elegidas al ingresar y al mostrar resultados.
+              </p>
             </div>
 
             {/* ── SELECTOR DE DATOS CONOCIDOS ── */}
@@ -568,8 +595,15 @@ export default function RelacionesFases() {
               <DiagramaFases
                 titulo="VISTA PREVIA EN VIVO — se actualiza mientras ingresas datos"
                 fracciones={fraccionesVivo}
-                absolutos={{ V: vivo.V, Vs: vivo.Vs, Vw: vivo.Vw, Va: vivo.Va, Ws: vivo.Ws, Ww: vivo.Ww }}
-                unidadPeso={uni.peso} unidadVol={uni.volumen}
+                absolutos={{
+                  V: vivo.V !== undefined ? aMostrar("V", vivo.V) : undefined,
+                  Vs: vivo.Vs !== undefined ? aMostrar("Vs", vivo.Vs) : undefined,
+                  Vw: vivo.Vw !== undefined ? aMostrar("Vw", vivo.Vw) : undefined,
+                  Va: vivo.Va !== undefined ? aMostrar("Va", vivo.Va) : undefined,
+                  Ws: vivo.Ws !== undefined ? aMostrar("Ws", vivo.Ws) : undefined,
+                  Ww: vivo.Ww !== undefined ? aMostrar("Ww", vivo.Ww) : undefined,
+                }}
+                unidadPeso={unidadPeso} unidadVol={unidadVolumen}
               />
             </div>
 
@@ -629,7 +663,8 @@ export default function RelacionesFases() {
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                       {ALL_VARS.filter(k => META[k].grupo === g.id).map(k => (
-                        <ResultCard key={k} meta={META[k]} valor={resultado[k]}
+                        <ResultCard key={k} meta={META[k]}
+                          valor={resultado[k] !== undefined ? aMostrar(k, resultado[k]!) : undefined}
                           esDato={conocidos[k] && entradas[k] !== ""}
                           sufijo={sufijo(META[k])} />
                       ))}
@@ -645,8 +680,15 @@ export default function RelacionesFases() {
                 <DiagramaFases
                   titulo="DIAGRAMA DE FASES — RESULTADO"
                   fracciones={fraccionesResultado}
-                  absolutos={{ V: resultado.V, Vs: resultado.Vs, Vw: resultado.Vw, Va: resultado.Va, Ws: resultado.Ws, Ww: resultado.Ww }}
-                  unidadPeso={uni.peso} unidadVol={uni.volumen}
+                  absolutos={{
+                    V: resultado.V !== undefined ? aMostrar("V", resultado.V) : undefined,
+                    Vs: resultado.Vs !== undefined ? aMostrar("Vs", resultado.Vs) : undefined,
+                    Vw: resultado.Vw !== undefined ? aMostrar("Vw", resultado.Vw) : undefined,
+                    Va: resultado.Va !== undefined ? aMostrar("Va", resultado.Va) : undefined,
+                    Ws: resultado.Ws !== undefined ? aMostrar("Ws", resultado.Ws) : undefined,
+                    Ww: resultado.Ww !== undefined ? aMostrar("Ww", resultado.Ww) : undefined,
+                  }}
+                  unidadPeso={unidadPeso} unidadVol={unidadVolumen}
                 />
               </div>
             )}
