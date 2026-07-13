@@ -522,7 +522,7 @@ export default function RelacionesFases() {
                   <select value={unidadPeso} onChange={e => setUnidadPeso(e.target.value)}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm
                       focus:outline-none focus:border-blue-400">
-                    {conversiones[CAT_PESO].unidades.map(u => (
+                    {conversiones[CAT_PESO].unidades.map((u: string) => (
                       <option key={u} value={u}>{u}</option>
                     ))}
                   </select>
@@ -532,7 +532,7 @@ export default function RelacionesFases() {
                   <select value={unidadVolumen} onChange={e => setUnidadVolumen(e.target.value)}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm
                       focus:outline-none focus:border-blue-400">
-                    {conversiones[CAT_VOL].unidades.map(u => (
+                    {conversiones[CAT_VOL].unidades.map((u: string) => (
                       <option key={u} value={u}>{u}</option>
                     ))}
                   </select>
