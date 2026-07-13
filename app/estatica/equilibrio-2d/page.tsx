@@ -282,7 +282,7 @@ export default function Equilibrio2D() {
     setEstadoPDF("generando")
     try {
       const { pdf } = await import("@react-pdf/renderer")
-      const { PDFEquilibrio2D } = await import("../../../components/PDFEquilibrio2D")
+      const { PDFEquilibrio2D } = await import("../../components/PDFEquilibrio2D")
       const imagenCanvas = canvasRef.current ? canvasRef.current.toDataURL("image/png") : ""
       const res = calcularSistema(nodos, elementos, fuerzas, modoDiseno)
       const blob = await pdf(
