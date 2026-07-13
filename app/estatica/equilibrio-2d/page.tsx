@@ -69,7 +69,6 @@ function calcularSistema(nodos: Nodo[], elementos: Elemento[], fuerzas: FuerzaEx
     return { ...e, angDesdeA: Math.atan2(dy, dx) * 180 / Math.PI, longitud: Math.sqrt(dx*dx+dy*dy) }
   })
 
-  // En modo diseño: convertir fuerzas soloMagnitud a completa con magnitud=1 para calcular factores k
   const fuerzasCalc = modoDiseno
     ? fuerzas.map(f => f.modo === "soloMagnitud" ? { ...f, modo: "completa" as ModoFuerza, magnitud: 1 } : f)
     : fuerzas
@@ -221,11 +220,9 @@ function calcularSistema(nodos: Nodo[], elementos: Elemento[], fuerzas: FuerzaEx
 
   let disenoResultado: { wMax: number; factoresK: { nombre: string; k: number; wMaxIndividual: number }[]; cableGobernante: string } | null = null
   if (modoDiseno && solucion) {
-    // Con W=1 de referencia, k_i = T_i / 1 = T_i
-    // W_max_i = T_adm_i / k_i
     const factoresK = elementosCalc.filter(e => e.tipo === "cable" && !e.conocido).map(e => {
       const ei = incognitas.findIndex(i => i.tipo === "elemento" && i.refId === e.id)
-      const k = ei >= 0 ? solucion![ei] : 0  // k = T_i/W con W=1
+      const k = ei >= 0 ? solucion![ei] : 0
       const wMaxInd = k > 0 ? e.tensionAdmisible / k : Infinity
       return { nombre: e.nombre, k, wMaxIndividual: wMaxInd }
     })
@@ -257,12 +254,14 @@ export default function Equilibrio2D() {
   ])
   const [modoDiseno, setModoDiseno] = useState(false)
   const [resultado, setResultado] = useState<ReturnType<typeof calcularSistema> | null>(null)
-
+  const [mostrarAgregarNodo, setMostrarAgregarNodo] = useState(false)
+  const [mostrarAgregarEl, setMostrarAgregarEl] = useState(false)
   const [nextNodoId, setNextNodoId] = useState(4)
   const [nextElId, setNextElId] = useState(3)
   const [nextFId, setNextFId] = useState(2)
-  const [mostrarAgregarNodo, setMostrarAgregarNodo] = useState(false)
-  const [mostrarAgregarEl, setMostrarAgregarEl] = useState(false)
+  const [mostrarModalPDF, setMostrarModalPDF] = useState(false)
+  const [datosPDF, setDatosPDF] = useState({ ingeniero: "", empresa: "", proyecto: "", descripcion: "" })
+  const [estadoPDF, setEstadoPDF] = useState<"idle"|"generando">("idle")
 
   const getNodo = (id: number) => nodos.find(n => n.id === id)!
 
@@ -278,6 +277,40 @@ export default function Equilibrio2D() {
   }
 
   const { elementosCalc, incognitas, nodosConEcuacion, numEcuaciones, determinado, solucion, checkPorNodo, cablesInvalidos, disenoResultado } = resultado ?? calcularSistema(nodos, elementos, fuerzas, modoDiseno)
+
+  const descargarPDF = async () => {
+    setEstadoPDF("generando")
+    try {
+      const { pdf } = await import("@react-pdf/renderer")
+      const { PDFEquilibrio2D } = await import("../../../components/PDFEquilibrio2D")
+      const imagenCanvas = canvasRef.current ? canvasRef.current.toDataURL("image/png") : ""
+      const res = calcularSistema(nodos, elementos, fuerzas, modoDiseno)
+      const blob = await pdf(
+        <PDFEquilibrio2D
+          nodos={nodos}
+          elementos={res.elementosCalc}
+          fuerzas={fuerzas}
+          incognitas={res.incognitas}
+          solucion={res.solucion}
+          checkPorNodo={res.checkPorNodo}
+          modoDiseno={modoDiseno}
+          disenoResultado={res.disenoResultado}
+          imagenCanvas={imagenCanvas}
+          datosUsuario={datosPDF}
+          unidadFuerza={cfg.fuerza}
+          unidadLong={cfg.longitud}
+        />
+      ).toBlob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `NodoCalc_Equilibrio2D_${datosPDF.proyecto || "memoria"}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (err) { console.error(err) }
+    setEstadoPDF("idle")
+    setMostrarModalPDF(false)
+  }
 
   useEffect(() => { dibujar() }, [nodos, elementos, fuerzas, resultado])
 
@@ -442,23 +475,21 @@ export default function Equilibrio2D() {
           <div className="grid grid-cols-2 gap-6">
             <div className="flex flex-col gap-4">
 
-              {/* Modo diseño */}
               <div className="bg-white border border-gray-200 rounded-xl p-4">
                 <label className="flex items-start gap-2 cursor-pointer">
                   <input type="checkbox" checked={modoDiseno} onChange={e=>setModoDiseno(e.target.checked)} className="mt-0.5"/>
                   <div>
                     <div className="text-sm font-medium text-gray-800">Modo diseño: peso máximo según tensión admisible</div>
-                    <div className="text-xs text-gray-500 mt-0.5">Deja los cables como incógnitas y la fuerza W en modo "Solo ángulo conocido". El sistema resuelve con W=1 de referencia, calcula los factores k=T/W y determina el W máximo según la tensión admisible de cada cable.</div>
+                    <div className="text-xs text-gray-500 mt-0.5">Deja los cables como incógnitas y W en "Solo ángulo conocido". El sistema resuelve con W=1 de referencia, calcula k=T/W y determina el W máximo.</div>
                   </div>
                 </label>
-                {modoDiseno && (
+                {modoDiseno&&(
                   <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200 text-xs text-blue-700">
-                    ✓ En modo diseño: cables como incógnitas + W en "Solo ángulo conocido" → el sistema calcula W máximo admisible automáticamente al presionar Calcular.
+                    ✓ En modo diseño: cables como incógnitas + W en "Solo ángulo conocido" → presiona Calcular para obtener W máximo admisible.
                   </div>
                 )}
               </div>
 
-              {/* Nodos */}
               <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="flex items-center justify-between mb-3">
                   <div className="text-xs text-gray-400 font-medium tracking-wider">NODOS</div>
@@ -515,7 +546,6 @@ export default function Equilibrio2D() {
                 </div>
               </div>
 
-              {/* Elementos */}
               <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="flex items-center justify-between mb-3">
                   <div className="text-xs text-gray-400 font-medium tracking-wider">ELEMENTOS (cables / barras)</div>
@@ -576,7 +606,6 @@ export default function Equilibrio2D() {
                 </div>
               </div>
 
-              {/* Fuerzas externas */}
               <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="flex items-center justify-between mb-3">
                   <div className="text-xs text-gray-400 font-medium tracking-wider">FUERZAS EXTERNAS</div>
@@ -618,7 +647,7 @@ export default function Equilibrio2D() {
                           <div className="text-xs text-gray-500 mb-1">Ángulo conocido (°)</div>
                           <input type="number" value={f.angulo} onChange={e=>actualizarFuerza(f.id,"angulo",parseFloat(e.target.value)||0)} className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-blue-400"/>
                           {modoDiseno?(
-                            <div className="text-xs text-blue-600 bg-blue-50 rounded-lg px-2 py-1.5 mt-2">✓ En modo diseño: se usa W=1 como referencia para calcular los factores k y determinar W máximo</div>
+                            <div className="text-xs text-blue-600 bg-blue-50 rounded-lg px-2 py-1.5 mt-2">✓ Modo diseño: W=1 de referencia → calcula factores k y W máximo</div>
                           ):(
                             <div className="text-xs text-amber-600 bg-amber-50 rounded-lg px-2 py-1.5 mt-2">Magnitud se calcula como incógnita</div>
                           )}
@@ -636,21 +665,47 @@ export default function Equilibrio2D() {
                 ⟳ Calcular — Resolver sistema
               </button>
 
+              {!mostrarModalPDF ? (
+                <button onClick={()=>setMostrarModalPDF(true)} className="w-full bg-red-600 text-white py-3 rounded-xl text-sm font-medium hover:bg-red-700 transition-colors">
+                  📄 Generar memoria de cálculo PDF
+                </button>
+              ) : (
+                <div className="bg-white border border-gray-200 rounded-xl p-5 flex flex-col gap-3">
+                  <div className="text-xs text-gray-400 font-medium tracking-wider">DATOS PARA EL PDF</div>
+                  {([
+                    { key: "ingeniero", label: "Nombre del ingeniero" },
+                    { key: "proyecto", label: "Nombre del proyecto" },
+                    { key: "empresa", label: "Empresa / Universidad" },
+                    { key: "descripcion", label: "Descripción del problema" },
+                  ] as { key: keyof typeof datosPDF; label: string }[]).map(field=>(
+                    <div key={field.key}>
+                      <div className="text-xs text-gray-500 mb-0.5">{field.label}</div>
+                      <input type="text" value={datosPDF[field.key]}
+                        onChange={e=>setDatosPDF({...datosPDF,[field.key]:e.target.value})}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-red-400"/>
+                    </div>
+                  ))}
+                  <button onClick={descargarPDF} className="w-full bg-red-600 text-white py-2.5 rounded-lg text-sm font-medium hover:bg-red-700">
+                    {estadoPDF==="generando"?"⏳ Generando PDF...":"⬇ Descargar memoria de cálculo"}
+                  </button>
+                  <button onClick={()=>setMostrarModalPDF(false)} className="text-xs text-gray-400 hover:underline text-center">Cancelar</button>
+                </div>
+              )}
+
             </div>
 
-            {/* Panel derecho */}
             <div className="flex flex-col gap-4">
               <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">DIAGRAMA</div>
                 <canvas ref={canvasRef} className="w-full border border-gray-100 rounded-lg" style={{height:440}}/>
-                <div className="mt-2 text-xs text-gray-400">↻ Ángulos antihorario desde +x. Rayado horizontal = anclaje. Triángulo rayado = pasador. Triángulo con ruedas = rodillo. Bloque rayado = empotrado. Línea roja punteada = cable en compresión (no válido).</div>
+                <div className="mt-2 text-xs text-gray-400">↻ Ángulos antihorario desde +x. Rayado = anclaje. Triángulo = pasador. Ruedas = rodillo. Bloque = empotrado. Círculo = polea.</div>
               </div>
 
               <div className={`rounded-xl p-4 border ${determinado?"bg-green-50 border-green-200":"bg-amber-50 border-amber-200"}`}>
                 <div className={`text-xs font-medium ${determinado?"text-green-700":"text-amber-700"}`}>
                   {determinado
                     ? incognitas.length===numEcuaciones
-                      ? `✓ Sistema determinado — ${incognitas.length} incógnitas, ${numEcuaciones} ecuaciones (2 por nudo: ΣFx=0, ΣFy=0)`
+                      ? `✓ Sistema determinado — ${incognitas.length} incógnitas, ${numEcuaciones} ecuaciones`
                       : `✓ Sistema resuelto — ${incognitas.length} incógnita(s), ${numEcuaciones} ecuaciones disponibles`
                     : `⚠ Mecanismo — ${incognitas.length} incógnitas vs ${numEcuaciones} ecuaciones. Faltan elementos, apoyos o fuerzas.`}
                 </div>
@@ -659,7 +714,7 @@ export default function Equilibrio2D() {
               {cablesInvalidos.length>0&&(
                 <div className="rounded-xl p-4 border bg-red-50 border-red-200">
                   <div className="text-xs font-medium text-red-700">
-                    ⚠ {cablesInvalidos.map(c=>c.nombre).join(", ")} resulta en compresión — un cable no puede empujar, solo tirar. Revisa la geometría o las cargas.
+                    ⚠ {cablesInvalidos.map(c=>c.nombre).join(", ")} resulta en compresión — un cable no puede empujar, solo tirar.
                   </div>
                 </div>
               )}
@@ -670,7 +725,7 @@ export default function Equilibrio2D() {
                   <div className="p-4 bg-green-50 rounded-xl border border-green-200 mb-3">
                     <div className="text-xs text-green-600 mb-1">Peso máximo W que el sistema puede soportar</div>
                     <div className="text-2xl font-bold text-green-800">{fmt(disenoResultado.wMax)} {cfg.fuerza}</div>
-                    <div className="text-xs text-green-600 mt-1">Cable gobernante: {disenoResultado.cableGobernante} (alcanza su tensión admisible primero)</div>
+                    <div className="text-xs text-green-600 mt-1">Cable gobernante: {disenoResultado.cableGobernante}</div>
                   </div>
                   <div className="flex flex-col gap-2">
                     {disenoResultado.factoresK.map(f=>(
@@ -731,23 +786,6 @@ export default function Equilibrio2D() {
                     {checkPorNodo.map(c=>(
                       <div key={c.nombre}>Nudo {c.nombre}: ΣFx={fmt(c.fx,4)}  ΣFy={fmt(c.fy,4)} {Math.abs(c.fx)<0.01&&Math.abs(c.fy)<0.01?"✓":""}</div>
                     ))}
-                  </div>
-                </div>
-              )}
-
-              {determinado&&solucion&&modoDiseno&&!disenoResultado&&(
-                <div className="bg-white border border-gray-200 rounded-xl p-5">
-                  <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">RESULTADOS (factores k con W=1)</div>
-                  <div className="grid grid-cols-2 gap-3">
-                    {incognitas.filter(inc=>inc.tipo==="elemento").map((inc,i)=>(
-                      <div key={i} className="p-3 rounded-lg bg-blue-50 border-l-4 border-blue-600">
-                        <div className="text-xs text-blue-500">{inc.nombre} / W</div>
-                        <div className="text-base font-bold text-blue-800">k = {fmt(solucion![incognitas.findIndex(ii=>ii===inc)],4)}</div>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="mt-3 p-3 bg-amber-50 rounded-lg text-xs text-amber-700">
-                    Agrega tensiones admisibles a los cables para ver el W máximo.
                   </div>
                 </div>
               )}
