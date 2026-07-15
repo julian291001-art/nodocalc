@@ -558,9 +558,8 @@ export default function RelacionesFases() {
                 </div>
               </div>
               <p className="text-xs text-gray-400 mt-3">
-                Los pesos unitarios se muestran como {unidadPeso}/{unidadVolumen}. Internamente todo se
-                resuelve en N y m³ (γ<sub>w</sub> = 9810 N/m³) y se convierte automáticamente a las
-                unidades elegidas al ingresar y al mostrar resultados.
+                Los pesos unitarios (γ, γ<sub>d</sub>, γ<sub>sat</sub>, γ') se muestran combinando la
+                unidad de peso y de volumen elegidas, por ejemplo {unidadPeso}/{unidadVolumen}.
               </p>
             </div>
 
