@@ -477,8 +477,21 @@ export default function RelacionesFases() {
   const vivo = useMemo(() => resolverFases(buildBase(), yw), [entradas, conocidos, unidadPeso, unidadVolumen, volumenRef])
   const fraccionesVivo = useMemo(() => calcularFracciones(vivo), [vivo])
 
+  type Inconsistencia = { clave: VarKey; ingresado: string; predicho: string }
+  const [inconsistencias, setInconsistencias] = useState<Inconsistencia[]>([])
+
+  const sufijo = (meta: VarMeta) =>
+    meta.esUnitario ? `${unidadPeso}/${unidadVolumen}` : meta.esPeso ? unidadPeso : meta.esVolumen ? unidadVolumen : ""
+
+  const formatearValor = (k: VarKey, valorBase: number): string => {
+    const meta = META[k]
+    if (meta.esPorcentaje) return `${(valorBase * 100).toFixed(2)} %`
+    return `${aMostrar(k, valorBase).toFixed(k === "Gs" || k === "e" ? 3 : 4)} ${sufijo(meta)}`
+  }
+
   const calcular = () => {
     setError("")
+    setInconsistencias([])
     const datosReales = ALL_VARS.filter(k => conocidos[k] && entradas[k] !== "" && !isNaN(parseFloat(entradas[k])))
     if (datosReales.length < 2) {
       setError("Selecciona e ingresa al menos 2 datos conocidos (recomendado: 3, usualmente Gs + dos más).")
@@ -490,7 +503,38 @@ export default function RelacionesFases() {
       setResultado(null)
       return
     }
-    setResultado(resolverFases(buildBase(), yw))
+
+    const base = buildBase()
+    setResultado(resolverFases(base, yw))
+
+    // Verificación de consistencia: por cada dato ingresado a mano, se vuelve a resolver
+    // el sistema SIN ese dato (usando solo los demás) y se compara si el valor que se
+    // obtiene por las otras relaciones coincide con lo que el usuario escribió.
+    const TOLERANCIA = 0.01 // 1% de error relativo
+    const encontradas: Inconsistencia[] = []
+    for (const k of datosReales) {
+      const parcial: Vars = {}
+      for (const k2 of datosReales) {
+        if (k2 !== k) parcial[k2] = aBase(k2, parseFloat(entradas[k2]))
+      }
+      if (volumenRef && parcial[volumenRef] === undefined) {
+        parcial[volumenRef] = aBase(volumenRef, 1)
+      }
+      const chequeo = resolverFases(parcial, yw)
+      const predicho = chequeo[k]
+      if (predicho !== undefined && Number.isFinite(predicho)) {
+        const ingresado = base[k]!
+        const errorRel = Math.abs(predicho - ingresado) / (Math.abs(predicho) || 1e-9)
+        if (errorRel > TOLERANCIA) {
+          encontradas.push({
+            clave: k,
+            ingresado: formatearValor(k, ingresado),
+            predicho: formatearValor(k, predicho),
+          })
+        }
+      }
+    }
+    setInconsistencias(encontradas)
   }
 
   const limpiar = () => {
@@ -499,6 +543,7 @@ export default function RelacionesFases() {
     setVolumenRef(null)
     setResultado(null)
     setError("")
+    setInconsistencias([])
   }
 
   const cargarEjemplo = () => {
@@ -512,14 +557,12 @@ export default function RelacionesFases() {
     setVolumenRef("Vs")
     setResultado(null)
     setError("")
+    setInconsistencias([])
   }
 
   const varsResueltas = resultado ? ALL_VARS.filter(k => resultado[k] !== undefined && Number.isFinite(resultado[k]!)).length : 0
 
   const fraccionesResultado = resultado ? calcularFracciones(resultado) : null
-
-  const sufijo = (meta: VarMeta) =>
-    meta.esUnitario ? `${unidadPeso}/${unidadVolumen}` : meta.esPeso ? unidadPeso : meta.esVolumen ? unidadVolumen : ""
 
   return (
     <div className="flex h-screen bg-gray-100 font-sans">
@@ -664,6 +707,28 @@ export default function RelacionesFases() {
             {error && (
               <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-2.5">
                 {error}
+              </div>
+            )}
+
+            {/* ── INCONSISTENCIAS ── */}
+            {inconsistencias.length > 0 && (
+              <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+                <div className="text-sm font-semibold text-red-700 mb-1">
+                  ⚠ Los datos ingresados no son consistentes entre sí
+                </div>
+                <p className="text-xs text-red-600 mb-2">
+                  Al resolver el sistema solo con los demás datos, se obtienen valores distintos
+                  a los que ingresaste manualmente. Revisa el ensayo o las mediciones:
+                </p>
+                <ul className="text-xs text-red-700 flex flex-col gap-1">
+                  {inconsistencias.map(inc => (
+                    <li key={inc.clave}>
+                      <span dangerouslySetInnerHTML={{ __html: META[inc.clave].labelHtml }} />:
+                      {" "}ingresaste <strong>{inc.ingresado}</strong>, pero los demás datos
+                      implican <strong>{inc.predicho}</strong>.
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
 
