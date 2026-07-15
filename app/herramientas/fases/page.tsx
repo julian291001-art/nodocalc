@@ -65,6 +65,11 @@ const GRUPOS: { id: Grupo; titulo: string }[] = [
   { id: "volumenes", titulo: "Volúmenes" },
 ]
 
+// Subconjunto usado en el selector de "datos conocidos": solo índices/relaciones y pesos
+// unitarios. Los pesos y volúmenes absolutos ya no se ingresan a mano — siempre se obtienen
+// a partir del volumen de referencia (Vs=1 o V=1) que el usuario elige más abajo.
+const GRUPOS_ENTRADA: { id: Grupo; titulo: string }[] = GRUPOS.filter(g => g.id === "indices" || g.id === "unitarios")
+
 // ─────────────────────────────────────────────────────────────────────────────
 // MOTOR DE RESOLUCIÓN (reglas + punto fijo)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -558,8 +563,9 @@ export default function RelacionesFases() {
                 </div>
               </div>
               <p className="text-xs text-gray-400 mt-3">
-                Los pesos unitarios (γ, γ<sub>d</sub>, γ<sub>sat</sub>, γ') se muestran combinando la
-                unidad de peso y de volumen elegidas, por ejemplo {unidadPeso}/{unidadVolumen}.
+                Los pesos unitarios se muestran como {unidadPeso}/{unidadVolumen}. Internamente todo se
+                resuelve en N y m³ (γ<sub>w</sub> = 9810 N/m³) y se convierte automáticamente a las
+                unidades elegidas al ingresar y al mostrar resultados.
               </p>
             </div>
 
@@ -569,10 +575,8 @@ export default function RelacionesFases() {
                 VOLUMEN DE REFERENCIA <span className="text-red-400">*</span>
               </div>
               <p className="text-xs text-gray-400 mb-3">
-                Con solo índices y relaciones (G<sub>s</sub>, e, w, S...) los pesos unitarios ya quedan
-                determinados, pero los pesos y volúmenes absolutos requieren asumir un tamaño de
-                muestra. Elige cuál asumir como unitario — si más adelante ingresas un peso o volumen
-                real, ese dato real siempre tiene prioridad sobre esta suposición.
+                Los pesos y volúmenes absolutos se calculan asumiendo un tamaño de muestra unitario,
+                como es habitual al resolver diagramas de fase. Elige cuál asumir:
               </p>
               <div className="flex gap-4 flex-wrap">
                 <label className={`flex items-center gap-2 cursor-pointer select-none border rounded-lg px-4 py-2.5
@@ -605,7 +609,7 @@ export default function RelacionesFases() {
               </p>
 
               <div className="flex flex-col gap-5">
-                {GRUPOS.map(g => (
+                {GRUPOS_ENTRADA.map(g => (
                   <div key={g.id}>
                     <div className="text-xs text-gray-500 font-medium mb-2">{g.titulo}</div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
