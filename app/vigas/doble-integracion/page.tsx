@@ -1,8 +1,7 @@
 "use client"
 import { useState, useMemo } from "react"
 import katex from "katex"
-// Ignore missing type declarations for this side-effect CSS import
-// @ts-ignore
+// @ts-ignore: CSS import for KaTeX styles
 import "katex/dist/katex.min.css"
 import Sidebar from "../../components/Sidebar"
 import { resolverViga, Apoyo, Carga, Rotula, ResultadoViga, TipoApoyo, Termino } from "../../lib/vigas/motor"
@@ -37,7 +36,7 @@ function ecuacionLatexTramo(terminosM: Termino[], inicioTramo: number): string {
     const coefStr = absCoef.toFixed(3)
     let base = ""
     if (t.power === 0) {
-      base = t.x0 === 0 ? `${coefStr}` : `${coefStr}`
+      base = `${coefStr}`
     } else if (t.power === 1) {
       base = t.x0 === 0 ? `${coefStr}x` : `${coefStr}(x-${t.x0.toFixed(2)})`
     } else {
@@ -49,6 +48,28 @@ function ecuacionLatexTramo(terminosM: Termino[], inicioTramo: number): string {
   expr = expr.trim()
   if (expr.startsWith("+")) expr = expr.slice(1).trim()
   return expr || "0"
+}
+
+function evaluarMConLado(terminos: Termino[], x: number, incluirBorde: boolean): number {
+  return terminos.reduce((acc, t) => {
+    const d = x - t.x0
+    if (d < 0) return acc
+    if (d === 0 && !incluirBorde) return acc
+    if (t.power === 0) return acc + t.coef
+    return acc + t.coef * Math.pow(d, t.power)
+  }, 0)
+}
+
+function evaluarVConLado(terminos: Termino[], x: number, incluirBorde: boolean): number {
+  return terminos.reduce((acc, t) => {
+    if (t.power === 0) return acc
+    const d = x - t.x0
+    if (d < 0) return acc
+    if (d === 0 && !incluirBorde) return acc
+    const nuevaPower = t.power - 1
+    if (nuevaPower === 0) return acc + t.coef * t.power
+    return acc + t.coef * t.power * Math.pow(d, nuevaPower)
+  }, 0)
 }
 
 function GraficoInteractivo({
@@ -103,7 +124,7 @@ function GraficoInteractivo({
   const numTicksY = 5
   const ticksY = Array.from({ length: numTicksY + 1 }, (_, i) => yMin + (rangoY * i) / numTicksY)
 
-  const pasoMuestra = Math.max(1, Math.floor(datos.length / 18))
+  const pasoMuestra = Math.max(1, Math.floor(datos.length / 22))
   const puntosVisibles = datos.filter((_, i) => i % pasoMuestra === 0 || i === datos.length - 1)
 
   function manejarMouseMove(e: React.MouseEvent<SVGSVGElement>) {
@@ -129,9 +150,8 @@ function GraficoInteractivo({
   return (
     <svg
       viewBox={`0 0 ${ancho} ${alto}`}
-      preserveAspectRatio="none"
-      className="w-full cursor-crosshair"
-      style={{ height: alto }}
+      className="w-full cursor-crosshair block"
+      style={{ aspectRatio: `${ancho} / ${alto}` }}
       onMouseMove={manejarMouseMove}
       onMouseLeave={() => setHoverIdx(null)}
     >
@@ -257,17 +277,40 @@ export default function DobleIntegracion() {
 
   const puntos = useMemo(() => {
     if (!resultado) return null
-    const n = 120
-    const arr = []
-    for (let i = 0; i <= n; i++) {
-      const x = (L * i) / n
-      arr.push({
-        x,
-        M: resultado.M(x),
-        V: resultado.V(x),
-        v: resultado.v(x, EI),
-      })
-    }
+    const n = 140
+    const malla: number[] = []
+    for (let i = 0; i <= n; i++) malla.push((L * i) / n)
+
+    const criticosInteriores = resultado.puntosCriticos.filter((xc) => xc > 1e-9 && xc < L - 1e-9)
+    const criticosSet = new Set(criticosInteriores.map((xc) => Number(xc.toFixed(9))))
+
+    criticosInteriores.forEach((xc) => malla.push(xc))
+    const xsOrdenados = Array.from(new Set(malla.map((x) => Number(x.toFixed(9))))).sort((a, b) => a - b)
+
+    const arr: { x: number; M: number; V: number; v: number }[] = []
+    xsOrdenados.forEach((x) => {
+      if (criticosSet.has(x)) {
+        arr.push({
+          x,
+          M: evaluarMConLado(resultado.terminosM, x, false),
+          V: evaluarVConLado(resultado.terminosM, x, false),
+          v: resultado.v(x, EI),
+        })
+        arr.push({
+          x,
+          M: evaluarMConLado(resultado.terminosM, x, true),
+          V: evaluarVConLado(resultado.terminosM, x, true),
+          v: resultado.v(x, EI),
+        })
+      } else {
+        arr.push({
+          x,
+          M: evaluarMConLado(resultado.terminosM, x, true),
+          V: evaluarVConLado(resultado.terminosM, x, true),
+          v: resultado.v(x, EI),
+        })
+      }
+    })
     return arr
   }, [resultado, L, EI])
 
