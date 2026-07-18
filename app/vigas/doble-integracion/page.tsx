@@ -4,7 +4,7 @@ import katex from "katex"
 // @ts-ignore: CSS module declaration missing for katex stylesheet
 import "katex/dist/katex.min.css"
 import Sidebar from "../../components/Sidebar"
-import { resolverViga, Apoyo, Carga, Rotula, ResultadoViga, TipoApoyo } from "../../../lib/vigas/motor"
+import { resolverViga, Apoyo, Carga, Rotula, ResultadoViga, TipoApoyo } from "../../lib/vigas/motor"
 
 function Formula({ tex, block = false }: { tex: string; block?: boolean }) {
   const html = katex.renderToString(tex, { throwOnError: false, displayMode: block })
