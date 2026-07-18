@@ -21,7 +21,7 @@ export type Carga =
   | { id: string; tipo: "momento"; x: number; M: number }
   | { id: string; tipo: "distribuida"; xi: number; xf: number; wi: number; wf: number }
 
-interface Termino {
+export interface Termino {
   coef: number
   power: number
   x0: number
@@ -43,11 +43,16 @@ function evalTerminos(terminos: Termino[], x: number): number {
   return terminos.reduce((acc, t) => acc + evalTermino(t, x), 0)
 }
 
+// Contribución a M(x) de una carga distribuida trapezoidal/triangular/uniforme en [xi,xf].
+// Se descompone en: parte uniforme (altura wi) + parte triangular (rampa 0 -> wf-wi).
+// Devuelve los términos en convención "sin negar" (el llamador les cambia el signo,
+// igual que hace con las cargas puntuales).
 function terminosMomentoDeCargaDistribuida(xi: number, xf: number, wi: number, wf: number): Termino[] {
-  const L = xf - xi
-  if (L <= 0) return []
-  const pendiente = (wf - wi) / L
+  const Lseg = xf - xi
+  if (Lseg <= 0) return []
+  const pendiente = (wf - wi) / Lseg // m
 
+  // Parte uniforme (verificada: M_udl(x) = w/2[<x-xi>^2 - <x-xf>^2])
   const terminosUniforme: Termino[] = [
     { coef: wi / 2, power: 2, x0: xi },
     { coef: -wi / 2, power: 2, x0: xf },
@@ -55,11 +60,13 @@ function terminosMomentoDeCargaDistribuida(xi: number, xf: number, wi: number, w
 
   if (Math.abs(pendiente) < 1e-12) return terminosUniforme
 
+  // Parte triangular (rampa 0 en xi -> pendiente*Lseg en xf, truncada en xf).
+  // Derivación: M_tri(x) = -m/6<x-xi>^3 + m/6<x-xf>^3 + (m*Lseg/2)<x-xf>^2  (forma final, con signo)
+  // Como el llamador niega todo el arreglo, aquí devolvemos la versión "sin negar":
   const terminosTriangular: Termino[] = [
     { coef: pendiente / 6, power: 3, x0: xi },
     { coef: -pendiente / 6, power: 3, x0: xf },
-    { coef: -(pendiente * L * L) / 2, power: 1, x0: xf },
-    { coef: -(pendiente * L * L * L) / 6, power: 0, x0: xf },
+    { coef: -(pendiente * Lseg) / 2, power: 2, x0: xf },
   ]
 
   return [...terminosUniforme, ...terminosTriangular]
@@ -82,6 +89,8 @@ export interface ResultadoViga {
   theta: (x: number, EI: number) => number
   v: (x: number, EI: number) => number
   pasos: string[]
+  terminosM: Termino[]
+  puntosCriticos: number[]
 }
 
 function resolverSistemaLineal(A: number[][], b: number[]): number[] {
@@ -148,7 +157,7 @@ export function resolverViga(
 
   const n = incognitas.length
 
-  let terminosCarga: Termino[] = []
+  const terminosCarga: Termino[] = []
   for (const c of cargas) {
     if (c.tipo === "puntual") {
       terminosCarga.push({ coef: -c.P, power: 1, x0: c.x })
@@ -255,7 +264,7 @@ export function resolverViga(
 
   const reacciones: Record<string, { Fy?: number; M?: number }> = {}
   const constantes: Record<string, number> = {}
-  let terminosReacciones: Termino[] = []
+  const terminosReacciones: Termino[] = []
 
   incognitas.forEach((inc, i) => {
     const valor = solucion[i]
@@ -272,7 +281,7 @@ export function resolverViga(
     }
   })
 
-  const terminosMTotal = [...terminosCarga, ...terminosReacciones]
+  const terminosMTotal = [...terminosCarga, ...terminosReacciones].filter((t) => Math.abs(t.coef) > 1e-9)
   const terminosThetaEI = terminosMTotal.map(integrarTermino)
   const terminosVEI = terminosThetaEI.map(integrarTermino)
 
@@ -298,5 +307,17 @@ export function resolverViga(
     return (evalTerminos(terminosVEI, x) + extra) / EI
   }
 
-  return { L, reacciones, constantes, M, V, theta, v, pasos }
+  const setPuntos = new Set<number>([0, L])
+  apoyosOrdenados.forEach((a) => setPuntos.add(Number(a.x.toFixed(6))))
+  rotulasOrdenadas.forEach((r) => setPuntos.add(Number(r.x.toFixed(6))))
+  for (const c of cargas) {
+    if (c.tipo === "puntual" || c.tipo === "momento") setPuntos.add(Number(c.x.toFixed(6)))
+    if (c.tipo === "distribuida") {
+      setPuntos.add(Number(c.xi.toFixed(6)))
+      setPuntos.add(Number(c.xf.toFixed(6)))
+    }
+  }
+  const puntosCriticos = Array.from(setPuntos).sort((a, b) => a - b)
+
+  return { L, reacciones, constantes, M, V, theta, v, pasos, terminosM: terminosMTotal, puntosCriticos }
 }

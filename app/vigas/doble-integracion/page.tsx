@@ -1,10 +1,11 @@
 "use client"
 import { useState, useMemo } from "react"
 import katex from "katex"
-// @ts-ignore: Allow importing CSS side-effect in this TSX file
+// Ignore missing type declarations for this side-effect CSS import
+// @ts-ignore
 import "katex/dist/katex.min.css"
 import Sidebar from "../../components/Sidebar"
-import { resolverViga, Apoyo, Carga, Rotula, ResultadoViga, TipoApoyo } from "../../lib/vigas/motor"
+import { resolverViga, Apoyo, Carga, Rotula, ResultadoViga, TipoApoyo, Termino } from "../../lib/vigas/motor"
 
 function Formula({ tex, block = false }: { tex: string; block?: boolean }) {
   const html = katex.renderToString(tex, { throwOnError: false, displayMode: block })
@@ -24,9 +25,32 @@ const nombresApoyo: Record<TipoApoyo, string> = {
   guia: "Guía (deslizante)",
 }
 
-// ---------------------------------------------------------------------------
-// Gráfico cartesiano interactivo (SVG puro, sin imágenes renderizadas)
-// ---------------------------------------------------------------------------
+function ecuacionLatexTramo(terminosM: Termino[], inicioTramo: number): string {
+  const activos = terminosM.filter((t) => t.x0 <= inicioTramo + 1e-6)
+  if (activos.length === 0) return "0"
+
+  let expr = ""
+  activos.forEach((t) => {
+    const absCoef = Math.abs(t.coef)
+    if (absCoef < 1e-9) return
+    const signo = t.coef >= 0 ? "+" : "-"
+    const coefStr = absCoef.toFixed(3)
+    let base = ""
+    if (t.power === 0) {
+      base = t.x0 === 0 ? `${coefStr}` : `${coefStr}`
+    } else if (t.power === 1) {
+      base = t.x0 === 0 ? `${coefStr}x` : `${coefStr}(x-${t.x0.toFixed(2)})`
+    } else {
+      base = t.x0 === 0 ? `${coefStr}x^{${t.power}}` : `${coefStr}(x-${t.x0.toFixed(2)})^{${t.power}}`
+    }
+    expr += ` ${signo} ${base}`
+  })
+
+  expr = expr.trim()
+  if (expr.startsWith("+")) expr = expr.slice(1).trim()
+  return expr || "0"
+}
+
 function GraficoInteractivo({
   datos,
   L,
@@ -105,6 +129,7 @@ function GraficoInteractivo({
   return (
     <svg
       viewBox={`0 0 ${ancho} ${alto}`}
+      preserveAspectRatio="none"
       className="w-full cursor-crosshair"
       style={{ height: alto }}
       onMouseMove={manejarMouseMove}
@@ -257,7 +282,6 @@ export default function DobleIntegracion() {
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {/* Datos generales */}
           <div className="bg-white border border-gray-200 rounded-xl p-5">
             <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">DATOS GENERALES</div>
             <div className="grid grid-cols-3 gap-4">
@@ -295,7 +319,6 @@ export default function DobleIntegracion() {
             </button>
           </div>
 
-          {/* Apoyos */}
           <div className="bg-white border border-gray-200 rounded-xl p-5">
             <div className="flex items-center justify-between mb-3">
               <div className="text-xs text-gray-400 font-medium tracking-wider">APOYOS</div>
@@ -340,7 +363,6 @@ export default function DobleIntegracion() {
             </div>
           </div>
 
-          {/* Rótulas */}
           <div className="bg-white border border-gray-200 rounded-xl p-5">
             <div className="flex items-center justify-between mb-3">
               <div className="text-xs text-gray-400 font-medium tracking-wider">RÓTULAS INTERNAS</div>
@@ -368,7 +390,6 @@ export default function DobleIntegracion() {
             </div>
           </div>
 
-          {/* Cargas */}
           <div className="bg-white border border-gray-200 rounded-xl p-5">
             <div className="flex items-center justify-between mb-3">
               <div className="text-xs text-gray-400 font-medium tracking-wider">CARGAS</div>
@@ -419,7 +440,6 @@ export default function DobleIntegracion() {
             </div>
           </div>
 
-          {/* Esquema de la viga */}
           <div className="bg-white border border-gray-200 rounded-xl p-5">
             <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">ESQUEMA</div>
             <svg viewBox={`0 0 ${anchoSvg} 210`} className="w-full h-52">
@@ -532,7 +552,6 @@ export default function DobleIntegracion() {
 
           {resultado && puntos && (
             <>
-              {/* Reacciones */}
               <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">REACCIONES</div>
                 <div className="grid grid-cols-3 gap-3">
@@ -546,7 +565,6 @@ export default function DobleIntegracion() {
                 </div>
               </div>
 
-              {/* Paso a paso */}
               <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">PASO A PASO</div>
                 <div className="text-sm mb-2">
@@ -566,7 +584,24 @@ export default function DobleIntegracion() {
                 </div>
               </div>
 
-              {/* Diagrama de Momento Flector */}
+              <div className="bg-white border border-gray-200 rounded-xl p-5">
+                <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">ECUACIÓN DE M(x) POR TRAMO</div>
+                <div className="space-y-3">
+                  {resultado.puntosCriticos.slice(0, -1).map((inicio, i) => {
+                    const fin = resultado.puntosCriticos[i + 1]
+                    const tex = ecuacionLatexTramo(resultado.terminosM, inicio)
+                    return (
+                      <div key={i} className="p-3 bg-gray-50 rounded-lg">
+                        <div className="text-xs text-gray-400 mb-1">
+                          Tramo: {inicio.toFixed(2)} m ≤ x ≤ {fin.toFixed(2)} m
+                        </div>
+                        <Formula tex={`M(x) = ${tex}`} block />
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+
               <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="text-xs text-gray-400 font-medium tracking-wider mb-1">DIAGRAMA DE MOMENTO FLECTOR</div>
                 <div className="text-xs text-gray-400 mb-2">
@@ -581,7 +616,6 @@ export default function DobleIntegracion() {
                 />
               </div>
 
-              {/* Diagrama de Fuerza Cortante */}
               <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="text-xs text-gray-400 font-medium tracking-wider mb-1">DIAGRAMA DE FUERZA CORTANTE</div>
                 <div className="text-xs text-gray-400 mb-2">
@@ -596,7 +630,6 @@ export default function DobleIntegracion() {
                 />
               </div>
 
-              {/* Diagrama de Deflexión */}
               <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="text-xs text-gray-400 font-medium tracking-wider mb-1">DEFLEXIÓN</div>
                 <div className="text-xs text-gray-400 mb-2">
