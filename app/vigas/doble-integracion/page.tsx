@@ -1,7 +1,7 @@
 "use client"
 import { useState, useMemo } from "react"
 import katex from "katex"
-// @ts-ignore: CSS module declaration missing for katex stylesheet
+// @ts-ignore: Allow importing CSS side-effect in this TSX file
 import "katex/dist/katex.min.css"
 import Sidebar from "../../components/Sidebar"
 import { resolverViga, Apoyo, Carga, Rotula, ResultadoViga, TipoApoyo } from "../../lib/vigas/motor"
@@ -24,19 +24,155 @@ const nombresApoyo: Record<TipoApoyo, string> = {
   guia: "Guía (deslizante)",
 }
 
+// ---------------------------------------------------------------------------
+// Gráfico cartesiano interactivo (SVG puro, sin imágenes renderizadas)
+// ---------------------------------------------------------------------------
+function GraficoInteractivo({
+  datos,
+  L,
+  color,
+  etiqueta,
+  unidad,
+}: {
+  datos: { x: number; y: number }[]
+  L: number
+  color: string
+  etiqueta: string
+  unidad: string
+}) {
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null)
+
+  const ancho = 700
+  const alto = 230
+  const margenIzq = 58
+  const margenDer = 20
+  const margenTop = 22
+  const margenBot = 32
+  const anchoGraf = ancho - margenIzq - margenDer
+  const altoGraf = alto - margenTop - margenBot
+
+  const yMinRaw = Math.min(0, ...datos.map((d) => d.y))
+  const yMaxRaw = Math.max(0, ...datos.map((d) => d.y))
+  const rango = yMaxRaw - yMinRaw || 1
+  const yMin = yMinRaw - rango * 0.12
+  const yMax = yMaxRaw + rango * 0.12
+  const rangoY = yMax - yMin || 1
+
+  function xPix(x: number) {
+    return margenIzq + (x / L) * anchoGraf
+  }
+  function yPix(y: number) {
+    return margenTop + altoGraf - ((y - yMin) / rangoY) * altoGraf
+  }
+
+  const y0Pix = yPix(0)
+
+  const pathArea =
+    `M ${xPix(datos[0].x)},${y0Pix} ` +
+    datos.map((d) => `L ${xPix(d.x)},${yPix(d.y)}`).join(" ") +
+    ` L ${xPix(datos[datos.length - 1].x)},${y0Pix} Z`
+
+  const pathLine = datos.map((d, i) => `${i === 0 ? "M" : "L"} ${xPix(d.x)},${yPix(d.y)}`).join(" ")
+
+  const numTicksX = 8
+  const ticksX = Array.from({ length: numTicksX + 1 }, (_, i) => (L * i) / numTicksX)
+  const numTicksY = 5
+  const ticksY = Array.from({ length: numTicksY + 1 }, (_, i) => yMin + (rangoY * i) / numTicksY)
+
+  const pasoMuestra = Math.max(1, Math.floor(datos.length / 18))
+  const puntosVisibles = datos.filter((_, i) => i % pasoMuestra === 0 || i === datos.length - 1)
+
+  function manejarMouseMove(e: React.MouseEvent<SVGSVGElement>) {
+    const svg = e.currentTarget
+    const rect = svg.getBoundingClientRect()
+    const xPantalla = ((e.clientX - rect.left) / rect.width) * ancho
+    const xData = ((xPantalla - margenIzq) / anchoGraf) * L
+    let mejorIdx = 0
+    let mejorDist = Infinity
+    datos.forEach((d, i) => {
+      const dist = Math.abs(d.x - xData)
+      if (dist < mejorDist) {
+        mejorDist = dist
+        mejorIdx = i
+      }
+    })
+    setHoverIdx(mejorIdx)
+  }
+
+  const puntoHover = hoverIdx !== null ? datos[hoverIdx] : null
+  const tooltipX = puntoHover ? Math.min(Math.max(xPix(puntoHover.x), margenIzq + 58), ancho - margenDer - 58) : 0
+
+  return (
+    <svg
+      viewBox={`0 0 ${ancho} ${alto}`}
+      className="w-full cursor-crosshair"
+      style={{ height: alto }}
+      onMouseMove={manejarMouseMove}
+      onMouseLeave={() => setHoverIdx(null)}
+    >
+      {ticksY.map((ty, i) => (
+        <g key={`y${i}`}>
+          <line x1={margenIzq} y1={yPix(ty)} x2={ancho - margenDer} y2={yPix(ty)} stroke="#f1f5f9" strokeWidth={1} />
+          <text x={margenIzq - 8} y={yPix(ty) + 3} fontSize={9} textAnchor="end" fill="#94a3b8">
+            {ty.toFixed(2)}
+          </text>
+        </g>
+      ))}
+      {ticksX.map((tx, i) => (
+        <g key={`x${i}`}>
+          <line x1={xPix(tx)} y1={margenTop} x2={xPix(tx)} y2={alto - margenBot} stroke="#f8fafc" strokeWidth={1} />
+          <text x={xPix(tx)} y={alto - margenBot + 14} fontSize={9} textAnchor="middle" fill="#94a3b8">
+            {tx.toFixed(1)}
+          </text>
+        </g>
+      ))}
+
+      <line x1={margenIzq} y1={y0Pix} x2={ancho - margenDer} y2={y0Pix} stroke="#cbd5e1" strokeWidth={1.5} />
+      <line x1={margenIzq} y1={margenTop} x2={margenIzq} y2={alto - margenBot} stroke="#cbd5e1" strokeWidth={1.5} />
+
+      <path d={pathArea} fill={color} opacity={0.16} />
+      <path d={pathLine} fill="none" stroke={color} strokeWidth={2} />
+
+      {puntosVisibles.map((d, i) => (
+        <circle key={i} cx={xPix(d.x)} cy={yPix(d.y)} r={2.6} fill={color} stroke="white" strokeWidth={0.8} />
+      ))}
+
+      {puntoHover && (
+        <>
+          <line
+            x1={xPix(puntoHover.x)} y1={margenTop}
+            x2={xPix(puntoHover.x)} y2={alto - margenBot}
+            stroke="#64748b" strokeDasharray="3,3" strokeWidth={1}
+          />
+          <circle cx={xPix(puntoHover.x)} cy={yPix(puntoHover.y)} r={4.5} fill="white" stroke={color} strokeWidth={2} />
+          <g transform={`translate(${tooltipX}, ${margenTop + 4})`}>
+            <rect x={-58} y={-4} width={116} height={30} rx={5} fill="#1e293b" opacity={0.92} />
+            <text x={0} y={9} fontSize={9.5} textAnchor="middle" fill="white">x = {puntoHover.x.toFixed(2)} m</text>
+            <text x={0} y={20} fontSize={9.5} textAnchor="middle" fill="white">
+              {puntoHover.y.toFixed(4)} {unidad}
+            </text>
+          </g>
+        </>
+      )}
+
+      <text x={margenIzq + 2} y={14} fontSize={10} fill="#475569" fontWeight={500}>
+        {etiqueta}
+      </text>
+    </svg>
+  )
+}
+
 export default function DobleIntegracion() {
   const [L, setL] = useState(6)
-  const [E, setE] = useState(200000) // MPa (acero por defecto)
+  const [E, setE] = useState(200000) // MPa
   const [I, setI] = useState(50000) // cm4
-  const EI = useMemo(() => (E * 1000 * I * 1e-8), [E, I]) // kN*m2
+  const EI = useMemo(() => E * 1000 * I * 1e-8, [E, I]) // kN*m2
 
   const [apoyos, setApoyos] = useState<Apoyo[]>([
     { id: "A", x: 0, tipo: "simple" },
     { id: "B", x: 6, tipo: "simple" },
   ])
-  const [cargas, setCargas] = useState<Carga[]>([
-    { id: "C1", tipo: "puntual", x: 3, P: 10 },
-  ])
+  const [cargas, setCargas] = useState<Carga[]>([{ id: "C1", tipo: "puntual", x: 3, P: 10 }])
   const [rotulas, setRotulas] = useState<Rotula[]>([])
 
   const [resultado, setResultado] = useState<ResultadoViga | null>(null)
@@ -96,7 +232,7 @@ export default function DobleIntegracion() {
 
   const puntos = useMemo(() => {
     if (!resultado) return null
-    const n = 80
+    const n = 120
     const arr = []
     for (let i = 0; i <= n; i++) {
       const x = (L * i) / n
@@ -110,14 +246,6 @@ export default function DobleIntegracion() {
     return arr
   }, [resultado, L, EI])
 
-  function polyline(valores: { x: number; y: number }[], alturaGrafico: number) {
-    const maxAbs = Math.max(0.0001, ...valores.map((p) => Math.abs(p.y)))
-    const puntosStr = valores
-      .map((p) => `${xSvg(p.x)},${alturaGrafico / 2 - (p.y / maxAbs) * (alturaGrafico / 2 - 10)}`)
-      .join(" ")
-    return { puntosStr, maxAbs }
-  }
-
   return (
     <div className="flex h-screen bg-gray-100 font-sans">
       <Sidebar />
@@ -129,6 +257,7 @@ export default function DobleIntegracion() {
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          {/* Datos generales */}
           <div className="bg-white border border-gray-200 rounded-xl p-5">
             <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">DATOS GENERALES</div>
             <div className="grid grid-cols-3 gap-4">
@@ -160,14 +289,13 @@ export default function DobleIntegracion() {
                 />
               </div>
             </div>
-            <div className="mt-2 text-xs text-gray-400">
-              EI calculado = {EI.toFixed(2)} kN·m²
-            </div>
+            <div className="mt-2 text-xs text-gray-400">EI calculado = {EI.toFixed(2)} kN·m²</div>
             <button className="mt-3 text-xs text-blue-600 hover:underline">
               Importar sección desde Section Builder
             </button>
           </div>
 
+          {/* Apoyos */}
           <div className="bg-white border border-gray-200 rounded-xl p-5">
             <div className="flex items-center justify-between mb-3">
               <div className="text-xs text-gray-400 font-medium tracking-wider">APOYOS</div>
@@ -192,7 +320,9 @@ export default function DobleIntegracion() {
                     className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm col-span-2"
                   >
                     {Object.entries(nombresApoyo).map(([k, v]) => (
-                      <option key={k} value={k}>{v}</option>
+                      <option key={k} value={k}>
+                        {v}
+                      </option>
                     ))}
                   </select>
                   <input
@@ -210,6 +340,7 @@ export default function DobleIntegracion() {
             </div>
           </div>
 
+          {/* Rótulas */}
           <div className="bg-white border border-gray-200 rounded-xl p-5">
             <div className="flex items-center justify-between mb-3">
               <div className="text-xs text-gray-400 font-medium tracking-wider">RÓTULAS INTERNAS</div>
@@ -237,6 +368,7 @@ export default function DobleIntegracion() {
             </div>
           </div>
 
+          {/* Cargas */}
           <div className="bg-white border border-gray-200 rounded-xl p-5">
             <div className="flex items-center justify-between mb-3">
               <div className="text-xs text-gray-400 font-medium tracking-wider">CARGAS</div>
@@ -287,56 +419,106 @@ export default function DobleIntegracion() {
             </div>
           </div>
 
+          {/* Esquema de la viga */}
           <div className="bg-white border border-gray-200 rounded-xl p-5">
             <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">ESQUEMA</div>
-            <svg viewBox={`0 0 ${anchoSvg} 200`} className="w-full h-48">
+            <svg viewBox={`0 0 ${anchoSvg} 210`} className="w-full h-52">
               <line x1={xSvg(0)} y1={yViga} x2={xSvg(L)} y2={yViga} stroke="#1e3a8a" strokeWidth={4} />
+
               {apoyos.map((a) => (
                 <g key={a.id}>
                   {a.tipo === "simple" && (
                     <polygon points={`${xSvg(a.x)},${yViga} ${xSvg(a.x) - 10},${yViga + 18} ${xSvg(a.x) + 10},${yViga + 18}`} fill="#2563eb" />
                   )}
-                  {a.tipo === "empotrado" && (
-                    <rect x={xSvg(a.x) - 4} y={yViga - 20} width={8} height={40} fill="#1e3a8a" />
-                  )}
+                  {a.tipo === "empotrado" && <rect x={xSvg(a.x) - 4} y={yViga - 20} width={8} height={40} fill="#1e3a8a" />}
                   {a.tipo === "guia" && (
                     <>
                       <polygon points={`${xSvg(a.x)},${yViga} ${xSvg(a.x) - 10},${yViga + 18} ${xSvg(a.x) + 10},${yViga + 18}`} fill="#94a3b8" />
                       <line x1={xSvg(a.x) - 12} y1={yViga + 20} x2={xSvg(a.x) + 12} y2={yViga + 20} stroke="#94a3b8" strokeWidth={2} />
                     </>
                   )}
-                  <text x={xSvg(a.x)} y={yViga + 34} fontSize={10} textAnchor="middle" fill="#64748b">{a.id}</text>
+                  <text x={xSvg(a.x)} y={yViga + 34} fontSize={10} textAnchor="middle" fill="#64748b">
+                    {a.id}
+                  </text>
                 </g>
               ))}
+
               {rotulas.map((r) => (
                 <circle key={r.id} cx={xSvg(r.x)} cy={yViga} r={5} fill="white" stroke="#1e3a8a" strokeWidth={2} />
               ))}
+
               {cargas.map((c) => {
                 if (c.tipo === "puntual")
                   return (
                     <g key={c.id}>
                       <line x1={xSvg(c.x)} y1={yViga - 40} x2={xSvg(c.x)} y2={yViga - 4} stroke="#dc2626" strokeWidth={2} markerEnd="url(#flecha)" />
-                      <text x={xSvg(c.x)} y={yViga - 44} fontSize={10} textAnchor="middle" fill="#dc2626">{c.P}kN</text>
+                      <text x={xSvg(c.x)} y={yViga - 44} fontSize={10} textAnchor="middle" fill="#dc2626">
+                        {c.P}kN
+                      </text>
                     </g>
                   )
                 if (c.tipo === "momento")
                   return (
-                    <text key={c.id} x={xSvg(c.x)} y={yViga - 20} fontSize={16} textAnchor="middle" fill="#dc2626">↻</text>
+                    <text key={c.id} x={xSvg(c.x)} y={yViga - 20} fontSize={16} textAnchor="middle" fill="#dc2626">
+                      ↻
+                    </text>
                   )
-                if (c.tipo === "distribuida")
+                if (c.tipo === "distribuida") {
+                  const maxW = Math.max(
+                    ...cargas.filter((cc) => cc.tipo === "distribuida").map((cc: any) => Math.max(cc.wi, cc.wf)),
+                    1
+                  )
+                  const alturaMax = 45
+                  const hi = (c.wi / maxW) * alturaMax
+                  const hf = (c.wf / maxW) * alturaMax
+                  const yTopoIzq = yViga - 8 - hi
+                  const yTopoDer = yViga - 8 - hf
+                  const numFlechas = Math.max(3, Math.round((xSvg(c.xf) - xSvg(c.xi)) / 30))
                   return (
                     <g key={c.id}>
-                      <rect x={xSvg(c.xi)} y={yViga - 25} width={xSvg(c.xf) - xSvg(c.xi)} height={20} fill="#fecaca" opacity={0.6} />
-                      <text x={(xSvg(c.xi) + xSvg(c.xf)) / 2} y={yViga - 30} fontSize={10} textAnchor="middle" fill="#dc2626">
-                        {c.wi}→{c.wf} kN/m
+                      <polygon
+                        points={`${xSvg(c.xi)},${yTopoIzq} ${xSvg(c.xf)},${yTopoDer} ${xSvg(c.xf)},${yViga - 8} ${xSvg(c.xi)},${yViga - 8}`}
+                        fill="#fecaca"
+                        opacity={0.5}
+                        stroke="#dc2626"
+                        strokeWidth={1}
+                      />
+                      {Array.from({ length: numFlechas + 1 }).map((_, i) => {
+                        const t = i / numFlechas
+                        const x = xSvg(c.xi) + t * (xSvg(c.xf) - xSvg(c.xi))
+                        const yTopo = yTopoIzq + t * (yTopoDer - yTopoIzq)
+                        return (
+                          <line
+                            key={i}
+                            x1={x} y1={yTopo}
+                            x2={x} y2={yViga - 8}
+                            stroke="#dc2626"
+                            strokeWidth={1}
+                            markerEnd="url(#flechaChica)"
+                          />
+                        )
+                      })}
+                      <text x={xSvg(c.xi)} y={yTopoIzq - 4} fontSize={9} textAnchor="middle" fill="#dc2626">
+                        {c.wi}
+                      </text>
+                      <text x={xSvg(c.xf)} y={yTopoDer - 4} fontSize={9} textAnchor="middle" fill="#dc2626">
+                        {c.wf}
+                      </text>
+                      <text x={(xSvg(c.xi) + xSvg(c.xf)) / 2} y={yViga - 8 - alturaMax - 10} fontSize={9} textAnchor="middle" fill="#dc2626">
+                        kN/m
                       </text>
                     </g>
                   )
+                }
                 return null
               })}
+
               <defs>
                 <marker id="flecha" markerWidth={8} markerHeight={8} refX={4} refY={4} orient="auto">
                   <path d="M0,0 L8,4 L0,8 Z" fill="#dc2626" />
+                </marker>
+                <marker id="flechaChica" markerWidth={6} markerHeight={6} refX={3} refY={3} orient="auto">
+                  <path d="M0,0 L6,3 L0,6 Z" fill="#dc2626" />
                 </marker>
               </defs>
             </svg>
@@ -350,6 +532,7 @@ export default function DobleIntegracion() {
 
           {resultado && puntos && (
             <>
+              {/* Reacciones */}
               <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">REACCIONES</div>
                 <div className="grid grid-cols-3 gap-3">
@@ -363,6 +546,7 @@ export default function DobleIntegracion() {
                 </div>
               </div>
 
+              {/* Paso a paso */}
               <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">PASO A PASO</div>
                 <div className="text-sm mb-2">
@@ -382,24 +566,50 @@ export default function DobleIntegracion() {
                 </div>
               </div>
 
-              {(["M", "V", "v"] as const).map((clave) => {
-                const alturaGrafico = 140
-                const { puntosStr, maxAbs } = polyline(
-                  puntos.map((p) => ({ x: p.x, y: p[clave] })),
-                  alturaGrafico
-                )
-                const etiqueta = clave === "M" ? "Momento flector M(x) [kN·m]" : clave === "V" ? "Cortante V(x) [kN]" : "Deflexión v(x) [m]"
-                return (
-                  <div key={clave} className="bg-white border border-gray-200 rounded-xl p-5">
-                    <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">{etiqueta.toUpperCase()}</div>
-                    <svg viewBox={`0 0 ${anchoSvg} ${alturaGrafico}`} className="w-full" style={{ height: alturaGrafico }}>
-                      <line x1={margen} y1={alturaGrafico / 2} x2={anchoSvg - margen} y2={alturaGrafico / 2} stroke="#e5e7eb" />
-                      <polyline points={puntosStr} fill="none" stroke="#1e3a8a" strokeWidth={2} />
-                    </svg>
-                    <div className="text-xs text-gray-400 mt-1">Máximo absoluto: {maxAbs.toFixed(4)}</div>
-                  </div>
-                )
-              })}
+              {/* Diagrama de Momento Flector */}
+              <div className="bg-white border border-gray-200 rounded-xl p-5">
+                <div className="text-xs text-gray-400 font-medium tracking-wider mb-1">DIAGRAMA DE MOMENTO FLECTOR</div>
+                <div className="text-xs text-gray-400 mb-2">
+                  Máximo: {Math.max(...puntos.map((p) => p.M)).toFixed(3)} kN·m — Mínimo: {Math.min(...puntos.map((p) => p.M)).toFixed(3)} kN·m
+                </div>
+                <GraficoInteractivo
+                  datos={puntos.map((p) => ({ x: p.x, y: p.M }))}
+                  L={L}
+                  color="#2563eb"
+                  etiqueta="M(x)"
+                  unidad="kN·m"
+                />
+              </div>
+
+              {/* Diagrama de Fuerza Cortante */}
+              <div className="bg-white border border-gray-200 rounded-xl p-5">
+                <div className="text-xs text-gray-400 font-medium tracking-wider mb-1">DIAGRAMA DE FUERZA CORTANTE</div>
+                <div className="text-xs text-gray-400 mb-2">
+                  Máximo: {Math.max(...puntos.map((p) => p.V)).toFixed(3)} kN — Mínimo: {Math.min(...puntos.map((p) => p.V)).toFixed(3)} kN
+                </div>
+                <GraficoInteractivo
+                  datos={puntos.map((p) => ({ x: p.x, y: p.V }))}
+                  L={L}
+                  color="#f97316"
+                  etiqueta="V(x)"
+                  unidad="kN"
+                />
+              </div>
+
+              {/* Diagrama de Deflexión */}
+              <div className="bg-white border border-gray-200 rounded-xl p-5">
+                <div className="text-xs text-gray-400 font-medium tracking-wider mb-1">DEFLEXIÓN</div>
+                <div className="text-xs text-gray-400 mb-2">
+                  Máxima: {Math.max(...puntos.map((p) => p.v)).toFixed(5)} m — Mínima: {Math.min(...puntos.map((p) => p.v)).toFixed(5)} m
+                </div>
+                <GraficoInteractivo
+                  datos={puntos.map((p) => ({ x: p.x, y: p.v }))}
+                  L={L}
+                  color="#64748b"
+                  etiqueta="v(x)"
+                  unidad="m"
+                />
+              </div>
             </>
           )}
         </div>
