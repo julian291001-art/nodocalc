@@ -13,12 +13,12 @@ export default function Vigas() {
 
         <div className="flex-1 overflow-y-auto p-6">
 
-          <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">INTEGRACIÓN DIRECTA</div>
-          <div className="grid grid-cols-2 gap-4 mb-6">
-            <MetodoCard nombre="Doble integración clásica" desc="Integración directa de la ecuación diferencial de la elástica con constantes C1 y C2." tag="Deflexiones" />
-            <MetodoCard nombre="Ecuaciones de singularidad" desc="Funciones de Macaulay para cargas discontinuas a lo largo de la viga." tag="Deflexiones" />
-            <MetodoCard nombre="Compatibilidad de tramos" desc="C1, C2, C3, C4 por tramo para vigas con condiciones de borde complejas." tag="Deflexiones" />
-          </div>
+            <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">INTEGRACIÓN DIRECTA</div>
+            <div className="grid grid-cols-2 gap-4 mb-6">
+            <a href="/vigas/doble-integracion"><MetodoCard nombre="Doble integración clásica" desc="Integración directa de la ecuación diferencial de la elástica con constantes C1 y C2." tag="Deflexiones" /></a>
+            <a href="/vigas/ecuaciones-singularidad"><MetodoCard nombre="Ecuaciones de singularidad" desc="Funciones de Macaulay para cargas discontinuas a lo largo de la viga." tag="Deflexiones" /></a>
+            <a href="/vigas/compatibilidad-tramos"><MetodoCard nombre="Compatibilidad de tramos" desc="C1, C2, C3, C4 por tramo para vigas con condiciones de borde complejas." tag="Deflexiones" /></a>
+            </div>
 
           <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">MÉTODOS DE LA FUERZA</div>
           <div className="grid grid-cols-2 gap-4 mb-6">
