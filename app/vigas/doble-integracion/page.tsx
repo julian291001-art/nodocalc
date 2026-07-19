@@ -443,7 +443,7 @@ export default function DobleIntegracion() {
 
           <div className="bg-white border border-gray-200 rounded-xl p-5">
             <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">ESQUEMA (con reacciones en vivo)</div>
-            <svg viewBox={`0 0 ${anchoSvg} 230`} className="w-full h-56">
+            <svg viewBox={`0 0 ${anchoSvg} 260`} className="w-full h-64">
               <line x1={xSvg(0)} y1={yViga} x2={xSvg(L)} y2={yViga} stroke="#1e3a8a" strokeWidth={4} />
               {apoyos.map((a) => (
                 <g key={a.id}>
@@ -507,23 +507,23 @@ export default function DobleIntegracion() {
                     {r.Fy !== undefined && Math.abs(r.Fy) > 1e-6 && (
                       <>
                         <line
-                          x1={xPos + 20}
-                          y1={r.Fy >= 0 ? yViga + 60 : yViga + 24}
-                          x2={xPos + 20}
-                          y2={r.Fy >= 0 ? yViga + 24 : yViga + 60}
-                          stroke="#16a34a" strokeWidth={2.5} markerEnd="url(#flechaVerde)"
+                          x1={xPos}
+                          y1={r.Fy >= 0 ? yViga + 72 : yViga + 32}
+                          x2={xPos}
+                          y2={r.Fy >= 0 ? yViga + 32 : yViga + 72}
+                          stroke="#16a34a" strokeWidth={3.5} markerEnd="url(#flechaVerde)"
                         />
-                        <text x={xPos + 20} y={yViga + 74} fontSize={9} textAnchor="middle" fill="#16a34a" fontWeight={600}>
+                        <text x={xPos} y={yViga + 86} fontSize={11} textAnchor="middle" fill="#16a34a" fontWeight={700}>
                           {Math.abs(r.Fy).toFixed(1)}kN
                         </text>
                       </>
                     )}
                     {r.M !== undefined && Math.abs(r.M) > 1e-6 && (
                       <>
-                        <text x={xPos - 22} y={yViga + 8} fontSize={20} textAnchor="middle" fill="#16a34a">
+                        <text x={xPos} y={yViga - 60} fontSize={28} textAnchor="middle" fill="#16a34a">
                           {r.M >= 0 ? "↺" : "↻"}
                         </text>
-                        <text x={xPos - 22} y={yViga + 28} fontSize={9} textAnchor="middle" fill="#16a34a" fontWeight={600}>
+                        <text x={xPos} y={yViga - 40} fontSize={11} textAnchor="middle" fill="#16a34a" fontWeight={700}>
                           {Math.abs(r.M).toFixed(1)}
                         </text>
                       </>
