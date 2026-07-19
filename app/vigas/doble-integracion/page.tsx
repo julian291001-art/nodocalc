@@ -243,6 +243,11 @@ function PanelReacciones({ reacciones, titulo }: { reacciones: ResultadoViga["re
                 M = {Math.abs(r.M).toFixed(3)} kN·m {r.M >= 0 ? "↺" : "↻"}
               </div>
             )}
+            {r.Rx !== undefined && (
+              <div className="text-sm font-bold text-cyan-700">
+                Rx = {Math.abs(r.Rx).toFixed(3)} kN {r.Rx >= 0 ? "→" : "←"}
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -459,7 +464,14 @@ export default function DobleIntegracion() {
                   <text x={xSvg(a.x)} y={yViga + 34} fontSize={10} textAnchor="middle" fill="#64748b">{a.id}</text>
                 </g>
               ))}
-              {rotulas.map((r) => <circle key={r.id} cx={xSvg(r.x)} cy={yViga} r={5} fill="white" stroke="#1e3a8a" strokeWidth={2} />)}
+              {rotulas.map((r) => (
+                <g key={r.id}>
+                  <circle cx={xSvg(r.x)} cy={yViga} r={6} fill="white" stroke="#1e3a8a" strokeWidth={2.5} />
+                  <text x={xSvg(r.x)} y={yViga + 22} fontSize={9} textAnchor="middle" fill="#1e3a8a" fontWeight={700}>
+                    {r.id} (M=0)
+                  </text>
+                </g>
+              ))}
               {cargas.map((c) => {
                 if (c.tipo === "puntual") {
                   const angRad = ((c.angulo ?? 0) * Math.PI) / 180
@@ -480,10 +492,10 @@ export default function DobleIntegracion() {
                 if (c.tipo === "momento")
                   return (
                     <g key={c.id}>
-                      <text x={xSvg(c.x)} y={yViga - 16} fontSize={20} textAnchor="middle" fill="#dc2626">
+                      <text x={xSvg(c.x)} y={yViga - 14} fontSize={30} textAnchor="middle" fill="#dc2626">
                         {c.M >= 0 ? "↺" : "↻"}
                       </text>
-                      <text x={xSvg(c.x)} y={yViga - 32} fontSize={10} textAnchor="middle" fill="#dc2626" fontWeight={600}>
+                      <text x={xSvg(c.x)} y={yViga - 40} fontSize={11} textAnchor="middle" fill="#dc2626" fontWeight={700}>
                         {Math.abs(c.M)}kN·m
                       </text>
                     </g>
@@ -535,11 +547,25 @@ export default function DobleIntegracion() {
                     )}
                     {r.M !== undefined && Math.abs(r.M) > 1e-6 && (
                       <>
-                        <text x={xPos} y={yViga - 26} fontSize={22} textAnchor="middle" fill="#16a34a">
+                        <text x={xPos} y={yViga - 20} fontSize={30} textAnchor="middle" fill="#16a34a">
                           {r.M >= 0 ? "↺" : "↻"}
                         </text>
-                        <text x={xPos} y={yViga - 10} fontSize={10} textAnchor="middle" fill="#16a34a" fontWeight={700}>
+                        <text x={xPos} y={yViga - 44} fontSize={11} textAnchor="middle" fill="#16a34a" fontWeight={700}>
                           {Math.abs(r.M).toFixed(1)}
+                        </text>
+                      </>
+                    )}
+                    {r.Rx !== undefined && Math.abs(r.Rx) > 1e-6 && (
+                      <>
+                        <line
+                          x1={r.Rx >= 0 ? xPos - 34 : xPos + 34}
+                          y1={yViga}
+                          x2={r.Rx >= 0 ? xPos - 10 : xPos + 10}
+                          y2={yViga}
+                          stroke="#0891b2" strokeWidth={2.6} markerEnd="url(#flechaCyan)"
+                        />
+                        <text x={r.Rx >= 0 ? xPos - 22 : xPos + 22} y={yViga - 8} fontSize={10} textAnchor="middle" fill="#0891b2" fontWeight={700}>
+                          {Math.abs(r.Rx).toFixed(1)}kN
                         </text>
                       </>
                     )}
@@ -551,6 +577,7 @@ export default function DobleIntegracion() {
                 <marker id="flecha" markerWidth={8} markerHeight={8} refX={4} refY={4} orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#dc2626" /></marker>
                 <marker id="flechaChica" markerWidth={6} markerHeight={6} refX={3} refY={3} orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#dc2626" /></marker>
                 <marker id="flechaVerde" markerWidth={8} markerHeight={8} refX={4} refY={4} orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#16a34a" /></marker>
+                <marker id="flechaCyan" markerWidth={8} markerHeight={8} refX={4} refY={4} orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#0891b2" /></marker>
               </defs>
             </svg>
           </div>
@@ -571,6 +598,9 @@ export default function DobleIntegracion() {
                     <div key={i} className="p-4 bg-gray-50 rounded-lg space-y-2">
                       <div className="text-xs font-semibold text-gray-500">
                         Tramo {i + 1}: {t.inicio.toFixed(2)} m ≤ x ≤ {t.fin.toFixed(2)} m
+                        {rotulas.some((r) => Math.abs(r.x - t.inicio) < 1e-6) && (
+                          <span className="text-blue-600"> — inicia en rótula (M=0)</span>
+                        )}
                       </div>
                       <div className="text-sm"><Formula tex={`M(x) = ${polyALatex(t.polyM)}`} block /></div>
                       <div className="text-sm"><Formula tex={`EI \\cdot \\theta(x) = ${polyALatex(t.polyTheta, { nombre: t.nombreCTheta, valor: t.cTheta })}`} block /></div>

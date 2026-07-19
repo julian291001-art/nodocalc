@@ -50,6 +50,11 @@ function componenteVerticalPuntual(c: Extract<Carga, { tipo: "puntual" }>): numb
   return c.P * Math.cos(angRad)
 }
 
+function componenteHorizontalPuntual(c: Extract<Carga, { tipo: "puntual" }>): number {
+  const angRad = ((c.angulo ?? 0) * Math.PI) / 180
+  return c.P * Math.sin(angRad)
+}
+
 function terminosMomentoDeCargaDistribuida(xi: number, xf: number, wi: number, wf: number): Termino[] {
   const Lseg = xf - xi
   if (Lseg <= 0) return []
@@ -81,7 +86,7 @@ interface Incognita {
 
 export interface ResultadoViga {
   L: number
-  reacciones: Record<string, { Fy?: number; M?: number }>
+  reacciones: Record<string, { Fy?: number; M?: number; Rx?: number }>
   constantes: Record<string, number>
   M: (x: number) => number
   V: (x: number) => number
@@ -259,7 +264,7 @@ export function resolverViga(
 
   const solucion = resolverSistemaLineal(filasFinal, bsFinal)
 
-  const reacciones: Record<string, { Fy?: number; M?: number }> = {}
+  const reacciones: Record<string, { Fy?: number; M?: number; Rx?: number }> = {}
   const constantes: Record<string, number> = {}
   const terminosReacciones: Termino[] = []
 
@@ -315,6 +320,21 @@ export function resolverViga(
     }
   }
   const puntosCriticos = Array.from(setPuntos).sort((a, b) => a - b)
+
+  // Reaccion horizontal: si hay cargas puntuales con angulo, necesitan un
+  // apoyo que restrinja el movimiento horizontal (como un pasador). Se
+  // asigna al primer apoyo no-libre de la viga (convencion tipica).
+  let sumaHorizontal = 0
+  for (const c of cargas) {
+    if (c.tipo === "puntual") sumaHorizontal += componenteHorizontalPuntual(c)
+  }
+  if (Math.abs(sumaHorizontal) > 1e-9) {
+    const primerApoyo = apoyosOrdenados.find((a) => a.tipo !== "libre")
+    if (primerApoyo) {
+      reacciones[primerApoyo.id] = { ...(reacciones[primerApoyo.id] || {}), Rx: -sumaHorizontal }
+      pasos.push(`ΣFx = 0: reacción horizontal Rx en apoyo ${primerApoyo.id} = ${(-sumaHorizontal).toFixed(3)} kN`)
+    }
+  }
 
   return { L, reacciones, constantes, M, V, theta, v, pasos, terminosM: terminosMTotal, puntosCriticos }
 }
