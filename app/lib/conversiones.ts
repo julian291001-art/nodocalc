@@ -23,10 +23,13 @@ export const conversiones: Record<string, { unidades: string[]; factores: number
     unidades: ["mm²", "cm²", "m²", "in²", "ft²"],
     factores: [1e-6, 1e-4, 1, 0.00064516, 0.092903]
   },
-  // NUEVO — requerido por el módulo de Relaciones de Fase (volúmenes de suelo, agua, aire)
   "Volumen": {
     unidades: ["cm³", "m³", "L", "ft³", "in³", "gal (US)"],
     factores: [1e-6, 1, 1e-3, 0.0283168, 1.63871e-5, 0.00378541]
+  },
+  "Peso unitario": {
+    unidades: ["kN/m³", "tf/m³", "kgf/m³", "pcf"],
+    factores: [1, 9.80665, 0.00980665, 0.157087]
   },
   "Momento de inercia": {
     unidades: ["mm⁴", "cm⁴", "m⁴", "in⁴", "ft⁴"],
@@ -37,7 +40,7 @@ export const conversiones: Record<string, { unidades: string[]; factores: number
     factores: [1, 1, 1] // manejo especial
   },
 }
-
+ 
 export function convertirTemperatura(valor: number, desde: string, hacia: string): number {
   let celsius = valor
   if (desde === "°F") celsius = (valor - 32) * 5 / 9
