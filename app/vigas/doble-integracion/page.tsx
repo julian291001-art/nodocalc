@@ -1,8 +1,7 @@
 "use client"
 import { useState, useMemo } from "react"
 import katex from "katex"
-// The CSS import may not have type declarations; ignore TS error for this side-effect import
-// @ts-ignore: Imported for side-effects only
+// @ts-ignore: CSS import for KaTeX styles
 import "katex/dist/katex.min.css"
 import Sidebar from "../../components/Sidebar"
 import { resolverViga, Apoyo, Carga, Rotula, ResultadoViga, TipoApoyo, Termino } from "../../lib/vigas/motor"
@@ -22,7 +21,7 @@ const nombresApoyo: Record<TipoApoyo, string> = {
   simple: "Simple",
   empotrado: "Empotrado",
   libre: "Libre (voladizo)",
-  guia: "Guía (deslizante)",
+  guia: "Guía (restringe giro)",
 }
 
 type Poly = { power: number; coef: number }[]
@@ -225,6 +224,32 @@ function GraficoInteractivo({
   )
 }
 
+function PanelReacciones({ reacciones, titulo }: { reacciones: ResultadoViga["reacciones"] | null; titulo: string }) {
+  if (!reacciones || Object.keys(reacciones).length === 0) return null
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl p-5">
+      <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">{titulo}</div>
+      <div className="grid grid-cols-3 gap-3">
+        {Object.entries(reacciones).map(([id, r]) => (
+          <div key={id} className="p-3 rounded-lg bg-blue-50 border-l-4 border-blue-600">
+            <div className="text-xs text-blue-500">Apoyo {id}</div>
+            {r.Fy !== undefined && (
+              <div className="text-sm font-bold text-blue-800">
+                Fy = {Math.abs(r.Fy).toFixed(3)} kN {r.Fy >= 0 ? "↑" : "↓"}
+              </div>
+            )}
+            {r.M !== undefined && (
+              <div className="text-sm font-bold text-blue-800">
+                M = {Math.abs(r.M).toFixed(3)} kN·m {r.M >= 0 ? "↺" : "↻"}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export default function DobleIntegracion() {
   const [L, setL] = useState(6)
   const [E, setE] = useState(200000)
@@ -240,6 +265,14 @@ export default function DobleIntegracion() {
 
   const [resultado, setResultado] = useState<ResultadoViga | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  const resultadoLive = useMemo(() => {
+    try {
+      return resolverViga(L, apoyos, cargas, rotulas)
+    } catch {
+      return null
+    }
+  }, [L, apoyos, cargas, rotulas])
 
   function agregarApoyo() { setApoyos([...apoyos, { id: nuevoId("Ap"), x: 0, tipo: "simple" }]) }
   function actualizarApoyo(id: string, cambios: Partial<Apoyo>) { setApoyos(apoyos.map((a) => (a.id === id ? { ...a, ...cambios } : a))) }
@@ -279,9 +312,9 @@ export default function DobleIntegracion() {
     const n = 140
     const malla: number[] = []
     for (let i = 0; i <= n; i++) malla.push((L * i) / n)
-    const criticosInteriores = resultado.puntosCriticos.filter((xc) => xc > 1e-9 && xc < L - 1e-9)
-    const criticosSet = new Set(criticosInteriores.map((xc) => Number(xc.toFixed(9))))
-    criticosInteriores.forEach((xc) => malla.push(xc))
+    const criticosDual = resultado.puntosCriticos.filter((xc) => xc > 1e-9)
+    const criticosSet = new Set(criticosDual.map((xc) => Number(xc.toFixed(9))))
+    criticosDual.forEach((xc) => malla.push(xc))
     const xsOrdenados = Array.from(new Set(malla.map((xv) => Number(xv.toFixed(9))))).sort((a, b) => a - b)
     const arr: { x: number; M: number; V: number; v: number }[] = []
     xsOrdenados.forEach((xv) => {
@@ -415,7 +448,7 @@ export default function DobleIntegracion() {
                   {a.tipo === "empotrado" && <rect x={xSvg(a.x) - 4} y={yViga - 20} width={8} height={40} fill="#1e3a8a" />}
                   {a.tipo === "guia" && (
                     <>
-                      <polygon points={`${xSvg(a.x)},${yViga} ${xSvg(a.x) - 10},${yViga + 18} ${xSvg(a.x) + 10},${yViga + 18}`} fill="#94a3b8" />
+                      <rect x={xSvg(a.x) - 4} y={yViga - 16} width={8} height={32} fill="#94a3b8" />
                       <line x1={xSvg(a.x) - 12} y1={yViga + 20} x2={xSvg(a.x) + 12} y2={yViga + 20} stroke="#94a3b8" strokeWidth={2} />
                     </>
                   )}
@@ -432,7 +465,11 @@ export default function DobleIntegracion() {
                     </g>
                   )
                 if (c.tipo === "momento")
-                  return <text key={c.id} x={xSvg(c.x)} y={yViga - 20} fontSize={16} textAnchor="middle" fill="#dc2626">↻</text>
+                  return (
+                    <text key={c.id} x={xSvg(c.x)} y={yViga - 20} fontSize={18} textAnchor="middle" fill="#dc2626">
+                      {c.M >= 0 ? "↺" : "↻"}
+                    </text>
+                  )
                 if (c.tipo === "distribuida") {
                   const maxW = Math.max(...cargas.filter((cc) => cc.tipo === "distribuida").map((cc: any) => Math.max(cc.wi, cc.wf)), 1)
                   const alturaMax = 45
@@ -464,25 +501,14 @@ export default function DobleIntegracion() {
             </svg>
           </div>
 
-          <button onClick={calcular} className="bg-blue-700 text-white px-5 py-2.5 rounded-lg text-sm hover:bg-blue-800">Calcular</button>
+          <PanelReacciones reacciones={resultadoLive?.reacciones ?? null} titulo="REACCIONES (EN VIVO)" />
+
+          <button onClick={calcular} className="bg-blue-700 text-white px-5 py-2.5 rounded-lg text-sm hover:bg-blue-800">Calcular desarrollo completo</button>
 
           {error && <div className="bg-red-50 text-red-700 text-sm rounded-lg p-3">{error}</div>}
 
           {resultado && puntos && tramos && (
             <>
-              <div className="bg-white border border-gray-200 rounded-xl p-5">
-                <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">REACCIONES</div>
-                <div className="grid grid-cols-3 gap-3">
-                  {Object.entries(resultado.reacciones).map(([id, r]) => (
-                    <div key={id} className="p-3 rounded-lg bg-blue-50 border-l-4 border-blue-600">
-                      <div className="text-xs text-blue-500">Apoyo {id}</div>
-                      {r.Fy !== undefined && <div className="text-sm font-bold text-blue-800">Fy = {r.Fy.toFixed(3)} kN</div>}
-                      {r.M !== undefined && <div className="text-sm font-bold text-blue-800">M = {r.M.toFixed(3)} kN·m</div>}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
               <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">DESARROLLO POR TRAMOS — COMPATIBILIDAD COMPLETA</div>
                 <div className="text-sm mb-3"><Formula tex={`EI \\cdot v''(x) = M(x)`} block /></div>
