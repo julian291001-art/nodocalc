@@ -312,15 +312,18 @@ export default function DobleIntegracion() {
     const n = 140
     const malla: number[] = []
     for (let i = 0; i <= n; i++) malla.push((L * i) / n)
-    const criticosDual = resultado.puntosCriticos.filter((xc) => xc > 1e-9)
-    const criticosSet = new Set(criticosDual.map((xc) => Number(xc.toFixed(9))))
-    criticosDual.forEach((xc) => malla.push(xc))
+    const criticosInteriores = resultado.puntosCriticos.filter((xc) => xc > 1e-9 && xc < L - 1e-9)
+    const criticosSet = new Set(criticosInteriores.map((xc) => Number(xc.toFixed(9))))
+    criticosInteriores.forEach((xc) => malla.push(xc))
     const xsOrdenados = Array.from(new Set(malla.map((xv) => Number(xv.toFixed(9))))).sort((a, b) => a - b)
     const arr: { x: number; M: number; V: number; v: number }[] = []
     xsOrdenados.forEach((xv) => {
+      const esFinal = Math.abs(xv - L) < 1e-9
       if (criticosSet.has(xv)) {
         arr.push({ x: xv, M: evaluarMConLado(resultado.terminosM, xv, false), V: evaluarVConLado(resultado.terminosM, xv, false), v: resultado.v(xv, EI) })
         arr.push({ x: xv, M: evaluarMConLado(resultado.terminosM, xv, true), V: evaluarVConLado(resultado.terminosM, xv, true), v: resultado.v(xv, EI) })
+      } else if (esFinal) {
+        arr.push({ x: xv, M: evaluarMConLado(resultado.terminosM, xv, false), V: evaluarVConLado(resultado.terminosM, xv, false), v: resultado.v(xv, EI) })
       } else {
         arr.push({ x: xv, M: evaluarMConLado(resultado.terminosM, xv, true), V: evaluarVConLado(resultado.terminosM, xv, true), v: resultado.v(xv, EI) })
       }
@@ -439,8 +442,8 @@ export default function DobleIntegracion() {
           </div>
 
           <div className="bg-white border border-gray-200 rounded-xl p-5">
-            <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">ESQUEMA</div>
-            <svg viewBox={`0 0 ${anchoSvg} 210`} className="w-full h-52">
+            <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">ESQUEMA (con reacciones en vivo)</div>
+            <svg viewBox={`0 0 ${anchoSvg} 230`} className="w-full h-56">
               <line x1={xSvg(0)} y1={yViga} x2={xSvg(L)} y2={yViga} stroke="#1e3a8a" strokeWidth={4} />
               {apoyos.map((a) => (
                 <g key={a.id}>
@@ -494,9 +497,45 @@ export default function DobleIntegracion() {
                 }
                 return null
               })}
+
+              {resultadoLive && Object.entries(resultadoLive.reacciones).map(([id, r]) => {
+                const apoyo = apoyos.find((a) => a.id === id)
+                if (!apoyo) return null
+                const xPos = xSvg(apoyo.x)
+                return (
+                  <g key={`reac-${id}`}>
+                    {r.Fy !== undefined && Math.abs(r.Fy) > 1e-6 && (
+                      <>
+                        <line
+                          x1={xPos + 20}
+                          y1={r.Fy >= 0 ? yViga + 60 : yViga + 24}
+                          x2={xPos + 20}
+                          y2={r.Fy >= 0 ? yViga + 24 : yViga + 60}
+                          stroke="#16a34a" strokeWidth={2.5} markerEnd="url(#flechaVerde)"
+                        />
+                        <text x={xPos + 20} y={yViga + 74} fontSize={9} textAnchor="middle" fill="#16a34a" fontWeight={600}>
+                          {Math.abs(r.Fy).toFixed(1)}kN
+                        </text>
+                      </>
+                    )}
+                    {r.M !== undefined && Math.abs(r.M) > 1e-6 && (
+                      <>
+                        <text x={xPos - 22} y={yViga + 8} fontSize={20} textAnchor="middle" fill="#16a34a">
+                          {r.M >= 0 ? "↺" : "↻"}
+                        </text>
+                        <text x={xPos - 22} y={yViga + 28} fontSize={9} textAnchor="middle" fill="#16a34a" fontWeight={600}>
+                          {Math.abs(r.M).toFixed(1)}
+                        </text>
+                      </>
+                    )}
+                  </g>
+                )
+              })}
+
               <defs>
                 <marker id="flecha" markerWidth={8} markerHeight={8} refX={4} refY={4} orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#dc2626" /></marker>
                 <marker id="flechaChica" markerWidth={6} markerHeight={6} refX={3} refY={3} orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#dc2626" /></marker>
+                <marker id="flechaVerde" markerWidth={8} markerHeight={8} refX={4} refY={4} orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#16a34a" /></marker>
               </defs>
             </svg>
           </div>
