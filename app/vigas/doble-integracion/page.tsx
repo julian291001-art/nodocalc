@@ -18,8 +18,9 @@ function nuevoId(prefijo: string) {
 }
 
 const nombresApoyo: Record<TipoApoyo, string> = {
-  simple: "Simple",
-  empotrado: "Empotrado",
+  rodillo: "Rodillo (1: Fy)",
+  articulado: "Articulado (2: Fx, Fy)",
+  empotrado: "Empotrado (3: Fx, Fy, M)",
   libre: "Libre (voladizo)",
   guia: "Guía (restringe giro)",
 }
@@ -262,8 +263,8 @@ export default function DobleIntegracion() {
   const EI = useMemo(() => E * 1000 * I * 1e-8, [E, I])
 
   const [apoyos, setApoyos] = useState<Apoyo[]>([
-    { id: "A", x: 0, tipo: "simple" },
-    { id: "B", x: 6, tipo: "simple" },
+    { id: "A", x: 0, tipo: "articulado" },
+    { id: "B", x: 6, tipo: "rodillo" },
   ])
   const [cargas, setCargas] = useState<Carga[]>([{ id: "C1", tipo: "puntual", x: 3, P: 10 }])
   const [rotulas, setRotulas] = useState<Rotula[]>([])
@@ -271,15 +272,16 @@ export default function DobleIntegracion() {
   const [resultado, setResultado] = useState<ResultadoViga | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const resultadoLive = useMemo(() => {
+  const [resultadoLive, errorLive] = useMemo((): [ResultadoViga | null, string | null] => {
     try {
-      return resolverViga(L, apoyos, cargas, rotulas)
-    } catch {
-      return null
+      return [resolverViga(L, apoyos, cargas, rotulas), null]
+    } catch (e: any) {
+      return [null, e.message || "Error al calcular"]
     }
   }, [L, apoyos, cargas, rotulas])
+  const resultadoLiveInfo = resultadoLive
 
-  function agregarApoyo() { setApoyos([...apoyos, { id: nuevoId("Ap"), x: 0, tipo: "simple" }]) }
+  function agregarApoyo() { setApoyos([...apoyos, { id: nuevoId("Ap"), x: 0, tipo: "rodillo" }]) }
   function actualizarApoyo(id: string, cambios: Partial<Apoyo>) { setApoyos(apoyos.map((a) => (a.id === id ? { ...a, ...cambios } : a))) }
   function borrarApoyo(id: string) { setApoyos(apoyos.filter((a) => a.id !== id)) }
 
@@ -453,7 +455,19 @@ export default function DobleIntegracion() {
               <line x1={xSvg(0)} y1={yViga} x2={xSvg(L)} y2={yViga} stroke="#1e3a8a" strokeWidth={4} />
               {apoyos.map((a) => (
                 <g key={a.id}>
-                  {a.tipo === "simple" && <polygon points={`${xSvg(a.x)},${yViga} ${xSvg(a.x) - 10},${yViga + 18} ${xSvg(a.x) + 10},${yViga + 18}`} fill="#2563eb" />}
+                  {a.tipo === "rodillo" && (
+                    <>
+                      <polygon points={`${xSvg(a.x)},${yViga} ${xSvg(a.x) - 10},${yViga + 18} ${xSvg(a.x) + 10},${yViga + 18}`} fill="#2563eb" />
+                      <circle cx={xSvg(a.x) - 6} cy={yViga + 22} r={3} fill="#2563eb" />
+                      <circle cx={xSvg(a.x) + 6} cy={yViga + 22} r={3} fill="#2563eb" />
+                    </>
+                  )}
+                  {a.tipo === "articulado" && (
+                    <>
+                      <polygon points={`${xSvg(a.x)},${yViga} ${xSvg(a.x) - 10},${yViga + 18} ${xSvg(a.x) + 10},${yViga + 18}`} fill="#7c3aed" />
+                      <circle cx={xSvg(a.x)} cy={yViga} r={3} fill="white" stroke="#7c3aed" strokeWidth={1.5} />
+                    </>
+                  )}
                   {a.tipo === "empotrado" && <rect x={xSvg(a.x) - 4} y={yViga - 20} width={8} height={40} fill="#1e3a8a" />}
                   {a.tipo === "guia" && (
                     <>
@@ -581,6 +595,23 @@ export default function DobleIntegracion() {
               </defs>
             </svg>
           </div>
+
+          {resultadoLiveInfo && (
+            <div className={`rounded-xl p-4 text-sm font-medium border ${resultadoLiveInfo.estabilidad.esEstable ? (resultadoLiveInfo.estabilidad.dsi === 0 ? "bg-green-50 border-green-200 text-green-800" : "bg-amber-50 border-amber-200 text-amber-800") : "bg-red-50 border-red-200 text-red-800"}`}>
+              <div>Estabilidad: {resultadoLiveInfo.estabilidad.mensaje}</div>
+              <div className="text-xs font-normal mt-1 opacity-80">
+                Reacciones totales r={resultadoLiveInfo.estabilidad.r} (Fy={resultadoLiveInfo.estabilidad.numFy}, Fx={resultadoLiveInfo.estabilidad.numFx}, M={resultadoLiveInfo.estabilidad.numM}) — ecuaciones = 3 + {resultadoLiveInfo.estabilidad.c} rótula(s) — grado = {resultadoLiveInfo.estabilidad.dsi}
+              </div>
+              {resultadoLiveInfo.estabilidad.advertencias.map((a, i) => (
+                <div key={i} className="text-xs font-normal mt-1">⚠ {a}</div>
+              ))}
+            </div>
+          )}
+          {errorLive && !resultadoLiveInfo && (
+            <div className="bg-red-50 border border-red-200 text-red-800 rounded-xl p-4 text-sm font-medium">
+              ⚠ {errorLive}
+            </div>
+          )}
 
           <PanelReacciones reacciones={resultadoLive?.reacciones ?? null} titulo="REACCIONES (EN VIVO)" />
 

@@ -1,6 +1,11 @@
 // app/lib/vigas/motor.ts
 
-export type TipoApoyo = "simple" | "empotrado" | "libre" | "guia"
+export type TipoApoyo = "rodillo" | "articulado" | "empotrado" | "libre" | "guia"
+// rodillo:    1 reaccion  (Fy)
+// articulado: 2 reacciones (Fx, Fy)
+// empotrado:  3 reacciones (Fx, Fy, M)
+// guia:       1 reaccion  (M) -- restringe giro, desplazamiento vertical libre
+// libre:      0 reacciones (extremo libre)
 
 export interface Apoyo {
   id: string
@@ -42,9 +47,6 @@ function evalTerminos(terminos: Termino[], x: number): number {
   return terminos.reduce((acc, t) => acc + evalTermino(t, x), 0)
 }
 
-// Componente vertical efectiva de una carga puntual con ángulo (0° = vertical
-// hacia abajo). Solo esta componente afecta flexión/cortante; la horizontal
-// generaría fuerza axial, fuera del alcance de este módulo.
 function componenteVerticalPuntual(c: Extract<Carga, { tipo: "puntual" }>): number {
   const angRad = ((c.angulo ?? 0) * Math.PI) / 180
   return c.P * Math.cos(angRad)
@@ -84,6 +86,49 @@ interface Incognita {
   segmentoDesdeRotulaId?: string
 }
 
+export interface ResultadoEstabilidad {
+  numFy: number
+  numFx: number
+  numM: number
+  r: number
+  c: number
+  dsi: number
+  esEstable: boolean
+  mensaje: string
+  advertencias: string[]
+}
+
+function verificarEstabilidad(apoyos: Apoyo[], rotulas: Rotula[], hayCargaHorizontal: boolean): ResultadoEstabilidad {
+  let numFy = 0
+  let numFx = 0
+  let numM = 0
+  for (const ap of apoyos) {
+    if (ap.tipo === "libre") continue
+    if (ap.tipo === "rodillo" || ap.tipo === "articulado" || ap.tipo === "empotrado") numFy++
+    if (ap.tipo === "articulado" || ap.tipo === "empotrado") numFx++
+    if (ap.tipo === "empotrado" || ap.tipo === "guia") numM++
+  }
+  const r = numFy + numFx + numM
+  const c = rotulas.length
+  const dsi = r - 3 - c
+
+  const advertencias: string[] = []
+  if (numFy === 0) advertencias.push("Ningún apoyo restringe el desplazamiento vertical: la viga es un mecanismo.")
+  if (numFx === 0 && hayCargaHorizontal)
+    advertencias.push("Ningún apoyo restringe el desplazamiento horizontal, pero hay cargas horizontales aplicadas: inestable en esa dirección.")
+  if (numFx > 1)
+    advertencias.push("Más de un apoyo restringe el desplazamiento horizontal: el sistema queda horizontalmente indeterminado (Rx no se calcula automáticamente en ese caso).")
+
+  const esEstable = numFy > 0 && dsi >= 0
+
+  let mensaje: string
+  if (!esEstable) mensaje = "Inestable (mecanismo) — faltan restricciones de apoyo."
+  else if (dsi === 0) mensaje = "Estáticamente determinada."
+  else mensaje = `Estáticamente indeterminada de grado ${dsi}.`
+
+  return { numFy, numFx, numM, r, c, dsi, esEstable, mensaje, advertencias }
+}
+
 export interface ResultadoViga {
   L: number
   reacciones: Record<string, { Fy?: number; M?: number; Rx?: number }>
@@ -95,6 +140,7 @@ export interface ResultadoViga {
   pasos: string[]
   terminosM: Termino[]
   puntosCriticos: number[]
+  estabilidad: ResultadoEstabilidad
 }
 
 function resolverSistemaLineal(A: number[][], b: number[]): number[] {
@@ -129,10 +175,20 @@ export function resolverViga(
   const apoyosOrdenados = [...apoyos].sort((a, b) => a.x - b.x)
   const rotulasOrdenadas = [...rotulas].sort((a, b) => a.x - b.x)
 
+  const hayCargaHorizontal = cargas.some((c) => c.tipo === "puntual" && Math.abs(componenteHorizontalPuntual(c)) > 1e-9)
+  const estabilidad = verificarEstabilidad(apoyosOrdenados, rotulasOrdenadas, hayCargaHorizontal)
+
+  if (!estabilidad.esEstable) {
+    throw new Error(
+      `${estabilidad.mensaje} (reacciones totales=${estabilidad.r}, ecuaciones=3+${estabilidad.c} rótula(s), grado=${estabilidad.dsi}). ` +
+        estabilidad.advertencias.join(" ")
+    )
+  }
+
   const incognitas: Incognita[] = []
   for (const ap of apoyosOrdenados) {
     if (ap.tipo === "libre") continue
-    if (ap.tipo !== "guia") {
+    if (ap.tipo === "rodillo" || ap.tipo === "articulado" || ap.tipo === "empotrado") {
       incognitas.push({
         nombre: `Fy_${ap.id}`,
         terminoBase: { power: 1, x0: ap.x },
@@ -236,7 +292,7 @@ export function resolverViga(
 
   for (const ap of apoyosOrdenados) {
     if (ap.tipo === "libre") continue
-    if (ap.tipo !== "guia") {
+    if (ap.tipo === "rodillo" || ap.tipo === "articulado" || ap.tipo === "empotrado") {
       filas.push(filaValorEnX(ap.x, 0))
       bs.push((ap.asentamiento ?? 0) - valorConocidoEnX(ap.x, 0))
       pasos.push(`Condición de borde: EI·v(${ap.x}) = ${(ap.asentamiento ?? 0)} · EI (apoyo ${ap.id}, ${ap.tipo})`)
@@ -283,6 +339,21 @@ export function resolverViga(
     }
   })
 
+  // Reaccion horizontal (Fx): solo se resuelve automaticamente si hay
+  // exactamente UN apoyo que restringe horizontal (articulado o empotrado).
+  // Con 0 o 2+, ya se avisó en "estabilidad.advertencias" y no se asigna.
+  if (estabilidad.numFx === 1) {
+    let sumaHorizontal = 0
+    for (const c of cargas) {
+      if (c.tipo === "puntual") sumaHorizontal += componenteHorizontalPuntual(c)
+    }
+    const apoyoConFx = apoyosOrdenados.find((a) => a.tipo === "articulado" || a.tipo === "empotrado")
+    if (apoyoConFx) {
+      reacciones[apoyoConFx.id] = { ...(reacciones[apoyoConFx.id] || {}), Rx: -sumaHorizontal }
+      pasos.push(`ΣFx = 0: reacción horizontal Rx en apoyo ${apoyoConFx.id} = ${(-sumaHorizontal).toFixed(3)} kN`)
+    }
+  }
+
   const terminosMTotal = [...terminosCarga, ...terminosReacciones].filter((t) => Math.abs(t.coef) > 1e-9)
   const terminosThetaEI = terminosMTotal.map(integrarTermino)
   const terminosVEI = terminosThetaEI.map(integrarTermino)
@@ -321,20 +392,5 @@ export function resolverViga(
   }
   const puntosCriticos = Array.from(setPuntos).sort((a, b) => a - b)
 
-  // Reaccion horizontal: si hay cargas puntuales con angulo, necesitan un
-  // apoyo que restrinja el movimiento horizontal (como un pasador). Se
-  // asigna al primer apoyo no-libre de la viga (convencion tipica).
-  let sumaHorizontal = 0
-  for (const c of cargas) {
-    if (c.tipo === "puntual") sumaHorizontal += componenteHorizontalPuntual(c)
-  }
-  if (Math.abs(sumaHorizontal) > 1e-9) {
-    const primerApoyo = apoyosOrdenados.find((a) => a.tipo !== "libre")
-    if (primerApoyo) {
-      reacciones[primerApoyo.id] = { ...(reacciones[primerApoyo.id] || {}), Rx: -sumaHorizontal }
-      pasos.push(`ΣFx = 0: reacción horizontal Rx en apoyo ${primerApoyo.id} = ${(-sumaHorizontal).toFixed(3)} kN`)
-    }
-  }
-
-  return { L, reacciones, constantes, M, V, theta, v, pasos, terminosM: terminosMTotal, puntosCriticos }
+  return { L, reacciones, constantes, M, V, theta, v, pasos, terminosM: terminosMTotal, puntosCriticos, estabilidad }
 }
