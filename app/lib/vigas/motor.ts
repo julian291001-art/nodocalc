@@ -1,5 +1,4 @@
 // app/lib/vigas/motor.ts
-// Motor de doble integración clásica generalizado (Macaulay + apoyos indeterminados + rótulas)
 
 export type TipoApoyo = "simple" | "empotrado" | "libre" | "guia"
 
@@ -43,16 +42,11 @@ function evalTerminos(terminos: Termino[], x: number): number {
   return terminos.reduce((acc, t) => acc + evalTermino(t, x), 0)
 }
 
-// Contribución a M(x) de una carga distribuida trapezoidal/triangular/uniforme en [xi,xf].
-// Se descompone en: parte uniforme (altura wi) + parte triangular (rampa 0 -> wf-wi).
-// Devuelve los términos en convención "sin negar" (el llamador les cambia el signo,
-// igual que hace con las cargas puntuales).
 function terminosMomentoDeCargaDistribuida(xi: number, xf: number, wi: number, wf: number): Termino[] {
   const Lseg = xf - xi
   if (Lseg <= 0) return []
-  const pendiente = (wf - wi) / Lseg // m
+  const pendiente = (wf - wi) / Lseg
 
-  // Parte uniforme (verificada: M_udl(x) = w/2[<x-xi>^2 - <x-xf>^2])
   const terminosUniforme: Termino[] = [
     { coef: wi / 2, power: 2, x0: xi },
     { coef: -wi / 2, power: 2, x0: xf },
@@ -60,9 +54,6 @@ function terminosMomentoDeCargaDistribuida(xi: number, xf: number, wi: number, w
 
   if (Math.abs(pendiente) < 1e-12) return terminosUniforme
 
-  // Parte triangular (rampa 0 en xi -> pendiente*Lseg en xf, truncada en xf).
-  // Derivación: M_tri(x) = -m/6<x-xi>^3 + m/6<x-xf>^3 + (m*Lseg/2)<x-xf>^2  (forma final, con signo)
-  // Como el llamador niega todo el arreglo, aquí devolvemos la versión "sin negar":
   const terminosTriangular: Termino[] = [
     { coef: pendiente / 6, power: 3, x0: xi },
     { coef: -pendiente / 6, power: 3, x0: xf },
@@ -128,13 +119,15 @@ export function resolverViga(
   const incognitas: Incognita[] = []
   for (const ap of apoyosOrdenados) {
     if (ap.tipo === "libre") continue
-    incognitas.push({
-      nombre: `Fy_${ap.id}`,
-      terminoBase: { power: 1, x0: ap.x },
-      tipo: "reaccionVertical",
-      apoyoId: ap.id,
-    })
-    if (ap.tipo === "empotrado") {
+    if (ap.tipo !== "guia") {
+      incognitas.push({
+        nombre: `Fy_${ap.id}`,
+        terminoBase: { power: 1, x0: ap.x },
+        tipo: "reaccionVertical",
+        apoyoId: ap.id,
+      })
+    }
+    if (ap.tipo === "empotrado" || ap.tipo === "guia") {
       incognitas.push({
         nombre: `M_${ap.id}`,
         terminoBase: { power: 0, x0: ap.x },
@@ -185,16 +178,16 @@ export function resolverViga(
   const filaM0 = new Array(n).fill(0)
   let sumaMomentosCargas = 0
   for (const c of cargas) {
-    if (c.tipo === "puntual") sumaMomentosCargas += c.P * c.x
+    if (c.tipo === "puntual") sumaMomentosCargas += -c.P * c.x
     if (c.tipo === "momento") sumaMomentosCargas += -c.M
     if (c.tipo === "distribuida") {
       const W = ((c.wi + c.wf) / 2) * (c.xf - c.xi)
       const xc = c.xi + ((c.xf - c.xi) * (2 * c.wf + c.wi)) / (3 * (c.wi + c.wf) || 1)
-      sumaMomentosCargas += W * xc
+      sumaMomentosCargas += -W * xc
     }
   }
   incognitas.forEach((inc, i) => {
-    if (inc.tipo === "reaccionVertical") filaM0[i] = inc.terminoBase.x0
+    if (inc.tipo === "reaccionVertical") filaM0[i] = -inc.terminoBase.x0
     if (inc.tipo === "reaccionMomento") filaM0[i] = 1
   })
 
@@ -230,19 +223,15 @@ export function resolverViga(
 
   for (const ap of apoyosOrdenados) {
     if (ap.tipo === "libre") continue
-    filas.push(filaValorEnX(ap.x, 0))
-    bs.push((ap.asentamiento ?? 0) - valorConocidoEnX(ap.x, 0))
-    pasos.push(`Condición de borde: EI·v(${ap.x}) = ${(ap.asentamiento ?? 0)} · EI (apoyo ${ap.id}, ${ap.tipo})`)
-
-    if (ap.tipo === "empotrado") {
-      filas.push(filaValorEnX(ap.x, 1))
-      bs.push((ap.giroImpuesto ?? 0) - valorConocidoEnX(ap.x, 1))
-      pasos.push(`Condición de borde: EI·θ(${ap.x}) = ${(ap.giroImpuesto ?? 0)} · EI (apoyo ${ap.id}, empotrado)`)
+    if (ap.tipo !== "guia") {
+      filas.push(filaValorEnX(ap.x, 0))
+      bs.push((ap.asentamiento ?? 0) - valorConocidoEnX(ap.x, 0))
+      pasos.push(`Condición de borde: EI·v(${ap.x}) = ${(ap.asentamiento ?? 0)} · EI (apoyo ${ap.id}, ${ap.tipo})`)
     }
-    if (ap.tipo === "guia") {
+    if (ap.tipo === "empotrado" || ap.tipo === "guia") {
       filas.push(filaValorEnX(ap.x, 1))
       bs.push((ap.giroImpuesto ?? 0) - valorConocidoEnX(ap.x, 1))
-      pasos.push(`Condición de borde: EI·θ(${ap.x}) = ${(ap.giroImpuesto ?? 0)} · EI (apoyo ${ap.id}, guía)`)
+      pasos.push(`Condición de borde: EI·θ(${ap.x}) = ${(ap.giroImpuesto ?? 0)} · EI (apoyo ${ap.id}, ${ap.tipo})`)
     }
   }
 
