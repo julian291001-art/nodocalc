@@ -261,6 +261,32 @@ export default function DobleIntegracion() {
   const [E, setE] = useState(200000)
   const [I, setI] = useState(50000)
   const EI = useMemo(() => E * 1000 * I * 1e-8, [E, I])
+  const [mensajeImportacion, setMensajeImportacion] = useState<string | null>(null)
+
+  // Importa E e I guardados por Section Builder en localStorage bajo la
+  // clave "nodocalc_seccion_actual" como JSON { E: number, I: number }.
+  // Requiere que Section Builder tenga un boton que guarde con esa misma
+  // clave -- si aun no lo tiene, esto solo mostrara el mensaje de "no hay
+  // seccion guardada".
+  function importarSeccion() {
+    try {
+      const raw = localStorage.getItem("nodocalc_seccion_actual")
+      if (!raw) {
+        setMensajeImportacion("No hay ninguna sección guardada todavía. Ve a Section Builder, calcula una sección y guárdala para usar aquí.")
+        return
+      }
+      const datos = JSON.parse(raw)
+      if (typeof datos.E === "number" && typeof datos.I === "number") {
+        setE(datos.E)
+        setI(datos.I)
+        setMensajeImportacion(`Sección importada: E = ${datos.E} MPa, I = ${datos.I} cm⁴${datos.nombre ? ` (${datos.nombre})` : ""}`)
+      } else {
+        setMensajeImportacion("La sección guardada no tiene el formato esperado (E, I).")
+      }
+    } catch {
+      setMensajeImportacion("No se pudo leer la sección guardada.")
+    }
+  }
 
   const [apoyos, setApoyos] = useState<Apoyo[]>([
     { id: "A", x: 0, tipo: "articulado" },
@@ -367,6 +393,15 @@ export default function DobleIntegracion() {
               </div>
             </div>
             <div className="mt-2 text-xs text-gray-400">EI calculado = {EI.toFixed(2)} kN·m²</div>
+            <div className="flex gap-3 mt-3">
+              <button onClick={importarSeccion} className="text-xs text-blue-600 hover:underline">
+                Importar sección (E, I) desde Section Builder
+              </button>
+              <a href="/herramientas/unidades" target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:underline">
+                Abrir módulo de unidades
+              </a>
+            </div>
+            {mensajeImportacion && <div className="text-xs text-gray-500 mt-1">{mensajeImportacion}</div>}
           </div>
 
           <div className="bg-white border border-gray-200 rounded-xl p-5">
@@ -451,7 +486,7 @@ export default function DobleIntegracion() {
 
           <div className="bg-white border border-gray-200 rounded-xl p-5">
             <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">ESQUEMA (con reacciones en vivo)</div>
-            <svg viewBox={`0 0 ${anchoSvg} 260`} className="w-full h-64">
+            <svg viewBox={`0 0 ${anchoSvg} 300`} className="w-full h-72">
               <line x1={xSvg(0)} y1={yViga} x2={xSvg(L)} y2={yViga} stroke="#1e3a8a" strokeWidth={4} />
               {apoyos.map((a) => (
                 <g key={a.id}>
@@ -587,6 +622,44 @@ export default function DobleIntegracion() {
                 )
               })}
 
+              {(() => {
+                const puntosDim = Array.from(
+                  new Set(
+                    [
+                      0,
+                      L,
+                      ...apoyos.map((a) => a.x),
+                      ...rotulas.map((r) => r.x),
+                      ...cargas.flatMap((c) => (c.tipo === "distribuida" ? [c.xi, c.xf] : [c.x])),
+                    ].map((v) => Number(v.toFixed(6)))
+                  )
+                ).sort((a, b) => a - b)
+                const yCotaLinea = 220
+                const yCotaTexto = 234
+                return (
+                  <g>
+                    <line x1={xSvg(0)} y1={yCotaLinea} x2={xSvg(L)} y2={yCotaLinea} stroke="#cbd5e1" strokeWidth={1} />
+                    {puntosDim.map((p, i) => (
+                      <line key={`tick-${i}`} x1={xSvg(p)} y1={yCotaLinea - 5} x2={xSvg(p)} y2={yCotaLinea + 5} stroke="#94a3b8" strokeWidth={1} />
+                    ))}
+                    {puntosDim.slice(0, -1).map((p, i) => {
+                      const siguiente = puntosDim[i + 1]
+                      const dist = siguiente - p
+                      if (dist < 1e-6) return null
+                      const xMedio = (xSvg(p) + xSvg(siguiente)) / 2
+                      return (
+                        <text key={`cota-${i}`} x={xMedio} y={yCotaTexto} fontSize={9} textAnchor="middle" fill="#64748b">
+                          {dist.toFixed(2)}m
+                        </text>
+                      )
+                    })}
+                    <text x={(xSvg(0) + xSvg(L)) / 2} y={yCotaTexto + 16} fontSize={9} textAnchor="middle" fill="#94a3b8" fontWeight={600}>
+                      L = {L.toFixed(2)}m
+                    </text>
+                  </g>
+                )
+              })()}
+
               <defs>
                 <marker id="flecha" markerWidth={8} markerHeight={8} refX={4} refY={4} orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#dc2626" /></marker>
                 <marker id="flechaChica" markerWidth={6} markerHeight={6} refX={3} refY={3} orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#dc2626" /></marker>
@@ -614,6 +687,22 @@ export default function DobleIntegracion() {
           )}
 
           <PanelReacciones reacciones={resultadoLive?.reacciones ?? null} titulo="REACCIONES (EN VIVO)" />
+
+          {resultadoLive && rotulas.length > 0 && (
+            <div className="bg-white border border-gray-200 rounded-xl p-5">
+              <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">REACCIONES INTERNAS EN RÓTULAS</div>
+              <div className="grid grid-cols-3 gap-3">
+                {rotulas.map((r) => (
+                  <div key={r.id} className="p-3 rounded-lg bg-indigo-50 border-l-4 border-indigo-500">
+                    <div className="text-xs text-indigo-500">Rótula {r.id} (x = {r.x} m)</div>
+                    <div className="text-sm font-bold text-indigo-800">M = 0 kN·m (por definición)</div>
+                    <div className="text-sm font-bold text-indigo-800">V interno = {resultadoLive.V(r.x).toFixed(3)} kN</div>
+                    <div className="text-xs text-indigo-400 mt-1">Fuerza axial (horizontal) interna: no calculada — este módulo resuelve solo flexión, no fuerza axial distribuida.</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <button onClick={calcular} className="bg-blue-700 text-white px-5 py-2.5 rounded-lg text-sm hover:bg-blue-800">Calcular desarrollo completo</button>
 
