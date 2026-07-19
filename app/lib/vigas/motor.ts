@@ -16,7 +16,7 @@ export interface Rotula {
 }
 
 export type Carga =
-  | { id: string; tipo: "puntual"; x: number; P: number }
+  | { id: string; tipo: "puntual"; x: number; P: number; angulo?: number } // angulo en grados desde la vertical (0 = hacia abajo)
   | { id: string; tipo: "momento"; x: number; M: number }
   | { id: string; tipo: "distribuida"; xi: number; xf: number; wi: number; wf: number }
 
@@ -40,6 +40,14 @@ function integrarTermino(t: Termino): Termino {
 
 function evalTerminos(terminos: Termino[], x: number): number {
   return terminos.reduce((acc, t) => acc + evalTermino(t, x), 0)
+}
+
+// Componente vertical efectiva de una carga puntual con ángulo (0° = vertical
+// hacia abajo). Solo esta componente afecta flexión/cortante; la horizontal
+// generaría fuerza axial, fuera del alcance de este módulo.
+function componenteVerticalPuntual(c: Extract<Carga, { tipo: "puntual" }>): number {
+  const angRad = ((c.angulo ?? 0) * Math.PI) / 180
+  return c.P * Math.cos(angRad)
 }
 
 function terminosMomentoDeCargaDistribuida(xi: number, xf: number, wi: number, wf: number): Termino[] {
@@ -153,7 +161,7 @@ export function resolverViga(
   const terminosCarga: Termino[] = []
   for (const c of cargas) {
     if (c.tipo === "puntual") {
-      terminosCarga.push({ coef: -c.P, power: 1, x0: c.x })
+      terminosCarga.push({ coef: -componenteVerticalPuntual(c), power: 1, x0: c.x })
     } else if (c.tipo === "momento") {
       terminosCarga.push({ coef: c.M, power: 0, x0: c.x })
     } else if (c.tipo === "distribuida") {
@@ -168,7 +176,7 @@ export function resolverViga(
   const filaFy = new Array(n).fill(0)
   let sumaCargasVerticales = 0
   for (const c of cargas) {
-    if (c.tipo === "puntual") sumaCargasVerticales += c.P
+    if (c.tipo === "puntual") sumaCargasVerticales += componenteVerticalPuntual(c)
     if (c.tipo === "distribuida") sumaCargasVerticales += ((c.wi + c.wf) / 2) * (c.xf - c.xi)
   }
   incognitas.forEach((inc, i) => {
@@ -178,7 +186,7 @@ export function resolverViga(
   const filaM0 = new Array(n).fill(0)
   let sumaMomentosCargas = 0
   for (const c of cargas) {
-    if (c.tipo === "puntual") sumaMomentosCargas += -c.P * c.x
+    if (c.tipo === "puntual") sumaMomentosCargas += -componenteVerticalPuntual(c) * c.x
     if (c.tipo === "momento") sumaMomentosCargas += -c.M
     if (c.tipo === "distribuida") {
       const W = ((c.wi + c.wf) / 2) * (c.xf - c.xi)

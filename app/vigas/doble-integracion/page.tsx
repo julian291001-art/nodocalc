@@ -417,6 +417,7 @@ export default function DobleIntegracion() {
                       <span className="text-xs">Puntual</span>
                       <input type="number" value={c.x} onChange={(e) => actualizarCarga(c.id, { x: Number(e.target.value) })} placeholder="x (m)" className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-24" />
                       <input type="number" value={c.P} onChange={(e) => actualizarCarga(c.id, { P: Number(e.target.value) })} placeholder="P (kN, ↓+)" className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-28" />
+                      <input type="number" value={c.angulo ?? 0} onChange={(e) => actualizarCarga(c.id, { angulo: Number(e.target.value) })} placeholder="ángulo (°, 0=vertical)" className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-32" />
                     </>
                   )}
                   {c.tipo === "momento" && (
@@ -460,18 +461,32 @@ export default function DobleIntegracion() {
               ))}
               {rotulas.map((r) => <circle key={r.id} cx={xSvg(r.x)} cy={yViga} r={5} fill="white" stroke="#1e3a8a" strokeWidth={2} />)}
               {cargas.map((c) => {
-                if (c.tipo === "puntual")
+                if (c.tipo === "puntual") {
+                  const angRad = ((c.angulo ?? 0) * Math.PI) / 180
+                  const largo = 36
+                  const dx = Math.sin(angRad) * largo
+                  const dy = Math.cos(angRad) * largo
+                  const xPunta = xSvg(c.x)
+                  const yPunta = yViga - 4
                   return (
                     <g key={c.id}>
-                      <line x1={xSvg(c.x)} y1={yViga - 40} x2={xSvg(c.x)} y2={yViga - 4} stroke="#dc2626" strokeWidth={2} markerEnd="url(#flecha)" />
-                      <text x={xSvg(c.x)} y={yViga - 44} fontSize={10} textAnchor="middle" fill="#dc2626">{c.P}kN</text>
+                      <line x1={xPunta - dx} y1={yPunta - dy} x2={xPunta} y2={yPunta} stroke="#dc2626" strokeWidth={2} markerEnd="url(#flecha)" />
+                      <text x={xPunta - dx} y={yPunta - dy - 6} fontSize={10} textAnchor="middle" fill="#dc2626">
+                        {c.P}kN{c.angulo ? ` (${c.angulo}°)` : ""}
+                      </text>
                     </g>
                   )
+                }
                 if (c.tipo === "momento")
                   return (
-                    <text key={c.id} x={xSvg(c.x)} y={yViga - 20} fontSize={18} textAnchor="middle" fill="#dc2626">
-                      {c.M >= 0 ? "↺" : "↻"}
-                    </text>
+                    <g key={c.id}>
+                      <text x={xSvg(c.x)} y={yViga - 16} fontSize={20} textAnchor="middle" fill="#dc2626">
+                        {c.M >= 0 ? "↺" : "↻"}
+                      </text>
+                      <text x={xSvg(c.x)} y={yViga - 32} fontSize={10} textAnchor="middle" fill="#dc2626" fontWeight={600}>
+                        {Math.abs(c.M)}kN·m
+                      </text>
+                    </g>
                   )
                 if (c.tipo === "distribuida") {
                   const maxW = Math.max(...cargas.filter((cc) => cc.tipo === "distribuida").map((cc: any) => Math.max(cc.wi, cc.wf)), 1)
@@ -508,22 +523,22 @@ export default function DobleIntegracion() {
                       <>
                         <line
                           x1={xPos}
-                          y1={r.Fy >= 0 ? yViga + 72 : yViga + 32}
+                          y1={r.Fy >= 0 ? yViga + 64 : yViga + 34}
                           x2={xPos}
-                          y2={r.Fy >= 0 ? yViga + 32 : yViga + 72}
-                          stroke="#16a34a" strokeWidth={3.5} markerEnd="url(#flechaVerde)"
+                          y2={r.Fy >= 0 ? yViga + 34 : yViga + 64}
+                          stroke="#16a34a" strokeWidth={2.6} markerEnd="url(#flechaVerde)"
                         />
-                        <text x={xPos} y={yViga + 86} fontSize={11} textAnchor="middle" fill="#16a34a" fontWeight={700}>
+                        <text x={xPos} y={yViga + 78} fontSize={10} textAnchor="middle" fill="#16a34a" fontWeight={700}>
                           {Math.abs(r.Fy).toFixed(1)}kN
                         </text>
                       </>
                     )}
                     {r.M !== undefined && Math.abs(r.M) > 1e-6 && (
                       <>
-                        <text x={xPos} y={yViga - 60} fontSize={28} textAnchor="middle" fill="#16a34a">
+                        <text x={xPos} y={yViga - 26} fontSize={22} textAnchor="middle" fill="#16a34a">
                           {r.M >= 0 ? "↺" : "↻"}
                         </text>
-                        <text x={xPos} y={yViga - 40} fontSize={11} textAnchor="middle" fill="#16a34a" fontWeight={700}>
+                        <text x={xPos} y={yViga - 10} fontSize={10} textAnchor="middle" fill="#16a34a" fontWeight={700}>
                           {Math.abs(r.M).toFixed(1)}
                         </text>
                       </>
