@@ -1,1180 +1,1064 @@
 "use client"
-import { useState, useRef, useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { useState, useMemo, useRef, useEffect } from "react"
+import katex from "katex"
+// @ts-ignore: importing CSS side-effect for KaTeX rendering
+import "katex/dist/katex.min.css"
 import Sidebar from "../../components/Sidebar"
+import { resolverViga, Apoyo, Carga, Rotula, ResultadoViga, TipoApoyo, Termino } from "../../lib/vigas/motor"
+import { useUnidadesStore, SistemaUnidades } from "../../store/useUnidadesStore"
 import { useSeccionStore } from "../../store/useSeccionStore"
-import { useUnidadesStore } from "../../store/useUnidadesStore"
-import { fmtVal, labelSeccion, labelInercia, labelModulo } from "../../lib/unidades"
+import { convertir, factorLongitud } from "../../lib/unidades"
 
-type Plantilla = "rectangular" | "circular" | "tubo" | "I" | "T" | "L" | "C" | "cajon" | "coordenadas"
-type Params = Record<string, number>
-type Poligono = { x: number; y: number }[]
-type PoligonoEntry = { pts: Poligono; signo: number; exacto?: { cx: number; cy: number; r: number } }
-
-type Elemento = {
-  id: number; plantilla: Plantilla; params: Params
-  x0: number; y0: number; signo: 1 | -1; label: string
-  coordPts?: Poligono
+function Formula({ tex, block = false }: { tex: string; block?: boolean }) {
+  const html = katex.renderToString(tex, { throwOnError: false, displayMode: block })
+  return <span dangerouslySetInnerHTML={{ __html: html }} />
 }
 
-type ResultadoSeccion = {
-  A: number; xc: number; yc: number; Icx: number; Icy: number; Ixy: number
-  Sx_top: number; Sx_bot: number; Sy: number; rx: number; ry: number
-  J: number; I1: number; I2: number; theta_p: number
+let contador = 0
+function nuevoId(prefijo: string) {
+  contador += 1
+  return `${prefijo}${contador}`
 }
 
-type DatosPDF = {
-  ingeniero: string; empresa: string; proyecto: string; descripcion: string; fecha: string
+const nombresApoyo: Record<TipoApoyo, string> = {
+  rodillo: "Rodillo (1: Fy)",
+  articulado: "Articulado (2: Fx, Fy)",
+  empotrado: "Empotrado (3: Fx, Fy, M)",
+  libre: "Libre (voladizo)",
+  guia: "Guía (restringe giro)",
 }
 
-// ── Helpers globales ───────────────────────────────────────────────────────
-function f2(n: number) { return n.toFixed(2) }
-function fmt(n: number, dec = 4) {
-  if (Math.abs(n) >= 1e6 || (Math.abs(n) < 0.001 && n !== 0)) return n.toExponential(2)
-  return n.toFixed(dec)
+type Poly = { power: number; coef: number }[]
+
+function expandirTermino(t: Termino): Poly {
+  const { coef, power, x0 } = t
+  if (power === 0) return [{ power: 0, coef }]
+  if (power === 1) return [{ power: 1, coef }, { power: 0, coef: -coef * x0 }]
+  if (power === 2)
+    return [
+      { power: 2, coef },
+      { power: 1, coef: -2 * coef * x0 },
+      { power: 0, coef: coef * x0 * x0 },
+    ]
+  if (power === 3)
+    return [
+      { power: 3, coef },
+      { power: 2, coef: -3 * coef * x0 },
+      { power: 1, coef: 3 * coef * x0 * x0 },
+      { power: 0, coef: -coef * x0 * x0 * x0 },
+    ]
+  return []
 }
 
-// ── Geometría ──────────────────────────────────────────────────────────────
-function circlePoints(cx: number, cy: number, r: number, n = 128): Poligono {
-  return Array.from({ length: n }, (_, i) => ({
-    x: cx + r * Math.cos(2 * Math.PI * i / n),
-    y: cy + r * Math.sin(2 * Math.PI * i / n),
-  }))
-}
-
-function propiedadesCirculoExacto(cx: number, cy: number, r: number) {
-  const A = Math.PI * r * r
-  const Ix = Math.PI * r * r * r * r / 4 + A * cy * cy
-  const Iy = Math.PI * r * r * r * r / 4 + A * cx * cx
-  return { A, Cx: cx, Cy: cy, Ix, Iy, Ixy: 0 }
-}
-
-function getPoligonos(plantilla: Plantilla, p: Params): PoligonoEntry[] {
-  const { b = 0, h = 0, t = 0, r = 0, bf_sup = 0, tf_sup = 0, bf_inf = 0, tf_inf = 0, hw = 0, tw = 0, t_sup = 0, t_inf = 0, t_izq = 0, t_der = 0, b_sup = 0, b_inf = 0, bf = 0, tf = 0, x_alma = 0, x_sup = 0 } = p
-  switch (plantilla) {
-    case "rectangular":
-      return [{ pts: [{ x: 0, y: 0 }, { x: b, y: 0 }, { x: b, y: h }, { x: 0, y: h }], signo: 1 }]
-    case "circular":
-      return [{ pts: [], signo: 1, exacto: { cx: r, cy: r, r } }]
-    case "tubo":
-      return [{ pts: [], signo: 1, exacto: { cx: r, cy: r, r } }, { pts: [], signo: -1, exacto: { cx: r, cy: r, r: r - t } }]
-    case "I": {
-      const hTotal = tf_inf + hw + tf_sup
-      return [
-        { pts: [{ x: 0, y: 0 }, { x: bf_inf, y: 0 }, { x: bf_inf, y: tf_inf }, { x: 0, y: tf_inf }], signo: 1 },
-        { pts: [{ x: x_alma, y: tf_inf }, { x: x_alma + tw, y: tf_inf }, { x: x_alma + tw, y: tf_inf + hw }, { x: x_alma, y: tf_inf + hw }], signo: 1 },
-        { pts: [{ x: x_sup, y: tf_inf + hw }, { x: x_sup + bf_sup, y: tf_inf + hw }, { x: x_sup + bf_sup, y: hTotal }, { x: x_sup, y: hTotal }], signo: 1 },
-      ]
-    }
-    case "T": {
-      const xA = (bf - tw) / 2
-      return [
-        { pts: [{ x: xA, y: 0 }, { x: xA + tw, y: 0 }, { x: xA + tw, y: hw }, { x: xA, y: hw }], signo: 1 },
-        { pts: [{ x: 0, y: hw }, { x: bf, y: hw }, { x: bf, y: hw + tf }, { x: 0, y: hw + tf }], signo: 1 },
-      ]
-    }
-    case "C": {
-      const hTotal = tf_inf + hw + tf_sup
-      return [{ pts: [{ x: 0, y: 0 }, { x: bf_inf, y: 0 }, { x: bf_inf, y: tf_inf }, { x: tw, y: tf_inf }, { x: tw, y: tf_inf + hw }, { x: bf_sup, y: tf_inf + hw }, { x: bf_sup, y: hTotal }, { x: 0, y: hTotal }], signo: 1 }]
-    }
-    case "L":
-      return [{ pts: [{ x: 0, y: 0 }, { x: b, y: 0 }, { x: b, y: t }, { x: t, y: t }, { x: t, y: h }, { x: 0, y: h }], signo: 1 }]
-    case "cajon": {
-      const bS = b_sup || b, bI = b_inf || b
-      const tS = t_sup || t, tI = t_inf || t, tL = t_izq || t, tR = t_der || t
-      return [
-        { pts: [{ x: 0, y: 0 }, { x: bI, y: 0 }, { x: bS, y: h }, { x: 0, y: h }], signo: 1 },
-        { pts: [{ x: tL, y: tI }, { x: bI - tR, y: tI }, { x: bS - tR, y: h - tS }, { x: tL, y: h - tS }], signo: -1 },
-      ]
-    }
-    default: return []
-  }
-}
-
-function offsetPoligonos(pols: PoligonoEntry[], x0: number, y0: number): PoligonoEntry[] {
-  return pols.map(({ pts, signo, exacto }) => ({
-    pts: pts.map(p => ({ x: p.x + x0, y: p.y + y0 })),
-    signo,
-    exacto: exacto ? { cx: exacto.cx + x0, cy: exacto.cy + y0, r: exacto.r } : undefined,
-  }))
-}
-
-function propiedadesPoligono(pts: Poligono) {
-  const n = pts.length
-  let A = 0, Cx = 0, Cy = 0, Ix = 0, Iy = 0, Ixy = 0
-  for (let i = 0; i < n; i++) {
-    const j = (i + 1) % n
-    const xi = pts[i].x, yi = pts[i].y, xj = pts[j].x, yj = pts[j].y
-    const c = xi * yj - xj * yi
-    A += c; Cx += (xi + xj) * c; Cy += (yi + yj) * c
-    Ix += (yi * yi + yi * yj + yj * yj) * c
-    Iy += (xi * xi + xi * xj + xj * xj) * c
-    Ixy += (xi * yj + 2 * xi * yi + 2 * xj * yj + xj * yi) * c
-  }
-  A /= 2; Cx /= (6 * A); Cy /= (6 * A)
-  return { A: Math.abs(A), Cx, Cy, Ix: Math.abs(Ix) / 12, Iy: Math.abs(Iy) / 12, Ixy: Ixy / 24 }
-}
-
-function calcularSeccion(poligonos: PoligonoEntry[]): ResultadoSeccion {
-  let A = 0, AxC = 0, AyC = 0
-  for (const { pts, signo, exacto } of poligonos) {
-    const p = exacto ? propiedadesCirculoExacto(exacto.cx, exacto.cy, exacto.r) : propiedadesPoligono(pts)
-    A += signo * p.A; AxC += signo * p.A * p.Cx; AyC += signo * p.A * p.Cy
-  }
-  const xc = AxC / A, yc = AyC / A
-  let Icx = 0, Icy = 0, Icxy = 0
-  for (const { pts, signo, exacto } of poligonos) {
-    const p = exacto ? propiedadesCirculoExacto(exacto.cx, exacto.cy, exacto.r) : propiedadesPoligono(pts)
-    const Icx_propio = p.Ix - p.A * p.Cy * p.Cy
-    const Icy_propio = p.Iy - p.A * p.Cx * p.Cx
-    const Icxy_propio = p.Ixy - p.A * p.Cx * p.Cy
-    Icx += signo * (Icx_propio + p.A * (p.Cy - yc) ** 2)
-    Icy += signo * (Icy_propio + p.A * (p.Cx - xc) ** 2)
-    Icxy += signo * (Icxy_propio + p.A * (p.Cx - xc) * (p.Cy - yc))
-  }
-  let ymax = -Infinity, ymin = Infinity, xmaxD = -Infinity
-  for (const { pts, exacto } of poligonos) {
-    const ptsEval = exacto ? circlePoints(exacto.cx, exacto.cy, exacto.r, 64) : pts
-    for (const p of ptsEval) {
-      if (p.y > ymax) ymax = p.y; if (p.y < ymin) ymin = p.y
-      if (Math.abs(p.x - xc) > xmaxD) xmaxD = Math.abs(p.x - xc)
-    }
-  }
-  const Sx_top = Icx / (ymax - yc), Sx_bot = Icx / (yc - ymin), Sy = Icy / xmaxD
-  const rx = Math.sqrt(Math.abs(Icx / A)), ry = Math.sqrt(Math.abs(Icy / A)), J = Icx + Icy
-  const theta_p = 0.5 * Math.atan2(-2 * Icxy, Icx - Icy) * 180 / Math.PI
-  const R = Math.sqrt(((Icx - Icy) / 2) ** 2 + Icxy ** 2)
-  return { A, xc, yc, Icx, Icy, Ixy: Icxy, Sx_top, Sx_bot, Sy, rx, ry, J, I1: (Icx + Icy) / 2 + R, I2: (Icx + Icy) / 2 - R, theta_p }
-}
-
-const plantillasConfig: Record<Plantilla, { label: string; campos: { key: string; labelHtml: string; default: number }[] }> = {
-  rectangular: { label: "Rectangular", campos: [{ key: "b", labelHtml: "Base <i>b</i> (cm)", default: 30 }, { key: "h", labelHtml: "Altura <i>h</i> (cm)", default: 50 }] },
-  circular: { label: "Circular", campos: [{ key: "r", labelHtml: "Radio <i>r</i> (cm)", default: 20 }] },
-  tubo: { label: "Tubo circular", campos: [{ key: "r", labelHtml: "Radio exterior <i>r</i> (cm)", default: 20 }, { key: "t", labelHtml: "Espesor <i>t</i> (cm)", default: 2 }] },
-  I: { label: "Perfil I asimétrico", campos: [
-    { key: "bf_inf", labelHtml: "Ancho ala inferior b<sub>f,inf</sub> (cm)", default: 20 },
-    { key: "tf_inf", labelHtml: "Espesor ala inferior t<sub>f,inf</sub> (cm)", default: 1.5 },
-    { key: "x_alma", labelHtml: "Posición alma x<sub>alma</sub> desde borde izq. ala inf (cm)", default: 9.5 },
-    { key: "tw", labelHtml: "Espesor alma t<sub>w</sub> (cm)", default: 1 },
-    { key: "hw", labelHtml: "Alto alma h<sub>w</sub> (cm)", default: 30 },
-    { key: "x_sup", labelHtml: "Posición ala sup x<sub>sup</sub> desde borde izq. ala inf (cm)", default: 2 },
-    { key: "bf_sup", labelHtml: "Ancho ala superior b<sub>f,sup</sub> (cm)", default: 16 },
-    { key: "tf_sup", labelHtml: "Espesor ala superior t<sub>f,sup</sub> (cm)", default: 1.5 },
-  ]},
-  T: { label: "Perfil T", campos: [
-    { key: "bf", labelHtml: "Ancho ala b<sub>f</sub> (cm)", default: 20 },
-    { key: "tf", labelHtml: "Espesor ala t<sub>f</sub> (cm)", default: 2 },
-    { key: "hw", labelHtml: "Alto alma h<sub>w</sub> (cm)", default: 20 },
-    { key: "tw", labelHtml: "Espesor alma t<sub>w</sub> (cm)", default: 1.5 },
-  ]},
-  L: { label: "Ángulo L", campos: [
-    { key: "b", labelHtml: "Ancho <i>b</i> (cm)", default: 10 },
-    { key: "h", labelHtml: "Alto <i>h</i> (cm)", default: 10 },
-    { key: "t", labelHtml: "Espesor <i>t</i> (cm)", default: 1 },
-  ]},
-  C: { label: "Canal C asimétrico", campos: [
-    { key: "bf_sup", labelHtml: "Ancho ala superior b<sub>f,sup</sub> (cm)", default: 10 },
-    { key: "tf_sup", labelHtml: "Espesor ala superior t<sub>f,sup</sub> (cm)", default: 1 },
-    { key: "tw", labelHtml: "Espesor alma t<sub>w</sub> (cm)", default: 1 },
-    { key: "hw", labelHtml: "Alto alma h<sub>w</sub> (cm)", default: 20 },
-    { key: "bf_inf", labelHtml: "Ancho ala inferior b<sub>f,inf</sub> (cm)", default: 8 },
-    { key: "tf_inf", labelHtml: "Espesor ala inferior t<sub>f,inf</sub> (cm)", default: 1 },
-  ]},
-  cajon: { label: "Cajón paramétrico", campos: [
-    { key: "b_sup", labelHtml: "Ancho superior b<sub>sup</sub> (cm)", default: 30 },
-    { key: "b_inf", labelHtml: "Ancho inferior b<sub>inf</sub> (cm)", default: 30 },
-    { key: "h", labelHtml: "Altura <i>h</i> (cm)", default: 50 },
-    { key: "t_sup", labelHtml: "Espesor superior t<sub>sup</sub> (cm)", default: 2 },
-    { key: "t_inf", labelHtml: "Espesor inferior t<sub>inf</sub> (cm)", default: 2 },
-    { key: "t_izq", labelHtml: "Espesor izquierdo t<sub>izq</sub> (cm)", default: 2 },
-    { key: "t_der", labelHtml: "Espesor derecho t<sub>der</sub> (cm)", default: 2 },
-  ]},
-  coordenadas: { label: "Por coordenadas", campos: [] },
-}
-
-type LabelPart = { text: string; sub?: boolean }
-
-function SvgLabel({ x, y, parts }: { x: number; y: number; parts: LabelPart[] }) {
-  return (
-    <text x={x} y={y} textAnchor="middle" fontSize="9" fill="#1d4ed8" fontWeight="600">
-      {parts.map((p, i) =>
-        p.sub
-          ? <tspan key={i} fontSize="7" dy="2">{p.text}<tspan dy="-2"> </tspan></tspan>
-          : <tspan key={i}>{p.text}</tspan>
-      )}
-    </text>
-  )
-}
-
-function Cota({ x1, y1, x2, y2, parts, off = 14 }: {
-  x1: number; y1: number; x2: number; y2: number; parts: LabelPart[]; off?: number
-}) {
-  const mx = (x1 + x2) / 2, my = (y1 + y2) / 2
-  const horiz = Math.abs(y2 - y1) < 2
-  return (
-    <g>
-      <line x1={x1} y1={y1} x2={x2} y2={y2} stroke="#1d4ed8" strokeWidth="0.8" />
-      {horiz
-        ? <><line x1={x1} y1={y1 - 5} x2={x1} y2={y1 + 5} stroke="#1d4ed8" strokeWidth="0.8" /><line x1={x2} y1={y2 - 5} x2={x2} y2={y2 + 5} stroke="#1d4ed8" strokeWidth="0.8" /></>
-        : <><line x1={x1 - 5} y1={y1} x2={x1 + 5} y2={y1} stroke="#1d4ed8" strokeWidth="0.8" /><line x1={x2 - 5} y1={y2} x2={x2 + 5} y2={y2} stroke="#1d4ed8" strokeWidth="0.8" /></>
-      }
-      <SvgLabel x={horiz ? mx : mx + off} y={horiz ? my - off / 2 : my + 4} parts={parts} />
-    </g>
-  )
-}
-
-function lbl(main: string, sub?: string): LabelPart[] {
-  if (!sub) return [{ text: main }]
-  return [{ text: main }, { text: sub, sub: true }]
-}
-
-function EsquemaReferencia({ plantilla }: { plantilla: Plantilla }) {
-  switch (plantilla) {
-    case "rectangular": return (
-      <svg viewBox="0 0 220 180" className="w-full h-40">
-        <rect x="40" y="20" width="120" height="110" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
-        <Cota x1={40} y1={148} x2={160} y2={148} parts={lbl("b")} />
-        <Cota x1={178} y1={20} x2={178} y2={130} parts={lbl("h")} off={12} />
-      </svg>
-    )
-    case "circular": return (
-      <svg viewBox="0 0 200 180" className="w-full h-40">
-        <circle cx="100" cy="90" r="65" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
-        <line x1="100" y1="90" x2="165" y2="90" stroke="#dc2626" strokeWidth="1.2" strokeDasharray="4,2" />
-        <circle cx="100" cy="90" r="3" fill="#dc2626" />
-        <text x="132" y="82" fontSize="11" fill="#dc2626" fontStyle="italic" fontWeight="600">r</text>
-      </svg>
-    )
-    case "tubo": return (
-      <svg viewBox="0 0 200 180" className="w-full h-40">
-        <circle cx="100" cy="90" r="65" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
-        <circle cx="100" cy="90" r="48" fill="white" stroke="#1d4ed8" strokeWidth="1.5" />
-        <line x1="100" y1="90" x2="165" y2="90" stroke="#dc2626" strokeWidth="1.2" strokeDasharray="4,2" />
-        <circle cx="100" cy="90" r="3" fill="#dc2626" />
-        <text x="128" y="82" fontSize="10" fill="#dc2626" fontStyle="italic">r</text>
-        <line x1="148" y1="90" x2="165" y2="90" stroke="#e11d48" strokeWidth="1.5" />
-        <line x1="148" y1="86" x2="148" y2="94" stroke="#e11d48" strokeWidth="1" />
-        <line x1="165" y1="86" x2="165" y2="94" stroke="#e11d48" strokeWidth="1" />
-        <text x="157" y="104" fontSize="9" fill="#e11d48" fontStyle="italic">t</text>
-      </svg>
-    )
-    case "I": return (
-      <svg viewBox="0 0 300 290" className="w-full h-56">
-        <rect x="20" y="230" width="130" height="18" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
-        <rect x="60" y="95" width="16" height="135" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
-        <rect x="40" y="77" width="100" height="18" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
-        <Cota x1={20} y1={262} x2={150} y2={262} parts={lbl("b", "f,inf")} />
-        <Cota x1={170} y1={230} x2={170} y2={248} parts={lbl("t", "f,inf")} off={26} />
-        <Cota x1={20} y1={220} x2={60} y2={220} parts={lbl("x", "alma")} />
-        <Cota x1={60} y1={162} x2={76} y2={162} parts={lbl("t", "w")} />
-        <Cota x1={190} y1={95} x2={190} y2={230} parts={lbl("h", "w")} off={14} />
-        <Cota x1={20} y1={87} x2={40} y2={87} parts={lbl("x", "sup")} />
-        <Cota x1={40} y1={65} x2={140} y2={65} parts={lbl("b", "f,sup")} />
-        <Cota x1={170} y1={77} x2={170} y2={95} parts={lbl("t", "f,sup")} off={26} />
-      </svg>
-    )
-    case "T": return (
-      <svg viewBox="0 0 230 210" className="w-full h-44">
-        <rect x="20" y="20" width="150" height="18" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
-        <rect x="82" y="38" width="26" height="130" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
-        <Cota x1={20} y1={8} x2={170} y2={8} parts={lbl("b", "f")} />
-        <Cota x1={185} y1={20} x2={185} y2={38} parts={lbl("t", "f")} off={16} />
-        <Cota x1={185} y1={38} x2={185} y2={168} parts={lbl("h", "w")} off={14} />
-        <Cota x1={82} y1={120} x2={108} y2={120} parts={lbl("t", "w")} />
-      </svg>
-    )
-    case "L": return (
-      <svg viewBox="0 0 210 210" className="w-full h-44">
-        <polygon points="20,180 20,20 38,20 38,162 170,162 170,180" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
-        <Cota x1={20} y1={196} x2={170} y2={196} parts={lbl("b")} />
-        <Cota x1={185} y1={20} x2={185} y2={180} parts={lbl("h")} off={12} />
-        <Cota x1={20} y1={115} x2={38} y2={115} parts={lbl("t")} />
-      </svg>
-    )
-    case "C": return (
-      <svg viewBox="0 0 270 270" className="w-full h-56">
-        <rect x="20" y="20" width="120" height="18" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
-        <rect x="20" y="38" width="16" height="155" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
-        <rect x="20" y="193" width="100" height="18" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
-        <Cota x1={20} y1={8} x2={140} y2={8} parts={lbl("b", "f,sup")} />
-        <Cota x1={155} y1={20} x2={155} y2={38} parts={lbl("t", "f,sup")} off={26} />
-        <Cota x1={20} y1={115} x2={36} y2={115} parts={lbl("t", "w")} />
-        <Cota x1={155} y1={38} x2={155} y2={193} parts={lbl("h", "w")} off={14} />
-        <Cota x1={20} y1={228} x2={120} y2={228} parts={lbl("b", "f,inf")} />
-        <Cota x1={155} y1={193} x2={155} y2={211} parts={lbl("t", "f,inf")} off={26} />
-      </svg>
-    )
-    case "cajon": return (
-      <svg viewBox="0 0 270 240" className="w-full h-48">
-        <rect x="20" y="20" width="180" height="180" fill="rgba(59,130,246,0.15)" stroke="#1d4ed8" strokeWidth="1.5" />
-        <rect x="38" y="38" width="144" height="144" fill="white" stroke="#1d4ed8" strokeWidth="1.5" />
-        <Cota x1={20} y1={8} x2={200} y2={8} parts={lbl("b", "sup")} />
-        <Cota x1={215} y1={20} x2={215} y2={200} parts={lbl("h")} off={12} />
-        <Cota x1={20} y1={110} x2={38} y2={110} parts={lbl("t", "izq")} />
-        <Cota x1={110} y1={20} x2={110} y2={38} parts={lbl("t", "sup")} off={18} />
-        <Cota x1={182} y1={110} x2={200} y2={110} parts={lbl("t", "der")} />
-        <Cota x1={110} y1={182} x2={110} y2={200} parts={lbl("t", "inf")} off={18} />
-      </svg>
-    )
-    case "coordenadas": return (
-      <svg viewBox="0 0 220 180" className="w-full h-36">
-        <line x1="20" y1="155" x2="200" y2="155" stroke="#9ca3af" strokeWidth="1" />
-        <line x1="20" y1="155" x2="20" y2="10" stroke="#9ca3af" strokeWidth="1" />
-        <text x="203" y="158" fontSize="10" fill="#9ca3af">x</text>
-        <text x="14" y="8" fontSize="10" fill="#9ca3af">y</text>
-        <polygon points="60,130 150,130 170,60 80,40 45,90" fill="rgba(59,130,246,0.12)" stroke="#1d4ed8" strokeWidth="1.5" strokeDasharray="5,3" />
-        <text x="52" y="136" fontSize="8" fill="#1d4ed8">P₁</text>
-        <text x="148" y="136" fontSize="8" fill="#1d4ed8">P₂</text>
-        <text x="168" y="58" fontSize="8" fill="#1d4ed8">P₃</text>
-        <text x="74" y="38" fontSize="8" fill="#1d4ed8">P₄</text>
-        <text x="28" y="88" fontSize="8" fill="#1d4ed8">P₅</text>
-        <text x="110" y="115" fontSize="8" fill="#6b7280">sentido horario → área +</text>
-        <text x="110" y="127" fontSize="8" fill="#6b7280">usar − Resta para huecos</text>
-      </svg>
-    )
-    default: return null
-  }
-}
-
-function niceStep(range: number, targetTicks = 5): number {
-  const raw = range / targetTicks
-  const exp = Math.floor(Math.log10(raw || 1))
-  const base = Math.pow(10, exp)
-  if (raw / base > 5) return base * 5
-  if (raw / base > 2) return base * 2
-  return base
-}
-function dibujarCanvas(canvas: HTMLCanvasElement, elementos: Elemento[], resultado: ResultadoSeccion | null, unidad: string = "cm") {
-  const ctx = canvas.getContext("2d")
-  if (!ctx) return
-
-  const dpr = window.devicePixelRatio || 1
-  const W = canvas.offsetWidth
-  const H = canvas.offsetHeight || 380
-  canvas.width = W * dpr
-  canvas.height = H * dpr
-  ctx.scale(dpr, dpr)
-  ctx.fillStyle = "#ffffff"
-  ctx.fillRect(0, 0, W, H)
-
-  const todosLosPts: { x: number; y: number }[] = [{ x: 0, y: 0 }]
-  for (const el of elementos) {
-    if (el.plantilla === "coordenadas") { if (el.coordPts) todosLosPts.push(...el.coordPts); continue }
-    const pols = offsetPoligonos(getPoligonos(el.plantilla, el.params), el.x0, el.y0)
-    for (const { pts, exacto } of pols) {
-      if (exacto) todosLosPts.push(...circlePoints(exacto.cx, exacto.cy, exacto.r, 32))
-      else todosLosPts.push(...pts)
-    }
-  }
-
-  const padL = 45, padR = 20, padT = 20, padB = 30
-  const allX = todosLosPts.map(p => p.x)
-  const allY = todosLosPts.map(p => p.y)
-  const maxAbsX = Math.max(...allX.map(Math.abs), 1)
-  const maxAbsY = Math.max(...allY.map(Math.abs), 1)
-  const maxAbs = Math.max(maxAbsX, maxAbsY) * 1.3
-
-  const scaleX = (W - padL - padR) / (2 * maxAbs)
-  const scaleY = (H - padT - padB) / (2 * maxAbs)
-  const sc = Math.min(scaleX, scaleY)
-
-  // Centro del plano basado en el centro de la geometría, no en (0,0) fijo
-  const centroX = (Math.min(...allX) + Math.max(...allX)) / 2
-  const centroY = (Math.min(...allY) + Math.max(...allY)) / 2
-  const cx = padL + (W - padL - padR) / 2
-  const cy = padT + (H - padT - padB) / 2
-
-  const tx = (x: number) => cx + (x - centroX) * sc
-  const ty = (y: number) => cy - (y - centroY) * sc
-
-  const rawStep = maxAbs / 3
-  const exp = Math.floor(Math.log10(rawStep || 1))
-  const base = Math.pow(10, exp)
-  const step = rawStep / base > 5 ? base * 5 : rawStep / base > 2 ? base * 2 : base
-
-  // Cuadrícula
-  ctx.strokeStyle = "#e2e8f0"; ctx.lineWidth = 0.5
-  const xStart = Math.floor((centroX - maxAbs) / step) * step
-  const xEnd = centroX + maxAbs
-  for (let v = xStart; v <= xEnd; v = parseFloat((v + step).toFixed(10))) {
-    ctx.beginPath(); ctx.moveTo(tx(v), padT); ctx.lineTo(tx(v), H - padB); ctx.stroke()
-  }
-  const yStart = Math.floor((centroY - maxAbs) / step) * step
-  const yEnd = centroY + maxAbs
-  for (let v = yStart; v <= yEnd; v = parseFloat((v + step).toFixed(10))) {
-    ctx.beginPath(); ctx.moveTo(padL, ty(v)); ctx.lineTo(W - padR, ty(v)); ctx.stroke()
-  }
-
-  // Etiquetas de ejes
-  ctx.fillStyle = "#9ca3af"; ctx.font = "9px sans-serif"; ctx.textAlign = "center"
-  let lastLX = -Infinity
-  for (let v = xStart; v <= xEnd; v = parseFloat((v + step).toFixed(10))) {
-    const px = tx(v)
-    if (px < padL || px > W - padR || px - lastLX < 32) continue
-    lastLX = px
-    const label = Number.isInteger(v) ? `${v}` : parseFloat(v.toFixed(2)).toString()
-    ctx.fillText(label, px, H - padB + 12)
-  }
-  ctx.textAlign = "right"
-  let lastLY = Infinity
-  for (let v = yStart; v <= yEnd; v = parseFloat((v + step).toFixed(10))) {
-    const py = ty(v)
-    if (py < padT || py > H - padB || lastLY - py < 18) continue
-    lastLY = py
-    const label = Number.isInteger(v) ? `${v}` : parseFloat(v.toFixed(2)).toString()
-    ctx.fillText(label, padL - 4, py + 3)
-  }
-
-  // Ejes principales (pasan por el origen real x=0, y=0 si está visible)
-  ctx.strokeStyle = "#6b7280"; ctx.lineWidth = 1.2
-  const oy0 = ty(0), ox0 = tx(0)
-  if (oy0 >= padT && oy0 <= H - padB) {
-    ctx.beginPath(); ctx.moveTo(padL, oy0); ctx.lineTo(W - padR, oy0); ctx.stroke()
-  }
-  if (ox0 >= padL && ox0 <= W - padR) {
-    ctx.beginPath(); ctx.moveTo(ox0, padT); ctx.lineTo(ox0, H - padB); ctx.stroke()
-  }
-  // Borde del área de dibujo
-  ctx.strokeStyle = "#cbd5e1"; ctx.lineWidth = 1
-  ctx.strokeRect(padL, padT, W - padL - padR, H - padT - padB)
-
-  ctx.fillStyle = "#374151"; ctx.font = "bold 10px sans-serif"
-  ctx.textAlign = "left"; ctx.fillText(`x (${unidad})`, W - padR - 30, padT - 6)
-  ctx.textAlign = "left"; ctx.fillText(`y (${unidad})`, padL + 4, padT - 6)
-
-  // Dibujar elementos
-  const fills = ["rgba(59,130,246,0.2)", "rgba(16,185,129,0.2)", "rgba(245,158,11,0.2)", "rgba(239,68,68,0.2)", "rgba(139,92,246,0.2)"]
-  const strokes = ["#1d4ed8", "#059669", "#d97706", "#dc2626", "#7c3aed"]
-  elementos.forEach((el, idx) => {
-    const fill = fills[idx % fills.length], stroke = strokes[idx % strokes.length]
-    if (el.plantilla === "coordenadas") {
-      const pts = el.coordPts || []; if (pts.length < 2) return
-      ctx.beginPath(); ctx.moveTo(tx(pts[0].x), ty(pts[0].y))
-      for (const p of pts) ctx.lineTo(tx(p.x), ty(p.y))
-      ctx.closePath()
-      ctx.fillStyle = el.signo > 0 ? fill : "rgba(255,255,255,0.95)"
-      ctx.strokeStyle = stroke; ctx.lineWidth = 1.8; ctx.fill(); ctx.stroke(); return
-    }
-    const pols = offsetPoligonos(getPoligonos(el.plantilla, el.params), el.x0, el.y0)
-    for (const { pts, signo, exacto } of pols) {
-      const drawPts = exacto ? circlePoints(exacto.cx, exacto.cy, exacto.r, 128) : pts
-      if (drawPts.length < 2) continue
-      ctx.beginPath(); ctx.moveTo(tx(drawPts[0].x), ty(drawPts[0].y))
-      for (const p of drawPts) ctx.lineTo(tx(p.x), ty(p.y))
-      ctx.closePath()
-      ctx.fillStyle = el.signo > 0 && signo > 0 ? fill : "rgba(255,255,255,0.95)"
-      ctx.strokeStyle = stroke; ctx.lineWidth = 1.8; ctx.fill(); ctx.stroke()
-    }
-    ctx.fillStyle = stroke; ctx.font = "bold 10px sans-serif"; ctx.textAlign = "center"
-    ctx.fillText(el.label, tx(el.x0 + 3), ty(el.y0 + 3))
+function polinomioTramo(terminosM: Termino[], inicioTramo: number): Poly {
+  const activos = terminosM.filter((t) => t.x0 <= inicioTramo + 1e-6)
+  const acumulado: Record<number, number> = {}
+  activos.forEach((t) => {
+    expandirTermino(t).forEach(({ power, coef }) => {
+      acumulado[power] = (acumulado[power] || 0) + coef
+    })
   })
-
-  if (resultado) {
-    const ccx = tx(resultado.xc), ccy = ty(resultado.yc)
-    ctx.strokeStyle = "#dc2626"; ctx.lineWidth = 2
-    ctx.beginPath(); ctx.moveTo(ccx - 10, ccy); ctx.lineTo(ccx + 10, ccy); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(ccx, ccy - 10); ctx.lineTo(ccx, ccy + 10); ctx.stroke()
-    ctx.beginPath(); ctx.arc(ccx, ccy, 3.5, 0, Math.PI * 2)
-    ctx.fillStyle = "#dc2626"; ctx.fill()
-    ctx.fillStyle = "#dc2626"; ctx.font = "bold 10px sans-serif"; ctx.textAlign = "left"
-    ctx.fillText(`C(${resultado.xc.toFixed(2)}, ${resultado.yc.toFixed(2)})`, ccx + 7, ccy - 5)
-  }
+  return Object.entries(acumulado)
+    .map(([power, coef]) => ({ power: Number(power), coef }))
+    .filter((p) => Math.abs(p.coef) > 1e-9)
+    .sort((a, b) => b.power - a.power)
 }
 
-// ── Botón PDF ──────────────────────────────────────────────────────────────
-function PDFBoton({ elementos, resultado, datosPDF, canvasRef }: {
-  elementos: Elemento[]
-  resultado: ResultadoSeccion
-  datosPDF: DatosPDF
-  canvasRef: React.RefObject<HTMLCanvasElement | null>
-}) {
-  const [estado, setEstado] = useState<"idle" | "preparando" | "listo" | "generando">("idle")
-  const [imagenCanvas, setImagenCanvas] = useState<string>("")
-  const [ecuacionesPNG, setEcuacionesPNG] = useState<Record<string, string>>({})
+function integrarPoly(poly: Poly): Poly {
+  return poly.map((p) => ({ power: p.power + 1, coef: p.coef / (p.power + 1) }))
+}
 
-  const prepararPDF = async () => {
-    setEstado("preparando")
-    try {
-      const { renderizarEcuaciones } = await import("../../components/renderEcuacion")
-      const imgCanvas = canvasRef.current ? canvasRef.current.toDataURL("image/png") : ""
-      setImagenCanvas(imgCanvas)
-      const eqs: { key: string; latex: string; display?: boolean; altura?: number }[] = []
-      const R = Math.sqrt(Math.pow((resultado.Icx - resultado.Icy) / 2, 2) + Math.pow(resultado.Ixy, 2))
+function evaluarPoly(poly: Poly, x: number): number {
+  return poly.reduce((acc, p) => acc + p.coef * Math.pow(x, p.power), 0)
+}
 
-      // Ecuaciones globales
-      eqs.push(
-        { key: "global_A_gen", latex: "A = \\sum_i \\left( \\text{signo}_i \\times A_i \\right)" },
-        { key: "global_A_res", latex: `A = ${fmt(resultado.A)} \\text{ cm}^2`, altura: 35 },
-        { key: "global_xc_gen", latex: "\\bar{x} = \\frac{\\sum_i \\left( \\text{signo}_i \\times A_i \\times \\bar{x}_i \\right)}{A}" },
-        { key: "global_xc_res", latex: `\\bar{x} = ${fmt(resultado.xc)} \\text{ cm}`, altura: 35 },
-        { key: "global_yc_gen", latex: "\\bar{y} = \\frac{\\sum_i \\left( \\text{signo}_i \\times A_i \\times \\bar{y}_i \\right)}{A}" },
-        { key: "global_yc_res", latex: `\\bar{y} = ${fmt(resultado.yc)} \\text{ cm}`, altura: 35 },
-        { key: "global_Icx_gen", latex: "I_{cx} = \\sum_i \\left[ \\text{signo}_i \\times \\left( I_{cx,i}^{\\text{propio}} + A_i \\cdot (\\bar{y}_i - \\bar{y})^2 \\right) \\right]" },
-        { key: "global_Icx_steiner", latex: "I_{cx,i}^{\\text{propio}} = I_{x,\\text{origen},i} - A_i \\cdot \\bar{y}_i^2" },
-        { key: "global_Icx_res", latex: `I_{cx} = ${fmt(resultado.Icx)} \\text{ cm}^4`, altura: 35 },
-        { key: "global_Icy_gen", latex: "I_{cy} = \\sum_i \\left[ \\text{signo}_i \\times \\left( I_{cy,i}^{\\text{propio}} + A_i \\cdot (\\bar{x}_i - \\bar{x})^2 \\right) \\right]" },
-        { key: "global_Icy_res", latex: `I_{cy} = ${fmt(resultado.Icy)} \\text{ cm}^4`, altura: 35 },
-        { key: "global_Ixy_gen", latex: "I_{xy} = \\sum_i \\left[ \\text{signo}_i \\times \\left( I_{xy,i}^{\\text{propio}} + A_i (\\bar{x}_i - \\bar{x})(\\bar{y}_i - \\bar{y}) \\right) \\right]" },
-        { key: "global_Ixy_res", latex: `I_{xy} = ${fmt(resultado.Ixy)} \\text{ cm}^4`, altura: 35 },
-        { key: "global_J_gen", latex: "J = I_{cx} + I_{cy}" },
-        { key: "global_J_sus", latex: `J = ${fmt(resultado.Icx)} + ${fmt(resultado.Icy)}` },
-        { key: "global_J_res", latex: `J = ${fmt(resultado.J)} \\text{ cm}^4`, altura: 35 },
-        { key: "mod_Sxp_gen", latex: "S_x^{+} = \\frac{I_{cx}}{y_{\\max} - \\bar{y}}" },
-        { key: "mod_Sxp_sus", latex: `S_x^{+} = \\frac{${fmt(resultado.Icx)}}{y_{\\max} - ${fmt(resultado.yc)}}` },
-        { key: "mod_Sxp_res", latex: `S_x^{+} = ${fmt(resultado.Sx_top)} \\text{ cm}^3`, altura: 35 },
-        { key: "mod_Sxm_gen", latex: "S_x^{-} = \\frac{I_{cx}}{\\bar{y} - y_{\\min}}" },
-        { key: "mod_Sxm_sus", latex: `S_x^{-} = \\frac{${fmt(resultado.Icx)}}{${fmt(resultado.yc)} - y_{\\min}}` },
-        { key: "mod_Sxm_res", latex: `S_x^{-} = ${fmt(resultado.Sx_bot)} \\text{ cm}^3`, altura: 35 },
-        { key: "mod_Sy_gen", latex: "S_y = \\frac{I_{cy}}{x_{\\max}}" },
-        { key: "mod_Sy_sus", latex: `S_y = \\frac{${fmt(resultado.Icy)}}{x_{\\max}}` },
-        { key: "mod_Sy_res", latex: `S_y = ${fmt(resultado.Sy)} \\text{ cm}^3`, altura: 35 },
-        { key: "mod_rx_gen", latex: "r_x = \\sqrt{\\frac{I_{cx}}{A}}" },
-        { key: "mod_rx_sus", latex: `r_x = \\sqrt{\\frac{${fmt(resultado.Icx)}}{${fmt(resultado.A)}}}` },
-        { key: "mod_rx_int", latex: `r_x = \\sqrt{${fmt(resultado.Icx / resultado.A)}}` },
-        { key: "mod_rx_res", latex: `r_x = ${fmt(resultado.rx)} \\text{ cm}`, altura: 35 },
-        { key: "mod_ry_gen", latex: "r_y = \\sqrt{\\frac{I_{cy}}{A}}" },
-        { key: "mod_ry_sus", latex: `r_y = \\sqrt{\\frac{${fmt(resultado.Icy)}}{${fmt(resultado.A)}}}` },
-        { key: "mod_ry_int", latex: `r_y = \\sqrt{${fmt(resultado.Icy / resultado.A)}}` },
-        { key: "mod_ry_res", latex: `r_y = ${fmt(resultado.ry)} \\text{ cm}`, altura: 35 },
-        { key: "ejes_R_gen", latex: "R = \\sqrt{\\left(\\frac{I_{cx} - I_{cy}}{2}\\right)^2 + I_{xy}^2}" },
-        { key: "ejes_R_sus", latex: `R = \\sqrt{\\left(\\frac{${fmt(resultado.Icx)} - ${fmt(resultado.Icy)}}{2}\\right)^2 + ${fmt(resultado.Ixy)}^2}` },
-        { key: "ejes_R_res", latex: `R = ${fmt(R)} \\text{ cm}^4`, altura: 35 },
-        { key: "ejes_I1_gen", latex: "I_1 = \\frac{I_{cx} + I_{cy}}{2} + R" },
-        { key: "ejes_I1_sus", latex: `I_1 = \\frac{${fmt(resultado.Icx)} + ${fmt(resultado.Icy)}}{2} + ${fmt(R)}` },
-        { key: "ejes_I1_res", latex: `I_1 = ${fmt(resultado.I1)} \\text{ cm}^4`, altura: 35 },
-        { key: "ejes_I2_gen", latex: "I_2 = \\frac{I_{cx} + I_{cy}}{2} - R" },
-        { key: "ejes_I2_sus", latex: `I_2 = \\frac{${fmt(resultado.Icx)} + ${fmt(resultado.Icy)}}{2} - ${fmt(R)}` },
-        { key: "ejes_I2_res", latex: `I_2 = ${fmt(resultado.I2)} \\text{ cm}^4`, altura: 35 },
-        { key: "ejes_tp_gen", latex: "\\theta_p = \\frac{1}{2} \\arctan\\left(\\frac{-2 I_{xy}}{I_{cx} - I_{cy}}\\right)" },
-        { key: "ejes_tp_sus", latex: `\\theta_p = \\frac{1}{2} \\arctan\\left(\\frac{-2 \\times ${fmt(resultado.Ixy)}}{${fmt(resultado.Icx)} - ${fmt(resultado.Icy)}}\\right)` },
-        { key: "ejes_tp_res", latex: `\\theta_p = ${resultado.theta_p.toFixed(2)}^\\circ`, altura: 35 },
-      )
+function polyALatex(poly: Poly, constante?: { nombre: string; valor: number }): string {
+  const partes = poly.filter((p) => Math.abs(p.coef) > 1e-9)
+  let expr = ""
+  partes.forEach((p, i) => {
+    const signo = p.coef >= 0 ? (i === 0 ? "" : "+") : "-"
+    const abs = Math.abs(p.coef).toFixed(4)
+    const termino = p.power === 0 ? abs : p.power === 1 ? `${abs}x` : `${abs}x^{${p.power}}`
+    expr += ` ${signo} ${termino}`
+  })
+  if (constante) {
+    const signo = constante.valor >= 0 ? "+" : "-"
+    expr += ` ${signo} ${constante.nombre}`
+  }
+  expr = expr.trim()
+  if (expr.startsWith("+")) expr = expr.slice(1).trim()
+  return expr || "0"
+}
 
-      // Ecuaciones por elemento
-      for (const el of elementos) {
-        const pre = `el_${el.id}_`
-        const p = el.params
+interface DatosTramo {
+  inicio: number
+  fin: number
+  polyM: Poly
+  polyTheta: Poly
+  polyV: Poly
+  cTheta: number
+  cV: number
+  nombreCTheta: string
+  nombreCV: string
+}
 
-        if (el.plantilla === "rectangular") {
-          const A = p.b * p.h
-          const xc = p.b / 2 + el.x0
-          const yc = p.h / 2 + el.y0
-          const Icx = p.b * Math.pow(p.h, 3) / 12
-          const Icy = p.h * Math.pow(p.b, 3) / 12
-          eqs.push(
-            { key: `${pre}A_gen`, latex: "A = b \\times h" },
-            { key: `${pre}A_sus`, latex: `A = ${f2(p.b)} \\times ${f2(p.h)}` },
-            { key: `${pre}A_res`, latex: `A = ${fmt(A)} \\text{ cm}^2`, altura: 35 },
-            { key: `${pre}xc_gen`, latex: "\\bar{x} = \\frac{b}{2} + x_0" },
-            { key: `${pre}xc_sus`, latex: `\\bar{x} = \\frac{${f2(p.b)}}{2} + ${f2(el.x0)}` },
-            { key: `${pre}xc_res`, latex: `\\bar{x} = ${fmt(xc)} \\text{ cm}`, altura: 35 },
-            { key: `${pre}yc_gen`, latex: "\\bar{y} = \\frac{h}{2} + y_0" },
-            { key: `${pre}yc_sus`, latex: `\\bar{y} = \\frac{${f2(p.h)}}{2} + ${f2(el.y0)}` },
-            { key: `${pre}yc_res`, latex: `\\bar{y} = ${fmt(yc)} \\text{ cm}`, altura: 35 },
-            { key: `${pre}Icx_gen`, latex: "I_{cx} = \\frac{b \\cdot h^3}{12}" },
-            { key: `${pre}Icx_sus`, latex: `I_{cx} = \\frac{${f2(p.b)} \\times ${f2(p.h)}^3}{12}` },
-            { key: `${pre}Icx_int`, latex: `I_{cx} = \\frac{${f2(p.b)} \\times ${f2(Math.pow(p.h, 3))}}{12}` },
-            { key: `${pre}Icx_res`, latex: `I_{cx} = ${fmt(Icx)} \\text{ cm}^4`, altura: 35 },
-            { key: `${pre}Icy_gen`, latex: "I_{cy} = \\frac{h \\cdot b^3}{12}" },
-            { key: `${pre}Icy_sus`, latex: `I_{cy} = \\frac{${f2(p.h)} \\times ${f2(p.b)}^3}{12}` },
-            { key: `${pre}Icy_int`, latex: `I_{cy} = \\frac{${f2(p.h)} \\times ${f2(Math.pow(p.b, 3))}}{12}` },
-            { key: `${pre}Icy_res`, latex: `I_{cy} = ${fmt(Icy)} \\text{ cm}^4`, altura: 35 },
-          )
-        }
+function calcularTramos(resultado: ResultadoViga, EI: number): DatosTramo[] {
+  const puntos = resultado.puntosCriticos
+  const tramos: DatosTramo[] = []
+  let contadorC = 1
+  for (let i = 0; i < puntos.length - 1; i++) {
+    const inicio = puntos[i]
+    const fin = puntos[i + 1]
+    const polyM = polinomioTramo(resultado.terminosM, inicio)
+    const polyTheta = integrarPoly(polyM)
+    const polyV = integrarPoly(polyTheta)
 
-        if (el.plantilla === "circular") {
-          const A = Math.PI * p.r * p.r
-          const xc = p.r + el.x0
-          const yc = p.r + el.y0
-          const Ic = Math.PI * Math.pow(p.r, 4) / 4
-          eqs.push(
-            { key: `${pre}A_gen`, latex: "A = \\pi r^2" },
-            { key: `${pre}A_sus`, latex: `A = \\pi \\times ${f2(p.r)}^2` },
-            { key: `${pre}A_res`, latex: `A = ${fmt(A)} \\text{ cm}^2`, altura: 35 },
-            { key: `${pre}cc_gen`, latex: "(\\bar{x}, \\bar{y}) = (r + x_0,\\; r + y_0)" },
-            { key: `${pre}cc_res`, latex: `(\\bar{x}, \\bar{y}) = (${fmt(xc)},\\; ${fmt(yc)}) \\text{ cm}`, altura: 35 },
-            { key: `${pre}Ic_gen`, latex: "I_c = \\frac{\\pi r^4}{4}" },
-            { key: `${pre}Ic_sus`, latex: `I_c = \\frac{\\pi \\times ${f2(p.r)}^4}{4}` },
-            { key: `${pre}Ic_res`, latex: `I_{cx} = I_{cy} = ${fmt(Ic)} \\text{ cm}^4`, altura: 35 },
-          )
-        }
+    const thetaTrueEI = resultado.theta(inicio, EI) * EI
+    const vTrueEI = resultado.v(inicio, EI) * EI
 
-        if (el.plantilla === "tubo") {
-          const ri = p.r - p.t
-          const A = Math.PI * (p.r * p.r - ri * ri)
-          const Ic = Math.PI * (Math.pow(p.r, 4) - Math.pow(ri, 4)) / 4
-          eqs.push(
-            { key: `${pre}ri_gen`, latex: "r_i = r - t" },
-            { key: `${pre}ri_res`, latex: `r_i = ${f2(p.r)} - ${f2(p.t)} = ${fmt(ri)} \\text{ cm}`, altura: 35 },
-            { key: `${pre}A_gen`, latex: "A = \\pi (r^2 - r_i^2)" },
-            { key: `${pre}A_sus`, latex: `A = \\pi (${f2(p.r)}^2 - ${f2(ri)}^2)` },
-            { key: `${pre}A_res`, latex: `A = ${fmt(A)} \\text{ cm}^2`, altura: 35 },
-            { key: `${pre}Ic_gen`, latex: "I_c = \\frac{\\pi (r^4 - r_i^4)}{4}" },
-            { key: `${pre}Ic_sus`, latex: `I_c = \\frac{\\pi (${f2(p.r)}^4 - ${f2(ri)}^4)}{4}` },
-            { key: `${pre}Ic_res`, latex: `I_{cx} = I_{cy} = ${fmt(Ic)} \\text{ cm}^4`, altura: 35 },
-          )
-        }
+    const cTheta = thetaTrueEI - evaluarPoly(polyTheta, inicio)
+    const cV = vTrueEI - evaluarPoly(polyV, inicio) - cTheta * inicio
 
-        if (el.plantilla === "I") {
-          const A1 = p.bf_inf * p.tf_inf
-          const A2 = p.tw * p.hw
-          const A3 = p.bf_sup * p.tf_sup
-          const y1 = p.tf_inf / 2 + el.y0
-          const y2 = p.tf_inf + p.hw / 2 + el.y0
-          const y3 = p.tf_inf + p.hw + p.tf_sup / 2 + el.y0
-          const A = A1 + A2 + A3
-          const yc = (A1 * y1 + A2 * y2 + A3 * y3) / A
-          const Ic1 = p.bf_inf * Math.pow(p.tf_inf, 3) / 12
-          const Ic2 = p.tw * Math.pow(p.hw, 3) / 12
-          const Ic3 = p.bf_sup * Math.pow(p.tf_sup, 3) / 12
-          const Ics1 = Ic1 + A1 * Math.pow(y1 - yc, 2)
-          const Ics2 = Ic2 + A2 * Math.pow(y2 - yc, 2)
-          const Ics3 = Ic3 + A3 * Math.pow(y3 - yc, 2)
-          const Icx = Ics1 + Ics2 + Ics3
-          eqs.push(
-            { key: `${pre}A1_gen`, latex: "A_1 = b_{f,inf} \\times t_{f,inf}" },
-            { key: `${pre}A1_res`, latex: `A_1 = ${f2(p.bf_inf)} \\times ${f2(p.tf_inf)} = ${fmt(A1)} \\text{ cm}^2`, altura: 35 },
-            { key: `${pre}y1_gen`, latex: "\\bar{y}_1 = \\frac{t_{f,inf}}{2} + y_0" },
-            { key: `${pre}y1_res`, latex: `\\bar{y}_1 = ${fmt(y1)} \\text{ cm}`, altura: 35 },
-            { key: `${pre}A2_gen`, latex: "A_2 = t_w \\times h_w" },
-            { key: `${pre}A2_res`, latex: `A_2 = ${f2(p.tw)} \\times ${f2(p.hw)} = ${fmt(A2)} \\text{ cm}^2`, altura: 35 },
-            { key: `${pre}y2_gen`, latex: "\\bar{y}_2 = t_{f,inf} + \\frac{h_w}{2} + y_0" },
-            { key: `${pre}y2_res`, latex: `\\bar{y}_2 = ${fmt(y2)} \\text{ cm}`, altura: 35 },
-            { key: `${pre}A3_gen`, latex: "A_3 = b_{f,sup} \\times t_{f,sup}" },
-            { key: `${pre}A3_res`, latex: `A_3 = ${f2(p.bf_sup)} \\times ${f2(p.tf_sup)} = ${fmt(A3)} \\text{ cm}^2`, altura: 35 },
-            { key: `${pre}y3_gen`, latex: "\\bar{y}_3 = t_{f,inf} + h_w + \\frac{t_{f,sup}}{2} + y_0" },
-            { key: `${pre}y3_res`, latex: `\\bar{y}_3 = ${fmt(y3)} \\text{ cm}`, altura: 35 },
-            { key: `${pre}A_gen`, latex: "A = A_1 + A_2 + A_3" },
-            { key: `${pre}A_res`, latex: `A = ${f2(A1)} + ${f2(A2)} + ${f2(A3)} = ${fmt(A)} \\text{ cm}^2`, altura: 35 },
-            { key: `${pre}yc_gen`, latex: "\\bar{y} = \\frac{A_1 \\bar{y}_1 + A_2 \\bar{y}_2 + A_3 \\bar{y}_3}{A}" },
-            { key: `${pre}yc_sus`, latex: `\\bar{y} = \\frac{${f2(A1)} \\times ${f2(y1)} + ${f2(A2)} \\times ${f2(y2)} + ${f2(A3)} \\times ${f2(y3)}}{${f2(A)}}` },
-            { key: `${pre}yc_res`, latex: `\\bar{y} = ${fmt(yc)} \\text{ cm}`, altura: 35 },
-            { key: `${pre}Ics1_gen`, latex: "I_{cs,1} = \\frac{b_{f,inf} \\cdot t_{f,inf}^3}{12} + A_1(\\bar{y}_1 - \\bar{y})^2" },
-            { key: `${pre}Ics1_sus`, latex: `I_{cs,1} = \\frac{${f2(p.bf_inf)} \\times ${f2(p.tf_inf)}^3}{12} + ${f2(A1)}(${f2(y1)} - ${f2(yc)})^2` },
-            { key: `${pre}Ics1_res`, latex: `I_{cs,1} = ${fmt(Ic1)} + ${fmt(A1 * Math.pow(y1 - yc, 2))} = ${fmt(Ics1)} \\text{ cm}^4`, altura: 35 },
-            { key: `${pre}Ics2_gen`, latex: "I_{cs,2} = \\frac{t_w \\cdot h_w^3}{12} + A_2(\\bar{y}_2 - \\bar{y})^2" },
-            { key: `${pre}Ics2_sus`, latex: `I_{cs,2} = \\frac{${f2(p.tw)} \\times ${f2(p.hw)}^3}{12} + ${f2(A2)}(${f2(y2)} - ${f2(yc)})^2` },
-            { key: `${pre}Ics2_res`, latex: `I_{cs,2} = ${fmt(Ic2)} + ${fmt(A2 * Math.pow(y2 - yc, 2))} = ${fmt(Ics2)} \\text{ cm}^4`, altura: 35 },
-            { key: `${pre}Ics3_gen`, latex: "I_{cs,3} = \\frac{b_{f,sup} \\cdot t_{f,sup}^3}{12} + A_3(\\bar{y}_3 - \\bar{y})^2" },
-            { key: `${pre}Ics3_sus`, latex: `I_{cs,3} = \\frac{${f2(p.bf_sup)} \\times ${f2(p.tf_sup)}^3}{12} + ${f2(A3)}(${f2(y3)} - ${f2(yc)})^2` },
-            { key: `${pre}Ics3_res`, latex: `I_{cs,3} = ${fmt(Ic3)} + ${fmt(A3 * Math.pow(y3 - yc, 2))} = ${fmt(Ics3)} \\text{ cm}^4`, altura: 35 },
-            { key: `${pre}Icx_gen`, latex: "I_{cx} = I_{cs,1} + I_{cs,2} + I_{cs,3}" },
-            { key: `${pre}Icx_sus`, latex: `I_{cx} = ${fmt(Ics1)} + ${fmt(Ics2)} + ${fmt(Ics3)}` },
-            { key: `${pre}Icx_res`, latex: `I_{cx} = ${fmt(Icx)} \\text{ cm}^4`, altura: 35 },
-          )
-        }
+    const nombreCTheta = `C_{${contadorC}}`
+    const nombreCV = `C_{${contadorC + 1}}`
+    contadorC += 2
 
-        if (el.plantilla === "T") {
-          const A1 = p.tw * p.hw
-          const A2 = p.bf * p.tf
-          const y1 = p.hw / 2 + el.y0
-          const y2 = p.hw + p.tf / 2 + el.y0
-          const A = A1 + A2
-          const yc = (A1 * y1 + A2 * y2) / A
-          const Ic1 = p.tw * Math.pow(p.hw, 3) / 12
-          const Ic2 = p.bf * Math.pow(p.tf, 3) / 12
-          const Ics1 = Ic1 + A1 * Math.pow(y1 - yc, 2)
-          const Ics2 = Ic2 + A2 * Math.pow(y2 - yc, 2)
-          const Icx = Ics1 + Ics2
-          eqs.push(
-            { key: `${pre}A1_gen`, latex: "A_1 = t_w \\times h_w" },
-            { key: `${pre}A1_res`, latex: `A_1 = ${fmt(A1)} \\text{ cm}^2`, altura: 35 },
-            { key: `${pre}y1_gen`, latex: "\\bar{y}_1 = \\frac{h_w}{2} + y_0" },
-            { key: `${pre}y1_res`, latex: `\\bar{y}_1 = ${fmt(y1)} \\text{ cm}`, altura: 35 },
-            { key: `${pre}A2_gen`, latex: "A_2 = b_f \\times t_f" },
-            { key: `${pre}A2_res`, latex: `A_2 = ${fmt(A2)} \\text{ cm}^2`, altura: 35 },
-            { key: `${pre}y2_gen`, latex: "\\bar{y}_2 = h_w + \\frac{t_f}{2} + y_0" },
-            { key: `${pre}y2_res`, latex: `\\bar{y}_2 = ${fmt(y2)} \\text{ cm}`, altura: 35 },
-            { key: `${pre}A_gen`, latex: "A = A_1 + A_2" },
-            { key: `${pre}A_res`, latex: `A = ${fmt(A)} \\text{ cm}^2`, altura: 35 },
-            { key: `${pre}yc_gen`, latex: "\\bar{y} = \\frac{A_1 \\bar{y}_1 + A_2 \\bar{y}_2}{A}" },
-            { key: `${pre}yc_sus`, latex: `\\bar{y} = \\frac{${f2(A1)} \\times ${f2(y1)} + ${f2(A2)} \\times ${f2(y2)}}{${f2(A)}}` },
-            { key: `${pre}yc_res`, latex: `\\bar{y} = ${fmt(yc)} \\text{ cm}`, altura: 35 },
-            { key: `${pre}Ics1_gen`, latex: "I_{cs,1} = \\frac{t_w h_w^3}{12} + A_1(\\bar{y}_1 - \\bar{y})^2" },
-            { key: `${pre}Ics1_sus`, latex: `I_{cs,1} = \\frac{${f2(p.tw)} \\times ${f2(p.hw)}^3}{12} + ${f2(A1)}(${f2(y1)} - ${f2(yc)})^2` },
-            { key: `${pre}Ics1_res`, latex: `I_{cs,1} = ${fmt(Ics1)} \\text{ cm}^4`, altura: 35 },
-            { key: `${pre}Ics2_gen`, latex: "I_{cs,2} = \\frac{b_f t_f^3}{12} + A_2(\\bar{y}_2 - \\bar{y})^2" },
-            { key: `${pre}Ics2_sus`, latex: `I_{cs,2} = \\frac{${f2(p.bf)} \\times ${f2(p.tf)}^3}{12} + ${f2(A2)}(${f2(y2)} - ${f2(yc)})^2` },
-            { key: `${pre}Ics2_res`, latex: `I_{cs,2} = ${fmt(Ics2)} \\text{ cm}^4`, altura: 35 },
-            { key: `${pre}Icx_gen`, latex: "I_{cx} = I_{cs,1} + I_{cs,2}" },
-            { key: `${pre}Icx_sus`, latex: `I_{cx} = ${fmt(Ics1)} + ${fmt(Ics2)}` },
-            { key: `${pre}Icx_res`, latex: `I_{cx} = ${fmt(Icx)} \\text{ cm}^4`, altura: 35 },
-          )
-        }
+    tramos.push({ inicio, fin, polyM, polyTheta, polyV, cTheta, cV, nombreCTheta, nombreCV })
+  }
+  return tramos
+}
 
-        if (el.plantilla === "L") {
-          const A1 = p.b * p.t
-          const A2 = p.t * (p.h - p.t)
-          const A = A1 + A2
-          const xc1 = p.b / 2 + el.x0
-          const yc1 = p.t / 2 + el.y0
-          const xc2 = p.t / 2 + el.x0
-          const yc2 = p.t + (p.h - p.t) / 2 + el.y0
-          const xcG = (A1 * xc1 + A2 * xc2) / A
-          const ycG = (A1 * yc1 + A2 * yc2) / A
-          eqs.push(
-            { key: `${pre}A1_gen`, latex: "A_1 = b \\times t" },
-            { key: `${pre}A1_res`, latex: `A_1 = ${fmt(A1)} \\text{ cm}^2`, altura: 35 },
-            { key: `${pre}A2_gen`, latex: "A_2 = t \\times (h - t)" },
-            { key: `${pre}A2_res`, latex: `A_2 = ${fmt(A2)} \\text{ cm}^2`, altura: 35 },
-            { key: `${pre}A_gen`, latex: "A = A_1 + A_2" },
-            { key: `${pre}A_res`, latex: `A = ${fmt(A)} \\text{ cm}^2`, altura: 35 },
-            { key: `${pre}xc_gen`, latex: "\\bar{x} = \\frac{A_1 \\bar{x}_1 + A_2 \\bar{x}_2}{A}" },
-            { key: `${pre}xc_sus`, latex: `\\bar{x} = \\frac{${f2(A1)} \\times ${f2(xc1)} + ${f2(A2)} \\times ${f2(xc2)}}{${f2(A)}}` },
-            { key: `${pre}xc_res`, latex: `\\bar{x} = ${fmt(xcG)} \\text{ cm}`, altura: 35 },
-            { key: `${pre}yc_gen`, latex: "\\bar{y} = \\frac{A_1 \\bar{y}_1 + A_2 \\bar{y}_2}{A}" },
-            { key: `${pre}yc_sus`, latex: `\\bar{y} = \\frac{${f2(A1)} \\times ${f2(yc1)} + ${f2(A2)} \\times ${f2(yc2)}}{${f2(A)}}` },
-            { key: `${pre}yc_res`, latex: `\\bar{y} = ${fmt(ycG)} \\text{ cm}`, altura: 35 },
-          )
-        }
+function evaluarMConLado(terminos: Termino[], x: number, incluirBorde: boolean): number {
+  return terminos.reduce((acc, t) => {
+    const d = x - t.x0
+    if (d < 0) return acc
+    if (d === 0 && !incluirBorde) return acc
+    if (t.power === 0) return acc + t.coef
+    return acc + t.coef * Math.pow(d, t.power)
+  }, 0)
+}
+function evaluarVConLado(terminos: Termino[], x: number, incluirBorde: boolean): number {
+  return terminos.reduce((acc, t) => {
+    if (t.power === 0) return acc
+    const d = x - t.x0
+    if (d < 0) return acc
+    if (d === 0 && !incluirBorde) return acc
+    const nuevaPower = t.power - 1
+    if (nuevaPower === 0) return acc + t.coef * t.power
+    return acc + t.coef * t.power * Math.pow(d, nuevaPower)
+  }, 0)
+}
 
-        if (el.plantilla === "C") {
-          const A1 = p.bf_inf * p.tf_inf
-          const A2 = p.tw * p.hw
-          const A3 = p.bf_sup * p.tf_sup
-          const y1 = p.tf_inf / 2 + el.y0
-          const y2 = p.tf_inf + p.hw / 2 + el.y0
-          const y3 = p.tf_inf + p.hw + p.tf_sup / 2 + el.y0
-          const A = A1 + A2 + A3
-          const yc = (A1 * y1 + A2 * y2 + A3 * y3) / A
-          const Ic1 = p.bf_inf * Math.pow(p.tf_inf, 3) / 12
-          const Ic2 = p.tw * Math.pow(p.hw, 3) / 12
-          const Ic3 = p.bf_sup * Math.pow(p.tf_sup, 3) / 12
-          const Ics1 = Ic1 + A1 * Math.pow(y1 - yc, 2)
-          const Ics2 = Ic2 + A2 * Math.pow(y2 - yc, 2)
-          const Ics3 = Ic3 + A3 * Math.pow(y3 - yc, 2)
-          const Icx = Ics1 + Ics2 + Ics3
-          eqs.push(
-            { key: `${pre}A1_gen`, latex: "A_1 = b_{f,inf} \\times t_{f,inf}" },
-            { key: `${pre}A1_res`, latex: `A_1 = ${fmt(A1)} \\text{ cm}^2`, altura: 35 },
-            { key: `${pre}A2_gen`, latex: "A_2 = t_w \\times h_w" },
-            { key: `${pre}A2_res`, latex: `A_2 = ${fmt(A2)} \\text{ cm}^2`, altura: 35 },
-            { key: `${pre}A3_gen`, latex: "A_3 = b_{f,sup} \\times t_{f,sup}" },
-            { key: `${pre}A3_res`, latex: `A_3 = ${fmt(A3)} \\text{ cm}^2`, altura: 35 },
-            { key: `${pre}A_gen`, latex: "A = A_1 + A_2 + A_3" },
-            { key: `${pre}A_res`, latex: `A = ${fmt(A)} \\text{ cm}^2`, altura: 35 },
-            { key: `${pre}yc_gen`, latex: "\\bar{y} = \\frac{A_1 \\bar{y}_1 + A_2 \\bar{y}_2 + A_3 \\bar{y}_3}{A}" },
-            { key: `${pre}yc_sus`, latex: `\\bar{y} = \\frac{${f2(A1)} \\times ${f2(y1)} + ${f2(A2)} \\times ${f2(y2)} + ${f2(A3)} \\times ${f2(y3)}}{${f2(A)}}` },
-            { key: `${pre}yc_res`, latex: `\\bar{y} = ${fmt(yc)} \\text{ cm}`, altura: 35 },
-            { key: `${pre}Icx_gen`, latex: "I_{cx} = I_{cs,1} + I_{cs,2} + I_{cs,3}" },
-            { key: `${pre}Icx_sus`, latex: `I_{cx} = ${fmt(Ics1)} + ${fmt(Ics2)} + ${fmt(Ics3)}` },
-            { key: `${pre}Icx_res`, latex: `I_{cx} = ${fmt(Icx)} \\text{ cm}^4`, altura: 35 },
-          )
-        }
+function GraficoInteractivo({
+  datos, L, color, etiqueta, unidad, unidadLongitud = "m",
+}: { datos: { x: number; y: number }[]; L: number; color: string; etiqueta: string; unidad: string; unidadLongitud?: string }) {
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null)
+  const ancho = 700
+  const alto = 230
+  const margenIzq = 58
+  const margenDer = 20
+  const margenTop = 22
+  const margenBot = 32
+  const anchoGraf = ancho - margenIzq - margenDer
+  const altoGraf = alto - margenTop - margenBot
 
-        if (el.plantilla === "cajon") {
-          const bI = p.b_inf || p.b
-          const tS = p.t_sup || p.t, tI = p.t_inf || p.t
-          const tL = p.t_izq || p.t, tR = p.t_der || p.t
-          const Aext = bI * p.h
-          const bint = bI - tL - tR
-          const hint = p.h - tS - tI
-          const Aint = bint * hint
-          const A = Aext - Aint
-          const Icx_ext = bI * Math.pow(p.h, 3) / 12
-          const Icx_int = bint * Math.pow(hint, 3) / 12
-          eqs.push(
-            { key: `${pre}Aext_gen`, latex: "A_{ext} = b_{inf} \\times h" },
-            { key: `${pre}Aext_res`, latex: `A_{ext} = ${f2(bI)} \\times ${f2(p.h)} = ${fmt(Aext)} \\text{ cm}^2`, altura: 35 },
-            { key: `${pre}Aint_gen`, latex: "A_{int} = (b_{inf} - t_{izq} - t_{der})(h - t_{sup} - t_{inf})" },
-            { key: `${pre}Aint_res`, latex: `A_{int} = ${f2(bint)} \\times ${f2(hint)} = ${fmt(Aint)} \\text{ cm}^2`, altura: 35 },
-            { key: `${pre}A_gen`, latex: "A = A_{ext} - A_{int}" },
-            { key: `${pre}A_res`, latex: `A = ${fmt(Aext)} - ${fmt(Aint)} = ${fmt(A)} \\text{ cm}^2`, altura: 35 },
-            { key: `${pre}Icx_gen`, latex: "I_{cx,ext} = \\frac{b_{inf} h^3}{12} \\qquad I_{cx,int} = \\frac{b_{int} h_{int}^3}{12}" },
-            { key: `${pre}Icx_sus`, latex: `I_{cx,ext} = ${fmt(Icx_ext)} \\text{ cm}^4 \\qquad I_{cx,int} = ${fmt(Icx_int)} \\text{ cm}^4` },
-            { key: `${pre}Icx_res`, latex: `I_{cx} \\approx ${fmt(Icx_ext - Icx_int)} \\text{ cm}^4`, altura: 35 },
-          )
-        }
+  const yMinRaw = Math.min(0, ...datos.map((d) => d.y))
+  const yMaxRaw = Math.max(0, ...datos.map((d) => d.y))
+  const rango = yMaxRaw - yMinRaw || 1
+  const yMin = yMinRaw - rango * 0.12
+  const yMax = yMaxRaw + rango * 0.12
+  const rangoY = yMax - yMin || 1
 
-        if (el.plantilla === "coordenadas") {
-          eqs.push(
-            { key: `${pre}gauss_A`, latex: "A = \\frac{1}{2} \\left| \\sum_{i=0}^{n-1} (x_i y_{i+1} - x_{i+1} y_i) \\right|", altura: 75 },
-            { key: `${pre}gauss_xc`, latex: "\\bar{x} = \\frac{1}{6A} \\sum_{i=0}^{n-1} (x_i + x_{i+1})(x_i y_{i+1} - x_{i+1} y_i)", altura: 75 },
-            { key: `${pre}gauss_yc`, latex: "\\bar{y} = \\frac{1}{6A} \\sum_{i=0}^{n-1} (y_i + y_{i+1})(x_i y_{i+1} - x_{i+1} y_i)", altura: 75 },
-            { key: `${pre}gauss_Ix`, latex: "I_x = \\frac{1}{12} \\sum_{i=0}^{n-1} (y_i^2 + y_i y_{i+1} + y_{i+1}^2)(x_i y_{i+1} - x_{i+1} y_i)", altura: 75 },
-          )
-        }
-      }
+  function xPix(x: number) { return margenIzq + (x / L) * anchoGraf }
+  function yPix(y: number) { return margenTop + altoGraf - ((y - yMin) / rangoY) * altoGraf }
+  const y0Pix = yPix(0)
 
-      const pngs = await renderizarEcuaciones(eqs)
-      setEcuacionesPNG(pngs)
-      setEstado("listo")
-    } catch (err) {
-      console.error("Error preparando PDF:", err)
-      setEstado("idle")
-    }
+  const pathArea = `M ${xPix(datos[0].x)},${y0Pix} ` + datos.map((d) => `L ${xPix(d.x)},${yPix(d.y)}`).join(" ") + ` L ${xPix(datos[datos.length - 1].x)},${y0Pix} Z`
+  const pathLine = datos.map((d, i) => `${i === 0 ? "M" : "L"} ${xPix(d.x)},${yPix(d.y)}`).join(" ")
+
+  const ticksX = Array.from({ length: 9 }, (_, i) => (L * i) / 8)
+  const ticksY = Array.from({ length: 6 }, (_, i) => yMin + (rangoY * i) / 5)
+  const pasoMuestra = Math.max(1, Math.floor(datos.length / 22))
+  const puntosVisibles = datos.filter((_, i) => i % pasoMuestra === 0 || i === datos.length - 1)
+
+  function manejarMouseMove(e: React.MouseEvent<SVGSVGElement>) {
+    const rect = e.currentTarget.getBoundingClientRect()
+    const xPantalla = ((e.clientX - rect.left) / rect.width) * ancho
+    const xData = ((xPantalla - margenIzq) / anchoGraf) * L
+    let mejorIdx = 0, mejorDist = Infinity
+    datos.forEach((d, i) => { const dist = Math.abs(d.x - xData); if (dist < mejorDist) { mejorDist = dist; mejorIdx = i } })
+    setHoverIdx(mejorIdx)
   }
 
-  const descargar = async () => {
-    setEstado("generando")
-    try {
-      const { pdf } = await import("@react-pdf/renderer")
-      const { PDFSeccion: PDFComp } = await import("../../components/PDFSeccion")
-      const blob = await pdf(
-        <PDFComp
-          elementos={elementos}
-          resultado={resultado}
-          datosUsuario={{ ...datosPDF, fecha: new Date().toLocaleDateString("es-CO") }}
-          imagenCanvas={imagenCanvas}
-          ecuacionesPNG={ecuacionesPNG}
-        />
-      ).toBlob()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement("a")
-      a.href = url
-      a.download = `NodoCalc_Seccion_${datosPDF.proyecto || "memoria"}.pdf`
-      a.click()
-      URL.revokeObjectURL(url)
-    } catch (err) {
-      console.error(err)
-    }
-    setEstado("listo")
-  }
+  const puntoHover = hoverIdx !== null ? datos[hoverIdx] : null
+  const tooltipX = puntoHover ? Math.min(Math.max(xPix(puntoHover.x), margenIzq + 58), ancho - margenDer - 58) : 0
 
-  if (estado === "idle") return (
-    <button onClick={prepararPDF} className="w-full text-sm bg-red-600 text-white py-2.5 rounded-lg hover:bg-red-700 transition-colors">
-      📄 Preparar memoria de cálculo
-    </button>
-  )
-  if (estado === "preparando") return (
-    <div className="text-xs text-gray-500 text-center py-3 animate-pulse">⏳ Renderizando ecuaciones KaTeX...</div>
-  )
-  if (estado === "generando") return (
-    <div className="text-xs text-gray-500 text-center py-3 animate-pulse">⏳ Generando PDF...</div>
-  )
   return (
-    <div className="flex flex-col gap-2">
-      <button onClick={descargar} className="w-full text-sm bg-red-600 text-white py-2.5 rounded-lg hover:bg-red-700 transition-colors">
-        ⬇ Descargar memoria de cálculo PDF
-      </button>
-      <button onClick={() => setEstado("idle")} className="text-xs text-gray-400 hover:underline text-center">
-        Regenerar ecuaciones
-      </button>
+    <svg viewBox={`0 0 ${ancho} ${alto}`} className="w-full cursor-crosshair block" style={{ aspectRatio: `${ancho} / ${alto}` }} onMouseMove={manejarMouseMove} onMouseLeave={() => setHoverIdx(null)}>
+      {ticksY.map((ty, i) => (
+        <g key={`y${i}`}>
+          <line x1={margenIzq} y1={yPix(ty)} x2={ancho - margenDer} y2={yPix(ty)} stroke="#f1f5f9" strokeWidth={1} />
+          <text x={margenIzq - 8} y={yPix(ty) + 3} fontSize={9} textAnchor="end" fill="#94a3b8">{ty.toFixed(2)}</text>
+        </g>
+      ))}
+      {ticksX.map((tx, i) => (
+        <g key={`x${i}`}>
+          <line x1={xPix(tx)} y1={margenTop} x2={xPix(tx)} y2={alto - margenBot} stroke="#f8fafc" strokeWidth={1} />
+          <text x={xPix(tx)} y={alto - margenBot + 14} fontSize={9} textAnchor="middle" fill="#94a3b8">{tx.toFixed(1)}</text>
+        </g>
+      ))}
+      <line x1={margenIzq} y1={y0Pix} x2={ancho - margenDer} y2={y0Pix} stroke="#cbd5e1" strokeWidth={1.5} />
+      <line x1={margenIzq} y1={margenTop} x2={margenIzq} y2={alto - margenBot} stroke="#cbd5e1" strokeWidth={1.5} />
+      <path d={pathArea} fill={color} opacity={0.16} />
+      <path d={pathLine} fill="none" stroke={color} strokeWidth={2} />
+      {puntosVisibles.map((d, i) => <circle key={i} cx={xPix(d.x)} cy={yPix(d.y)} r={2.6} fill={color} stroke="white" strokeWidth={0.8} />)}
+      {puntoHover && (
+        <>
+          <line x1={xPix(puntoHover.x)} y1={margenTop} x2={xPix(puntoHover.x)} y2={alto - margenBot} stroke="#64748b" strokeDasharray="3,3" strokeWidth={1} />
+          <circle cx={xPix(puntoHover.x)} cy={yPix(puntoHover.y)} r={4.5} fill="white" stroke={color} strokeWidth={2} />
+          <g transform={`translate(${tooltipX}, ${margenTop + 4})`}>
+            <rect x={-58} y={-4} width={116} height={30} rx={5} fill="#1e293b" opacity={0.92} />
+            <text x={0} y={9} fontSize={9.5} textAnchor="middle" fill="white">x = {puntoHover.x.toFixed(2)} {unidadLongitud}</text>
+            <text x={0} y={20} fontSize={9.5} textAnchor="middle" fill="white">{puntoHover.y.toFixed(4)} {unidad}</text>
+          </g>
+        </>
+      )}
+      <text x={margenIzq + 2} y={14} fontSize={10} fill="#475569" fontWeight={500}>{etiqueta}</text>
+    </svg>
+  )
+}
+
+function PanelReacciones({
+  reacciones, titulo, unidadFuerza, unidadMomento,
+}: { reacciones: ResultadoViga["reacciones"] | null; titulo: string; unidadFuerza: string; unidadMomento: string }) {
+  if (!reacciones || Object.keys(reacciones).length === 0) return null
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl p-5">
+      <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">{titulo}</div>
+      <div className="grid grid-cols-3 gap-3">
+        {Object.entries(reacciones).map(([id, r]) => (
+          <div key={id} className="p-3 rounded-lg bg-blue-50 border-l-4 border-blue-600">
+            <div className="text-xs text-blue-500">Apoyo {id}</div>
+            {r.Fy !== undefined && (
+              <div className="text-sm font-bold text-blue-800">
+                Fy = {Math.abs(r.Fy).toFixed(3)} {unidadFuerza} {r.Fy >= 0 ? "↑" : "↓"}
+              </div>
+            )}
+            {r.M !== undefined && (
+              <div className="text-sm font-bold text-blue-800">
+                M = {Math.abs(r.M).toFixed(3)} {unidadMomento} {r.M >= 0 ? "↺" : "↻"}
+              </div>
+            )}
+            {r.Rx !== undefined && (
+              <div className="text-sm font-bold text-cyan-700">
+                Rx = {Math.abs(r.Rx).toFixed(3)} {unidadFuerza} {r.Rx >= 0 ? "→" : "←"}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
 
-// ── Componente principal ───────────────────────────────────────────────────
-export default function SectionBuilder() {
-  const [elementos, setElementos] = useState<Elemento[]>([])
-  const [editandoId, setEditandoId] = useState<number | null>(null)
-  const [plantillaActual, setPlantillaActual] = useState<Plantilla>("rectangular")
-  const [paramsActuales, setParamsActuales] = useState<Params>({ b: 30, h: 50 })
-  const [x0, setX0] = useState("0")
-  const [y0, setY0] = useState("0")
-  const [signoActual, setSignoActual] = useState<1 | -1>(1)
-  const [resultado, setResultado] = useState<ResultadoSeccion | null>(null)
-  const [coordInput, setCoordInput] = useState("")
-  const [ptoX, setPtoX] = useState("")
-  const [ptoY, setPtoY] = useState("")
-  const [mostrarAgregar, setMostrarAgregar] = useState(false)
-  const [mostrarModalPDF, setMostrarModalPDF] = useState(false)
-  const [datosPDF, setDatosPDF] = useState<DatosPDF>({ ingeniero: "", empresa: "", proyecto: "", descripcion: "", fecha: "" })
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const setSeccion = useSeccionStore((s) => s.setSeccion)
-  const router = useRouter()
-  const nextId = useRef(1)
-  const cfg = useUnidadesStore(s => s.config) 
+export default function DobleIntegracion() {
+  const [L, setL] = useState(6)
+  const [E, setE] = useState(200000)
+  const [I, setI] = useState(50000)
+  const config = useUnidadesStore((s) => s.config)
+  const aplicarPreset = useUnidadesStore((s) => s.aplicarPreset)
+  const setConfig = useUnidadesStore((s) => s.setConfig)
+  const seccionImportada = useSeccionStore((s) => s.seccion)
+  const limpiarSeccion = useSeccionStore((s) => s.limpiarSeccion)
+
+  function aBaseLongitud(v: number) { return convertir(v, config.longitud, "m", "longitud") }
+  function deBaseLongitud(v: number) { return convertir(v, "m", config.longitud, "longitud") }
+  function aBaseFuerza(v: number) { return convertir(v, config.fuerza, "kN", "fuerza") }
+  function deBaseFuerza(v: number) { return convertir(v, "kN", config.fuerza, "fuerza") }
+  function aBaseMomento(v: number) { return convertir(v, config.momento, "kN·m", "momento") }
+  function deBaseMomento(v: number) { return convertir(v, "kN·m", config.momento, "momento") }
+  function aBaseEsfuerzo(v: number) { return convertir(v, config.esfuerzo, "MPa", "esfuerzo") }
+  function aBaseDesplazamiento(v: number) { return convertir(v, config.desplazamiento, "m", "desplazamiento") }
+  function deBaseDesplazamiento(v: number) { return convertir(v, "m", config.desplazamiento, "desplazamiento") }
+  function aBaseInercia(v: number) {
+    const u = config.inercia.replace("⁴", "")
+    const f = factorLongitud[u] ?? 1
+    const fCm = factorLongitud["cm"]
+    return (v * Math.pow(f, 4)) / Math.pow(fCm, 4)
+  }
+  function aBaseCargaDistribuida(v: number) { return (v * aBaseFuerza(1)) / aBaseLongitud(1) }
+  function deBaseCargaDistribuida(v: number) { return (v * aBaseLongitud(1)) / aBaseFuerza(1) }
+  function deBaseEsfuerzo(v: number) { return convertir(v, "MPa", config.esfuerzo, "esfuerzo") }
+  function aBaseModulo(v: number) {
+    const u = config.modulo_resistente.replace("³", "")
+    const f = factorLongitud[u] ?? 1
+    const fCm = factorLongitud["cm"]
+    return (v * Math.pow(f, 3)) / Math.pow(fCm, 3)
+  }
+  function aBaseArea(v: number) {
+    const f = factorLongitud[config.seccion] ?? 1
+    const fCm = factorLongitud["cm"]
+    return (v * Math.pow(f, 2)) / Math.pow(fCm, 2)
+  }
+
+  const EI = useMemo(() => aBaseEsfuerzo(E) * aBaseInercia(I) * 1e-5, [E, I, config])
+  const [mensajeImportacion, setMensajeImportacion] = useState<string | null>(null)
+
   useEffect(() => {
-    if (canvasRef.current) dibujarCanvas(canvasRef.current, elementos, resultado)
-  }, [elementos, resultado])
-
-  const calcularConElementos = (els: Elemento[]) => {
-    if (els.length === 0) { setResultado(null); return }
-    const pols: PoligonoEntry[] = []
-    for (const el of els) {
-      if (el.plantilla === "coordenadas") {
-        if (el.coordPts && el.coordPts.length > 2) pols.push({ pts: el.coordPts, signo: el.signo })
-        continue
-      }
-      const p = offsetPoligonos(getPoligonos(el.plantilla, el.params), el.x0, el.y0)
-      pols.push(...p.map(q => ({ ...q, signo: q.signo * el.signo })))
+    if (seccionImportada) {
+      setI(seccionImportada.Icx)
+      setMensajeImportacion(
+        `Sección importada desde Section Builder: "${seccionImportada.nombre}" — I = ${seccionImportada.Icx.toFixed(2)} ${config.inercia}. E no se modificó (Section Builder no calcula material) — ajústalo manualmente si corresponde.`
+      )
+      limpiarSeccion()
     }
-    if (pols.length === 0) return
-    setResultado(calcularSeccion(pols))
-  }
+  }, [seccionImportada])
 
-  const handlePlantilla = (p: Plantilla) => {
-    setPlantillaActual(p)
-    const defaults: Params = {}
-    plantillasConfig[p].campos.forEach(c => { defaults[c.key] = c.default })
-    setParamsActuales(defaults)
-  }
+  const [sigmaAdmisible, setSigmaAdmisible] = useState(0)
+  const [tauAdmisible, setTauAdmisible] = useState(0)
+  const [moduloSeccion, setModuloSeccion] = useState(0)
+  const [areaSeccion, setAreaSeccion] = useState(0)
+  const [deflexionDenominador, setDeflexionDenominador] = useState(360)
 
-  const abrirNuevo = () => {
-    setEditandoId(null); setPlantillaActual("rectangular")
-    setParamsActuales({ b: 30, h: 50 }); setX0("0"); setY0("0"); setSignoActual(1)
-    setCoordInput(""); setMostrarAgregar(true)
-  }
+  const [apoyos, setApoyos] = useState<Apoyo[]>([
+    { id: "A", x: 0, tipo: "articulado" },
+    { id: "B", x: 6, tipo: "rodillo" },
+  ])
+  const [cargas, setCargas] = useState<Carga[]>([{ id: "C1", tipo: "puntual", x: 3, P: 10 }])
+  const [rotulas, setRotulas] = useState<Rotula[]>([])
 
-  const abrirEditar = (el: Elemento) => {
-    setEditandoId(el.id); setPlantillaActual(el.plantilla)
-    setParamsActuales({ ...el.params }); setX0(String(el.x0)); setY0(String(el.y0)); setSignoActual(el.signo)
-    if (el.coordPts) setCoordInput(el.coordPts.map(p => `${p.x},${p.y}`).join("\n"))
-    setMostrarAgregar(true)
-  }
+  const [resultado, setResultado] = useState<ResultadoViga | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
-  const guardar = () => {
-    if (editandoId !== null) {
-      const nuevos = elementos.map(e => {
-        if (e.id !== editandoId) return e
-        if (plantillaActual === "coordenadas") {
-          try {
-            const pts: Poligono = coordInput.trim().split("\n").filter(l => l.trim()).map(l => { const [x, y] = l.split(",").map(Number); return { x, y } })
-            return { ...e, plantilla: plantillaActual, params: {}, x0: 0, y0: 0, signo: signoActual, coordPts: pts }
-          } catch { alert("Error en coordenadas"); return e }
-        }
-        return { ...e, plantilla: plantillaActual, params: { ...paramsActuales }, x0: parseFloat(x0) || 0, y0: parseFloat(y0) || 0, signo: signoActual }
+  const datosBase = useMemo(() => {
+    const Lb = aBaseLongitud(L)
+    const apoyosB: Apoyo[] = apoyos.map((a) => ({
+      ...a,
+      x: aBaseLongitud(a.x),
+      asentamiento: a.asentamiento !== undefined ? aBaseDesplazamiento(a.asentamiento) : undefined,
+    }))
+    const cargasB: Carga[] = cargas.map((c) => {
+      if (c.tipo === "puntual") return { ...c, x: aBaseLongitud(c.x), P: aBaseFuerza(c.P) }
+      if (c.tipo === "momento") return { ...c, x: aBaseLongitud(c.x), M: aBaseMomento(c.M) }
+      return { ...c, xi: aBaseLongitud(c.xi), xf: aBaseLongitud(c.xf), wi: aBaseCargaDistribuida(c.wi), wf: aBaseCargaDistribuida(c.wf) }
+    })
+    const rotulasB: Rotula[] = rotulas.map((r) => ({ ...r, x: aBaseLongitud(r.x) }))
+    return { Lb, apoyosB, cargasB, rotulasB }
+  }, [L, apoyos, cargas, rotulas, config])
+
+  const [resultadoLive, errorLive] = useMemo((): [ResultadoViga | null, string | null] => {
+    try {
+      return [resolverViga(datosBase.Lb, datosBase.apoyosB, datosBase.cargasB, datosBase.rotulasB), null]
+    } catch (e: any) {
+      return [null, e.message || "Error al calcular"]
+    }
+  }, [datosBase])
+  const resultadoLiveInfo = resultadoLive
+
+  const reaccionesDisplay = useMemo(() => {
+    if (!resultadoLive) return null
+    const out: ResultadoViga["reacciones"] = {}
+    Object.entries(resultadoLive.reacciones).forEach(([id, r]) => {
+      out[id] = {
+        Fy: r.Fy !== undefined ? deBaseFuerza(r.Fy) : undefined,
+        M: r.M !== undefined ? deBaseMomento(r.M) : undefined,
+        Rx: r.Rx !== undefined ? deBaseFuerza(r.Rx) : undefined,
+      }
+    })
+    return out
+  }, [resultadoLive, config])
+
+  const prevConfigRef = useRef(config)
+  useEffect(() => {
+    const prev = prevConfigRef.current
+    const cambio =
+      prev.longitud !== config.longitud ||
+      prev.fuerza !== config.fuerza ||
+      prev.momento !== config.momento ||
+      prev.esfuerzo !== config.esfuerzo ||
+      prev.desplazamiento !== config.desplazamiento ||
+      prev.inercia !== config.inercia
+    if (cambio) {
+      setL((v) => convertir(v, prev.longitud, config.longitud, "longitud"))
+      setE((v) => convertir(v, prev.esfuerzo, config.esfuerzo, "esfuerzo"))
+      setI((v) => {
+        const uPrev = prev.inercia.replace("⁴", "")
+        const uNew = config.inercia.replace("⁴", "")
+        const fPrev = factorLongitud[uPrev] ?? 1
+        const fNew = factorLongitud[uNew] ?? 1
+        return v * Math.pow(fPrev / fNew, 4)
       })
-      setElementos(nuevos); calcularConElementos(nuevos)
-    } else {
-      if (plantillaActual === "coordenadas") {
-        try {
-          const pts: Poligono = coordInput.trim().split("\n").filter(l => l.trim()).map(l => { const [x, y] = l.split(",").map(Number); return { x, y } })
-          const el: Elemento = { id: nextId.current++, plantilla: "coordenadas", params: {}, x0: 0, y0: 0, signo: signoActual, label: `Coord${nextId.current - 1}`, coordPts: pts }
-          const nuevos = [...elementos, el]; setElementos(nuevos); calcularConElementos(nuevos)
-        } catch { alert("Error en coordenadas"); return }
-      } else {
-        const el: Elemento = { id: nextId.current++, plantilla: plantillaActual, params: { ...paramsActuales }, x0: parseFloat(x0) || 0, y0: parseFloat(y0) || 0, signo: signoActual, label: `E${nextId.current - 1}` }
-        const nuevos = [...elementos, el]; setElementos(nuevos); calcularConElementos(nuevos)
-      }
+      setApoyos((arr) =>
+        arr.map((a) => ({
+          ...a,
+          x: convertir(a.x, prev.longitud, config.longitud, "longitud"),
+          asentamiento: a.asentamiento !== undefined ? convertir(a.asentamiento, prev.desplazamiento, config.desplazamiento, "desplazamiento") : undefined,
+        }))
+      )
+      setCargas((arr) =>
+        arr.map((c) => {
+          if (c.tipo === "puntual") return { ...c, x: convertir(c.x, prev.longitud, config.longitud, "longitud"), P: convertir(c.P, prev.fuerza, config.fuerza, "fuerza") }
+          if (c.tipo === "momento") return { ...c, x: convertir(c.x, prev.longitud, config.longitud, "longitud"), M: convertir(c.M, prev.momento, config.momento, "momento") }
+          const kLong = convertir(1, prev.longitud, config.longitud, "longitud")
+          const kFuerza = convertir(1, prev.fuerza, config.fuerza, "fuerza")
+          return {
+            ...c,
+            xi: convertir(c.xi, prev.longitud, config.longitud, "longitud"),
+            xf: convertir(c.xf, prev.longitud, config.longitud, "longitud"),
+            wi: (c.wi * kFuerza) / kLong,
+            wf: (c.wf * kFuerza) / kLong,
+          }
+        })
+      )
+      setRotulas((arr) => arr.map((r) => ({ ...r, x: convertir(r.x, prev.longitud, config.longitud, "longitud") })))
+      setModuloSeccion((v) => {
+        const uPrev = prev.modulo_resistente.replace("³", "")
+        const uNew = config.modulo_resistente.replace("³", "")
+        const fPrev = factorLongitud[uPrev] ?? 1
+        const fNew = factorLongitud[uNew] ?? 1
+        return v * Math.pow(fPrev / fNew, 3)
+      })
+      setAreaSeccion((v) => {
+        const fPrev = factorLongitud[prev.seccion] ?? 1
+        const fNew = factorLongitud[config.seccion] ?? 1
+        return v * Math.pow(fPrev / fNew, 2)
+      })
+      setSigmaAdmisible((v) => convertir(v, prev.esfuerzo, config.esfuerzo, "esfuerzo"))
+      setTauAdmisible((v) => convertir(v, prev.esfuerzo, config.esfuerzo, "esfuerzo"))
     }
-    setMostrarAgregar(false); setEditandoId(null); setCoordInput("")
+    prevConfigRef.current = config
+  }, [config])
+
+  function agregarApoyo() { setApoyos([...apoyos, { id: nuevoId("Ap"), x: 0, tipo: "rodillo" }]) }
+  function actualizarApoyo(id: string, cambios: Partial<Apoyo>) { setApoyos(apoyos.map((a) => (a.id === id ? { ...a, ...cambios } : a))) }
+  function borrarApoyo(id: string) { setApoyos(apoyos.filter((a) => a.id !== id)) }
+
+  function agregarCarga(tipo: Carga["tipo"]) {
+    if (tipo === "puntual") setCargas([...cargas, { id: nuevoId("Ca"), tipo: "puntual", x: 0, P: 0 }])
+    if (tipo === "momento") setCargas([...cargas, { id: nuevoId("Ca"), tipo: "momento", x: 0, M: 0 }])
+    if (tipo === "distribuida") setCargas([...cargas, { id: nuevoId("Ca"), tipo: "distribuida", xi: 0, xf: L, wi: 0, wf: 0 }])
+  }
+  function actualizarCarga(id: string, cambios: any) { setCargas(cargas.map((c) => (c.id === id ? { ...c, ...cambios } : c)) as Carga[]) }
+  function borrarCarga(id: string) { setCargas(cargas.filter((c) => c.id !== id)) }
+
+  function agregarRotula() { setRotulas([...rotulas, { id: nuevoId("R"), x: L / 2 }]) }
+  function actualizarRotula(id: string, x: number) { setRotulas(rotulas.map((r) => (r.id === id ? { ...r, x } : r))) }
+  function borrarRotula(id: string) { setRotulas(rotulas.filter((r) => r.id !== id)) }
+
+  function calcular() {
+    try {
+      setError(null)
+      const res = resolverViga(datosBase.Lb, datosBase.apoyosB, datosBase.cargasB, datosBase.rotulasB)
+      setResultado(res)
+    } catch (e: any) {
+      setError(e.message || "Error al resolver la viga")
+      setResultado(null)
+    }
   }
 
-  const eliminar = (id: number) => {
-    const nuevos = elementos.filter(e => e.id !== id)
-    setElementos(nuevos); calcularConElementos(nuevos)
-  }
+  const anchoSvg = 700
+  const margen = 40
+  const escala = (anchoSvg - 2 * margen) / L
+  const yViga = 120
+  function xSvg(xv: number) { return margen + xv * escala }
 
-  const steiner = (() => {
+  const puntos = useMemo(() => {
     if (!resultado) return null
-    const x = parseFloat(ptoX), y = parseFloat(ptoY)
-    if (isNaN(x) || isNaN(y)) return null
-    return { Ix: resultado.Icx + resultado.A * (y - resultado.yc) ** 2, Iy: resultado.Icy + resultado.A * (x - resultado.xc) ** 2 }
-  })()
+    const n = 140
+    const mallaDisplay: number[] = []
+    for (let i = 0; i <= n; i++) mallaDisplay.push((L * i) / n)
+    const criticosDisplay = resultado.puntosCriticos.map((xc) => deBaseLongitud(xc))
+    const criticosInterioresDisplay = criticosDisplay.filter((xc) => xc > 1e-9 && xc < L - 1e-9)
+    const criticosSet = new Set(criticosInterioresDisplay.map((xc) => Number(xc.toFixed(9))))
+    criticosInterioresDisplay.forEach((xc) => mallaDisplay.push(xc))
+    const xsOrdenados = Array.from(new Set(mallaDisplay.map((xv) => Number(xv.toFixed(9))))).sort((a, b) => a - b)
+    const arr: { x: number; M: number; V: number; v: number; theta: number }[] = []
+    xsOrdenados.forEach((xvDisplay) => {
+      const xvBase = aBaseLongitud(xvDisplay)
+      const esFinal = Math.abs(xvDisplay - L) < 1e-9
+      if (criticosSet.has(xvDisplay)) {
+        arr.push({
+          x: xvDisplay,
+          M: deBaseMomento(evaluarMConLado(resultado.terminosM, xvBase, false)),
+          V: deBaseFuerza(evaluarVConLado(resultado.terminosM, xvBase, false)),
+          v: deBaseDesplazamiento(resultado.v(xvBase, EI)),
+          theta: resultado.theta(xvBase, EI),
+        })
+        arr.push({
+          x: xvDisplay,
+          M: deBaseMomento(evaluarMConLado(resultado.terminosM, xvBase, true)),
+          V: deBaseFuerza(evaluarVConLado(resultado.terminosM, xvBase, true)),
+          v: deBaseDesplazamiento(resultado.v(xvBase, EI)),
+          theta: resultado.theta(xvBase, EI),
+        })
+      } else if (esFinal) {
+        arr.push({
+          x: xvDisplay,
+          M: deBaseMomento(evaluarMConLado(resultado.terminosM, xvBase, false)),
+          V: deBaseFuerza(evaluarVConLado(resultado.terminosM, xvBase, false)),
+          v: deBaseDesplazamiento(resultado.v(xvBase, EI)),
+          theta: resultado.theta(xvBase, EI),
+        })
+      } else {
+        arr.push({
+          x: xvDisplay,
+          M: deBaseMomento(evaluarMConLado(resultado.terminosM, xvBase, true)),
+          V: deBaseFuerza(evaluarVConLado(resultado.terminosM, xvBase, true)),
+          v: deBaseDesplazamiento(resultado.v(xvBase, EI)),
+          theta: resultado.theta(xvBase, EI),
+        })
+      }
+    })
+    return arr
+  }, [resultado, L, EI, config])
 
-  const cargarEnModulo = (modulo: string) => {
-    if (!resultado) return
-    setSeccion({ nombre: `Sección compuesta (${elementos.length} elem.)`, A: resultado.A, Icx: resultado.Icx, Icy: resultado.Icy, Sx_top: resultado.Sx_top, Sx_bot: resultado.Sx_bot, Sy: resultado.Sy, rx: resultado.rx, ry: resultado.ry, J: resultado.J, E: null, fc: null, ft: null, fy: null }, "secciones")
-    router.push(`/${modulo}`)
-  }
-
-  const colores = ["#1d4ed8", "#059669", "#d97706", "#dc2626", "#7c3aed"]
+  const tramos = useMemo(() => (resultado ? calcularTramos(resultado, EI) : null), [resultado, EI])
 
   return (
     <div className="flex h-screen bg-gray-100 font-sans">
       <Sidebar />
       <div className="flex-1 flex flex-col overflow-hidden">
         <div className="bg-white border-b border-gray-200 px-6 py-4">
-          <span className="text-gray-400 text-sm">Herramientas /</span>
-          <span className="text-gray-800 font-medium text-base ml-1">Section Builder</span>
+          <span className="text-gray-400 text-sm">Módulos / Vigas /</span>
+          <span className="text-gray-800 font-medium text-base ml-1">Doble integración clásica</span>
         </div>
-        <div className="flex-1 overflow-y-auto p-6">
-          <div className="grid grid-cols-2 gap-6">
-            <div className="flex flex-col gap-4">
-              <div className="bg-white border border-gray-200 rounded-xl p-5">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="text-xs text-gray-400 font-medium tracking-wider">ELEMENTOS</div>
-                  <button onClick={abrirNuevo} className="text-xs bg-blue-700 text-white px-3 py-1.5 rounded-lg hover:bg-blue-800">+ Agregar</button>
-                </div>
-                {elementos.length === 0 && !mostrarAgregar && (
-                  <div className="text-xs text-gray-400 text-center py-6">Agrega elementos para componer la sección</div>
-                )}
-                <div className="flex flex-col gap-2 mb-3">
-                  {elementos.map((el, idx) => (
-                    <div key={el.id} className={`flex items-center justify-between p-3 rounded-lg border transition-colors ${editandoId === el.id ? "border-blue-400 bg-blue-50" : "border-gray-100 bg-gray-50"}`}>
-                      <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: colores[idx % colores.length] }} />
-                        <span className="text-sm font-medium text-gray-800">{el.label}</span>
-                        <span className="text-xs text-gray-500">{plantillasConfig[el.plantilla].label}</span>
-                        <span className={`text-xs px-1.5 py-0.5 rounded ${el.signo > 0 ? "bg-blue-100 text-blue-700" : "bg-red-100 text-red-700"}`}>{el.signo > 0 ? "+suma" : "−resta"}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-gray-400">({el.x0},{el.y0})</span>
-                        <button onClick={() => abrirEditar(el)} className="text-xs text-blue-500 hover:underline">Editar</button>
-                        <button onClick={() => eliminar(el.id)} className="text-xs text-red-400 hover:underline">×</button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
 
-                {mostrarAgregar && (
-                  <div className="p-4 bg-blue-50 rounded-xl border border-blue-200">
-                    <div className="text-xs text-blue-700 font-medium mb-3">
-                      {editandoId !== null ? `EDITANDO — ${elementos.find(e => e.id === editandoId)?.label}` : "NUEVO ELEMENTO"}
-                    </div>
-                    <div className="text-xs text-gray-500 mb-1.5">Tipo de sección</div>
-                    <div className="flex flex-wrap gap-1.5 mb-3">
-                      {(Object.keys(plantillasConfig) as Plantilla[]).map(p => (
-                        <button key={p} onClick={() => handlePlantilla(p)}
-                          className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${plantillaActual === p ? "bg-blue-700 text-white border-blue-700" : "text-gray-600 border-gray-300 hover:border-blue-300"}`}>
-                          {plantillasConfig[p].label}
-                        </button>
-                      ))}
-                    </div>
-                    <div className="bg-white rounded-lg p-2 mb-3 border border-blue-100">
-                      <EsquemaReferencia plantilla={plantillaActual} />
-                    </div>
-                    {plantillaActual === "coordenadas" ? (
-                      <div className="mb-3">
-                        <div className="text-xs text-gray-500 mb-1">Coordenadas (x,y) una por línea — sentido horario</div>
-                        <textarea value={coordInput} onChange={e => setCoordInput(e.target.value)}
-                          placeholder={"0,0\n30,0\n30,50\n0,50"} rows={6}
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:border-blue-400" />
-                        <div className="text-xs text-gray-400 mt-1">Para huecos agrega otro elemento con − Resta</div>
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-2 gap-2 mb-3">
-                        {plantillasConfig[plantillaActual].campos.map(c => (
-                          <div key={c.key}>
-                            <div className="text-xs text-gray-500 mb-0.5" dangerouslySetInnerHTML={{ __html: c.labelHtml.replace(/\(cm\)/g, `(${cfg.seccion})`) }}></div>
-                            <input type="number" value={paramsActuales[c.key] ?? ""}
-                              onChange={e => setParamsActuales({ ...paramsActuales, [c.key]: parseFloat(e.target.value) })}
-                              className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400" />
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    <div className="grid grid-cols-3 gap-2 mb-3">
-                      {plantillaActual !== "coordenadas" && (
-                        <>
-                          <div>
-                            <div className="text-xs text-gray-500 mb-0.5">x₀ ({cfg.seccion})</div>
-                            <input type="number" value={x0} onChange={e => setX0(e.target.value)} className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400" />
-                          </div>
-                          <div>
-                            <div className="text-xs text-gray-500 mb-0.5">y₀ ({cfg.seccion})</div>
-                            <input type="number" value={y0} onChange={e => setY0(e.target.value)} className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400" />
-                          </div>
-                        </>
-                      )}
-                      <div className={plantillaActual === "coordenadas" ? "col-span-3" : ""}>
-                        <div className="text-xs text-gray-500 mb-0.5">Operación</div>
-                        <select value={signoActual} onChange={e => setSignoActual(parseInt(e.target.value) as 1 | -1)} className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-blue-400">
-                          <option value={1}>+ Suma</option>
-                          <option value={-1}>− Resta</option>
-                        </select>
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <button onClick={guardar} className="text-xs bg-blue-700 text-white px-4 py-2 rounded-lg hover:bg-blue-800">
-                        {editandoId !== null ? "Guardar cambios" : "Agregar a la sección"}
-                      </button>
-                      <button onClick={() => { setMostrarAgregar(false); setEditandoId(null); setCoordInput("") }} className="text-xs text-gray-500 px-4 py-2 rounded-lg hover:bg-gray-100">Cancelar</button>
-                    </div>
-                  </div>
-                )}
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          <div className="bg-white border border-gray-200 rounded-xl p-5">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-xs text-gray-400 font-medium tracking-wider">DATOS GENERALES</div>
+              <div className="flex gap-1.5">
+                {(["SI", "metrico", "americano"] as Exclude<SistemaUnidades, "personalizado">[]).map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => aplicarPreset(s)}
+                    className={`text-xs px-2.5 py-1 rounded-lg border ${config.sistema === s ? "bg-blue-700 text-white border-blue-700" : "bg-white text-gray-600 border-gray-300"}`}
+                  >
+                    {s === "SI" ? "SI" : s === "metrico" ? "Métrico" : "Americano"}
+                  </button>
+                ))}
               </div>
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <label className="text-xs text-gray-500">Longitud de la viga ({config.longitud})</label>
+                <input type="number" value={L} onChange={(e) => setL(Number(e.target.value))} className="w-full mt-1 border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500">E ({config.esfuerzo})</label>
+                <input type="number" value={E} onChange={(e) => setE(Number(e.target.value))} className="w-full mt-1 border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500">I ({config.inercia})</label>
+                <input type="number" value={I} onChange={(e) => setI(Number(e.target.value))} className="w-full mt-1 border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+              </div>
+            </div>
+            <div className="mt-2 text-xs text-gray-400">EI calculado = {EI.toFixed(2)} kN·m² (base interna)</div>
 
-              {resultado && (
-                <div className="bg-white border border-gray-200 rounded-xl p-5">
-                  <div className="text-xs text-gray-400 font-medium tracking-wider mb-2">INERCIA EN PUNTO SOLICITADO</div>
-                  <div className="text-xs text-gray-500 mb-3">I<sub>x</sub>′ e I<sub>y</sub>′ respecto a ejes paralelos por (x,y) — Steiner</div>
-                  <div className="grid grid-cols-2 gap-3 mb-3">
-                    <div><div className="text-xs text-gray-500 mb-1">x (cm)</div><input type="number" value={ptoX} onChange={e => setPtoX(e.target.value)} placeholder="0" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400" /></div>
-                    <div><div className="text-xs text-gray-500 mb-1">y (cm)</div><input type="number" value={ptoY} onChange={e => setPtoY(e.target.value)} placeholder="0" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400" /></div>
-                  </div>
-                  {steiner && (
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="text-xs text-blue-500">I<sub>x</sub>′ ({cfg.inercia})</div>
-                      <div className="text-xs text-blue-500">I<sub>y</sub>′ ({cfg.inercia})</div>
-                    </div>
-                  )}
+            <div className="mt-3 pt-3 border-t border-gray-100">
+              <div className="text-xs text-gray-400 mb-2">Personalizar unidades de este sistema:</div>
+              <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
+                <div>
+                  <label className="text-[10px] text-gray-400">Longitud</label>
+                  <select value={config.longitud} onChange={(e) => setConfig({ ...config, sistema: "personalizado", longitud: e.target.value as any })} className="w-full border border-gray-300 rounded-lg px-1.5 py-1 text-xs">
+                    {["mm", "cm", "m", "in", "ft"].map((u) => <option key={u} value={u}>{u}</option>)}
+                  </select>
                 </div>
-              )}
-
-              {resultado && (
-                <div className="bg-white border border-gray-200 rounded-xl p-5">
-                  <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">CARGAR EN MÓDULO</div>
-                  <div className="flex flex-wrap gap-2">
-                    {[{ key: "vigas", label: "Vigas" }, { key: "porticos", label: "Pórticos" }, { key: "armaduras", label: "Armaduras" }, { key: "matricial", label: "Método Matricial" }, { key: "pandeo", label: "Pandeo" }, { key: "diseno", label: "Diseño Estructural" }].map(mod => (
-                      <button key={mod.key} onClick={() => cargarEnModulo(mod.key)} className="text-xs bg-blue-700 text-white px-3 py-1.5 rounded-lg hover:bg-blue-800">→ {mod.label}</button>
-                    ))}
-                  </div>
+                <div>
+                  <label className="text-[10px] text-gray-400">Fuerza</label>
+                  <select value={config.fuerza} onChange={(e) => setConfig({ ...config, sistema: "personalizado", fuerza: e.target.value as any })} className="w-full border border-gray-300 rounded-lg px-1.5 py-1 text-xs">
+                    {["N", "kN", "kgf", "tf", "lbf", "kip"].map((u) => <option key={u} value={u}>{u}</option>)}
+                  </select>
                 </div>
-              )}
-
-              {resultado && (
-                <div className="bg-white border border-gray-200 rounded-xl p-5">
-                  <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">MEMORIA DE CÁLCULO PDF</div>
-                  {!mostrarModalPDF ? (
-                    <button onClick={() => setMostrarModalPDF(true)} className="w-full text-sm bg-red-600 text-white py-2.5 rounded-lg hover:bg-red-700 transition-colors">
-                      📄 Generar memoria de cálculo
-                    </button>
-                  ) : (
-                    <div className="flex flex-col gap-3">
-                      <div className="text-xs text-gray-500">Datos para el encabezado del reporte</div>
-                      {([
-                        { key: "ingeniero", label: "Nombre del ingeniero" },
-                        { key: "proyecto", label: "Nombre del proyecto" },
-                        { key: "empresa", label: "Empresa / Universidad" },
-                        { key: "descripcion", label: "Descripción de la sección" },
-                      ] as { key: keyof DatosPDF; label: string }[]).map(f => (
-                        <div key={f.key}>
-                          <div className="text-xs text-gray-500 mb-0.5">{f.label}</div>
-                          <input type="text" value={datosPDF[f.key]}
-                            onChange={e => setDatosPDF({ ...datosPDF, [f.key]: e.target.value })}
-                            className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-red-400" />
-                        </div>
-                      ))}
-                      <PDFBoton elementos={elementos} resultado={resultado} datosPDF={datosPDF} canvasRef={canvasRef} />
-                      <button onClick={() => setMostrarModalPDF(false)} className="text-xs text-gray-400 hover:underline text-center">Cancelar</button>
-                    </div>
-                  )}
+                <div>
+                  <label className="text-[10px] text-gray-400">Momento</label>
+                  <select value={config.momento} onChange={(e) => setConfig({ ...config, sistema: "personalizado", momento: e.target.value as any })} className="w-full border border-gray-300 rounded-lg px-1.5 py-1 text-xs">
+                    {["N·m", "kN·m", "kgf·m", "tf·m", "lbf·ft", "kip·ft"].map((u) => <option key={u} value={u}>{u}</option>)}
+                  </select>
                 </div>
-              )}
+                <div>
+                  <label className="text-[10px] text-gray-400">Esfuerzo</label>
+                  <select value={config.esfuerzo} onChange={(e) => setConfig({ ...config, sistema: "personalizado", esfuerzo: e.target.value as any })} className="w-full border border-gray-300 rounded-lg px-1.5 py-1 text-xs">
+                    {["Pa", "kPa", "MPa", "kgf/cm²", "tf/m²", "psi", "ksi"].map((u) => <option key={u} value={u}>{u}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] text-gray-400">Inercia</label>
+                  <select value={config.inercia} onChange={(e) => setConfig({ ...config, sistema: "personalizado", inercia: e.target.value as any })} className="w-full border border-gray-300 rounded-lg px-1.5 py-1 text-xs">
+                    {["mm⁴", "cm⁴", "m⁴", "in⁴"].map((u) => <option key={u} value={u}>{u}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] text-gray-400">Desplazamiento</label>
+                  <select value={config.desplazamiento} onChange={(e) => setConfig({ ...config, sistema: "personalizado", desplazamiento: e.target.value as any })} className="w-full border border-gray-300 rounded-lg px-1.5 py-1 text-xs">
+                    {["mm", "cm", "m", "in"].map((u) => <option key={u} value={u}>{u}</option>)}
+                  </select>
+                </div>
+              </div>
             </div>
 
-            <div className="flex flex-col gap-4">
-              <div className="bg-white border border-gray-200 rounded-xl p-5">
-                <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">PLANO CARTESIANO</div>
-                <canvas ref={canvasRef} className="w-full border border-gray-100 rounded-lg bg-white" style={{ height: 380 }} />
-                <div className="mt-2 flex items-center gap-4 text-xs text-gray-400">
-                  <span className="flex items-center gap-1"><span className="w-3 h-3 bg-blue-200 border border-blue-600 inline-block rounded-sm" />Área +</span>
-                  <span className="flex items-center gap-1"><span className="w-3 h-3 bg-white border border-blue-600 inline-block rounded-sm" />Área − (hueco)</span>
-                  <span className="flex items-center gap-1 text-red-500 font-bold">⊕ C(x̄,ȳ)</span>
-                </div>
-              </div>
+            <div className="flex gap-3 mt-3">
+              <a href="/herramientas/secciones" className="text-xs text-blue-600 hover:underline">
+                Ir a Section Builder para importar una sección →
+              </a>
+            </div>
+            {mensajeImportacion && <div className="text-xs text-gray-500 mt-1">{mensajeImportacion}</div>}
+          </div>
 
-              {resultado && (
-                <div className="bg-white border border-gray-200 rounded-xl p-5">
-                  <div className="text-xs text-gray-400 font-medium tracking-wider mb-4">PROPIEDADES DE LA SECCIÓN</div>
-                  <div className="grid grid-cols-2 gap-3">
-                   <Prop s="A" n="Área total" v={`${fmt(resultado.A)} ${cfg.seccion}²`} />
-                        <Prop s={<>x̄</>} n="Centroide x" v={`${fmt(resultado.xc)} ${cfg.seccion}`} />
-                        <Prop s={<>ȳ</>} n="Centroide y" v={`${fmt(resultado.yc)} ${cfg.seccion}`} />
-                        <Prop s={<>I<sub>cx</sub></>} n="Inercia centroidal x" v={`${fmt(resultado.Icx)} ${cfg.inercia}`} />
-                        <Prop s={<>I<sub>cy</sub></>} n="Inercia centroidal y" v={`${fmt(resultado.Icy)} ${cfg.inercia}`} />
-                        <Prop s={<>I<sub>xy</sub></>} n="Inercia producto" v={`${fmt(resultado.Ixy)} ${cfg.inercia}`} />
-                        <Prop s={<>S<sub>x</sub>⁺</>} n="Módulo resistente sup." v={`${fmt(resultado.Sx_top)} ${cfg.modulo_resistente}`} />
-                        <Prop s={<>S<sub>x</sub>⁻</>} n="Módulo resistente inf." v={`${fmt(resultado.Sx_bot)} ${cfg.modulo_resistente}`} />
-                        <Prop s={<>S<sub>y</sub></>} n="Módulo resistente y" v={`${fmt(resultado.Sy)} ${cfg.modulo_resistente}`} />
-                        <Prop s={<>r<sub>x</sub></>} n="Radio de giro x" v={`${fmt(resultado.rx)} ${cfg.seccion}`} />
-                        <Prop s={<>r<sub>y</sub></>} n="Radio de giro y" v={`${fmt(resultado.ry)} ${cfg.seccion}`} />
-                        <Prop s="J" n="Momento polar" v={`${fmt(resultado.J)} ${cfg.inercia}`} />
-                        <Prop s={<>I<sub>1</sub></>} n="Inercia principal máx." v={`${fmt(resultado.I1)} ${cfg.inercia}`} />
-                        <Prop s={<>I<sub>2</sub></>} n="Inercia principal mín." v={`${fmt(resultado.I2)} ${cfg.inercia}`} />
-                        <Prop s={<>θ<sub>p</sub></>} n="Ángulo ejes principales" v={`${fmt(resultado.theta_p, 2)}°`} />
-                  </div>
+          <div className="bg-white border border-gray-200 rounded-xl p-5">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-xs text-gray-400 font-medium tracking-wider">APOYOS</div>
+              <button onClick={agregarApoyo} className="text-xs bg-blue-700 text-white px-3 py-1.5 rounded-lg hover:bg-blue-800">+ Agregar apoyo</button>
+            </div>
+            <div className="space-y-2">
+              {apoyos.map((a) => (
+                <div key={a.id} className="grid grid-cols-6 gap-2 items-center bg-gray-50 rounded-lg p-2">
+                  <span className="text-xs text-gray-500">{a.id}</span>
+                  <input type="number" value={a.x} onChange={(e) => actualizarApoyo(a.id, { x: Number(e.target.value) })} placeholder={`x (${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
+                  <select value={a.tipo} onChange={(e) => actualizarApoyo(a.id, { tipo: e.target.value as TipoApoyo })} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm col-span-2">
+                    {Object.entries(nombresApoyo).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                  </select>
+                  <input type="number" value={a.asentamiento ?? 0} onChange={(e) => actualizarApoyo(a.id, { asentamiento: Number(e.target.value) })} placeholder={`asentamiento (${config.desplazamiento})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
+                  <button onClick={() => borrarApoyo(a.id)} className="text-red-500 text-xs hover:underline">Borrar</button>
                 </div>
-              )}
+              ))}
             </div>
           </div>
+
+          <div className="bg-white border border-gray-200 rounded-xl p-5">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-xs text-gray-400 font-medium tracking-wider">RÓTULAS INTERNAS</div>
+              <button onClick={agregarRotula} className="text-xs bg-blue-700 text-white px-3 py-1.5 rounded-lg hover:bg-blue-800">+ Agregar rótula</button>
+            </div>
+            <div className="space-y-2">
+              {rotulas.map((r) => (
+                <div key={r.id} className="grid grid-cols-6 gap-2 items-center bg-gray-50 rounded-lg p-2">
+                  <span className="text-xs text-gray-500">{r.id}</span>
+                  <input type="number" value={r.x} onChange={(e) => actualizarRotula(r.id, Number(e.target.value))} placeholder={`x (${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
+                  <button onClick={() => borrarRotula(r.id)} className="text-red-500 text-xs hover:underline">Borrar</button>
+                </div>
+              ))}
+              {rotulas.length === 0 && <div className="text-xs text-gray-400">Sin rótulas — viga continua.</div>}
+            </div>
+          </div>
+
+          <div className="bg-white border border-gray-200 rounded-xl p-5">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-xs text-gray-400 font-medium tracking-wider">CARGAS</div>
+              <div className="flex gap-2">
+                <button onClick={() => agregarCarga("puntual")} className="text-xs bg-blue-700 text-white px-3 py-1.5 rounded-lg hover:bg-blue-800">+ Puntual</button>
+                <button onClick={() => agregarCarga("momento")} className="text-xs bg-blue-700 text-white px-3 py-1.5 rounded-lg hover:bg-blue-800">+ Momento</button>
+                <button onClick={() => agregarCarga("distribuida")} className="text-xs bg-blue-700 text-white px-3 py-1.5 rounded-lg hover:bg-blue-800">+ Distribuida</button>
+              </div>
+            </div>
+            <div className="space-y-2">
+              {cargas.map((c) => (
+                <div key={c.id} className="bg-gray-50 rounded-lg p-2 flex items-center gap-2 flex-wrap">
+                  <span className="text-xs text-gray-500 w-16">{c.id}</span>
+                  {c.tipo === "puntual" && (
+                    <>
+                      <span className="text-xs">Puntual</span>
+                      <input type="number" value={c.x} onChange={(e) => actualizarCarga(c.id, { x: Number(e.target.value) })} placeholder={`x (${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-24" />
+                      <input type="number" value={c.P} onChange={(e) => actualizarCarga(c.id, { P: Number(e.target.value) })} placeholder={`P (${config.fuerza}, ↓+)`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-28" />
+                      <input type="number" value={c.angulo ?? 0} onChange={(e) => actualizarCarga(c.id, { angulo: Number(e.target.value) })} placeholder="ángulo (°, 0=vertical)" className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-32" />
+                    </>
+                  )}
+                  {c.tipo === "momento" && (
+                    <>
+                      <span className="text-xs">Momento</span>
+                      <input type="number" value={c.x} onChange={(e) => actualizarCarga(c.id, { x: Number(e.target.value) })} placeholder={`x (${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-24" />
+                      <input type="number" value={c.M} onChange={(e) => actualizarCarga(c.id, { M: Number(e.target.value) })} placeholder={`M (${config.momento}, ↺+)`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-28" />
+                    </>
+                  )}
+                  {c.tipo === "distribuida" && (
+                    <>
+                      <span className="text-xs">Distribuida</span>
+                      <input type="number" value={c.xi} onChange={(e) => actualizarCarga(c.id, { xi: Number(e.target.value) })} placeholder={`xi (${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-20" />
+                      <input type="number" value={c.xf} onChange={(e) => actualizarCarga(c.id, { xf: Number(e.target.value) })} placeholder={`xf (${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-20" />
+                      <input type="number" value={c.wi} onChange={(e) => actualizarCarga(c.id, { wi: Number(e.target.value) })} placeholder={`wi (${config.fuerza}/${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-24" />
+                      <input type="number" value={c.wf} onChange={(e) => actualizarCarga(c.id, { wf: Number(e.target.value) })} placeholder={`wf (${config.fuerza}/${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-24" />
+                    </>
+                  )}
+                  <button onClick={() => borrarCarga(c.id)} className="text-red-500 text-xs hover:underline ml-auto">Borrar</button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="bg-white border border-gray-200 rounded-xl p-5">
+            <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">ESQUEMA (con reacciones en vivo)</div>
+            <svg viewBox={`0 0 ${anchoSvg} 300`} className="w-full h-72">
+              <line x1={xSvg(0)} y1={yViga} x2={xSvg(L)} y2={yViga} stroke="#1e3a8a" strokeWidth={4} />
+              {apoyos.map((a) => (
+                <g key={a.id}>
+                  {a.tipo === "rodillo" && (
+                    <>
+                      <polygon points={`${xSvg(a.x)},${yViga} ${xSvg(a.x) - 10},${yViga + 18} ${xSvg(a.x) + 10},${yViga + 18}`} fill="#2563eb" />
+                      <circle cx={xSvg(a.x) - 6} cy={yViga + 22} r={3} fill="#2563eb" />
+                      <circle cx={xSvg(a.x) + 6} cy={yViga + 22} r={3} fill="#2563eb" />
+                    </>
+                  )}
+                  {a.tipo === "articulado" && (
+                    <>
+                      <polygon points={`${xSvg(a.x)},${yViga} ${xSvg(a.x) - 10},${yViga + 18} ${xSvg(a.x) + 10},${yViga + 18}`} fill="#7c3aed" />
+                      <circle cx={xSvg(a.x)} cy={yViga} r={3} fill="white" stroke="#7c3aed" strokeWidth={1.5} />
+                    </>
+                  )}
+                  {a.tipo === "empotrado" && <rect x={xSvg(a.x) - 4} y={yViga - 20} width={8} height={40} fill="#1e3a8a" />}
+                  {a.tipo === "guia" && (
+                    <>
+                      <rect x={xSvg(a.x) - 4} y={yViga - 16} width={8} height={32} fill="#94a3b8" />
+                      <line x1={xSvg(a.x) - 12} y1={yViga + 20} x2={xSvg(a.x) + 12} y2={yViga + 20} stroke="#94a3b8" strokeWidth={2} />
+                    </>
+                  )}
+                  <text x={xSvg(a.x)} y={yViga + 34} fontSize={10} textAnchor="middle" fill="#64748b">{a.id}</text>
+                </g>
+              ))}
+              {rotulas.map((r) => (
+                <g key={r.id}>
+                  <circle cx={xSvg(r.x)} cy={yViga} r={6} fill="white" stroke="#1e3a8a" strokeWidth={2.5} />
+                  <text x={xSvg(r.x)} y={yViga + 22} fontSize={9} textAnchor="middle" fill="#1e3a8a" fontWeight={700}>
+                    {r.id} (M=0)
+                  </text>
+                </g>
+              ))}
+              {cargas.map((c) => {
+                if (c.tipo === "puntual") {
+                  const angRad = ((c.angulo ?? 0) * Math.PI) / 180
+                  const largo = 36
+                  const dx = Math.sin(angRad) * largo
+                  const dy = Math.cos(angRad) * largo
+                  const xPunta = xSvg(c.x)
+                  const yPunta = yViga - 4
+                  return (
+                    <g key={c.id}>
+                      <line x1={xPunta - dx} y1={yPunta - dy} x2={xPunta} y2={yPunta} stroke="#dc2626" strokeWidth={2} markerEnd="url(#flecha)" />
+                      <text x={xPunta - dx} y={yPunta - dy - 6} fontSize={10} textAnchor="middle" fill="#dc2626">
+                        {c.P}{config.fuerza}{c.angulo ? ` (${c.angulo}°)` : ""}
+                      </text>
+                    </g>
+                  )
+                }
+                if (c.tipo === "momento")
+                  return (
+                    <g key={c.id}>
+                      <text x={xSvg(c.x)} y={yViga - 14} fontSize={30} textAnchor="middle" fill="#dc2626">
+                        {c.M >= 0 ? "↺" : "↻"}
+                      </text>
+                      <text x={xSvg(c.x)} y={yViga - 40} fontSize={11} textAnchor="middle" fill="#dc2626" fontWeight={700}>
+                        {Math.abs(c.M)}{config.momento}
+                      </text>
+                    </g>
+                  )
+                if (c.tipo === "distribuida") {
+                  const maxW = Math.max(...cargas.filter((cc) => cc.tipo === "distribuida").map((cc: any) => Math.max(cc.wi, cc.wf)), 1)
+                  const alturaMax = 45
+                  const hi = (c.wi / maxW) * alturaMax
+                  const hf = (c.wf / maxW) * alturaMax
+                  const yTopoIzq = yViga - 8 - hi
+                  const yTopoDer = yViga - 8 - hf
+                  const numFlechas = Math.max(3, Math.round((xSvg(c.xf) - xSvg(c.xi)) / 30))
+                  return (
+                    <g key={c.id}>
+                      <polygon points={`${xSvg(c.xi)},${yTopoIzq} ${xSvg(c.xf)},${yTopoDer} ${xSvg(c.xf)},${yViga - 8} ${xSvg(c.xi)},${yViga - 8}`} fill="#fecaca" opacity={0.5} stroke="#dc2626" strokeWidth={1} />
+                      {Array.from({ length: numFlechas + 1 }).map((_, i) => {
+                        const t = i / numFlechas
+                        const xf2 = xSvg(c.xi) + t * (xSvg(c.xf) - xSvg(c.xi))
+                        const yTopo = yTopoIzq + t * (yTopoDer - yTopoIzq)
+                        return <line key={i} x1={xf2} y1={yTopo} x2={xf2} y2={yViga - 8} stroke="#dc2626" strokeWidth={1} markerEnd="url(#flechaChica)" />
+                      })}
+                      <text x={xSvg(c.xi)} y={yTopoIzq - 4} fontSize={9} textAnchor="middle" fill="#dc2626">{c.wi}</text>
+                      <text x={xSvg(c.xf)} y={yTopoDer - 4} fontSize={9} textAnchor="middle" fill="#dc2626">{c.wf}</text>
+                    </g>
+                  )
+                }
+                return null
+              })}
+
+              {reaccionesDisplay && Object.entries(reaccionesDisplay).map(([id, r]) => {
+                const apoyo = apoyos.find((a) => a.id === id)
+                if (!apoyo) return null
+                const xPos = xSvg(apoyo.x)
+                return (
+                  <g key={`reac-${id}`}>
+                    {r.Fy !== undefined && Math.abs(r.Fy) > 1e-6 && (
+                      <>
+                        <line
+                          x1={xPos}
+                          y1={r.Fy >= 0 ? yViga + 64 : yViga + 34}
+                          x2={xPos}
+                          y2={r.Fy >= 0 ? yViga + 34 : yViga + 64}
+                          stroke="#16a34a" strokeWidth={2.6} markerEnd="url(#flechaVerde)"
+                        />
+                        <text x={xPos} y={yViga + 78} fontSize={10} textAnchor="middle" fill="#16a34a" fontWeight={700}>
+                          {Math.abs(r.Fy).toFixed(1)}{config.fuerza}
+                        </text>
+                      </>
+                    )}
+                    {r.M !== undefined && Math.abs(r.M) > 1e-6 && (
+                      <>
+                        <text x={xPos} y={yViga - 20} fontSize={30} textAnchor="middle" fill="#16a34a">
+                          {r.M >= 0 ? "↺" : "↻"}
+                        </text>
+                        <text x={xPos} y={yViga - 44} fontSize={11} textAnchor="middle" fill="#16a34a" fontWeight={700}>
+                          {Math.abs(r.M).toFixed(1)}{config.momento}
+                        </text>
+                      </>
+                    )}
+                    {r.Rx !== undefined && Math.abs(r.Rx) > 1e-6 && (
+                      <>
+                        <line
+                          x1={r.Rx >= 0 ? xPos - 34 : xPos + 34}
+                          y1={yViga}
+                          x2={r.Rx >= 0 ? xPos - 10 : xPos + 10}
+                          y2={yViga}
+                          stroke="#0891b2" strokeWidth={2.6} markerEnd="url(#flechaCyan)"
+                        />
+                        <text x={r.Rx >= 0 ? xPos - 22 : xPos + 22} y={yViga - 8} fontSize={10} textAnchor="middle" fill="#0891b2" fontWeight={700}>
+                          {Math.abs(r.Rx).toFixed(1)}{config.fuerza}
+                        </text>
+                      </>
+                    )}
+                  </g>
+                )
+              })}
+
+              {(() => {
+                const puntosDim = Array.from(
+                  new Set(
+                    [
+                      0,
+                      L,
+                      ...apoyos.map((a) => a.x),
+                      ...rotulas.map((r) => r.x),
+                      ...cargas.flatMap((c) => (c.tipo === "distribuida" ? [c.xi, c.xf] : [c.x])),
+                    ].map((v) => Number(v.toFixed(6)))
+                  )
+                ).sort((a, b) => a - b)
+                const yCotaLinea = 220
+                const yCotaTexto = 234
+                return (
+                  <g>
+                    <line x1={xSvg(0)} y1={yCotaLinea} x2={xSvg(L)} y2={yCotaLinea} stroke="#cbd5e1" strokeWidth={1} />
+                    {puntosDim.map((p, i) => (
+                      <line key={`tick-${i}`} x1={xSvg(p)} y1={yCotaLinea - 5} x2={xSvg(p)} y2={yCotaLinea + 5} stroke="#94a3b8" strokeWidth={1} />
+                    ))}
+                    {puntosDim.slice(0, -1).map((p, i) => {
+                      const siguiente = puntosDim[i + 1]
+                      const dist = siguiente - p
+                      if (dist < 1e-6) return null
+                      const xMedio = (xSvg(p) + xSvg(siguiente)) / 2
+                      return (
+                        <text key={`cota-${i}`} x={xMedio} y={yCotaTexto} fontSize={9} textAnchor="middle" fill="#64748b">
+                          {dist.toFixed(2)}m
+                        </text>
+                      )
+                    })}
+                    <text x={(xSvg(0) + xSvg(L)) / 2} y={yCotaTexto + 16} fontSize={9} textAnchor="middle" fill="#94a3b8" fontWeight={600}>
+                      L = {L.toFixed(2)}m
+                    </text>
+                  </g>
+                )
+              })()}
+
+              <defs>
+                <marker id="flecha" markerWidth={8} markerHeight={8} refX={4} refY={4} orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#dc2626" /></marker>
+                <marker id="flechaChica" markerWidth={6} markerHeight={6} refX={3} refY={3} orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#dc2626" /></marker>
+                <marker id="flechaVerde" markerWidth={8} markerHeight={8} refX={4} refY={4} orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#16a34a" /></marker>
+                <marker id="flechaCyan" markerWidth={8} markerHeight={8} refX={4} refY={4} orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#0891b2" /></marker>
+              </defs>
+            </svg>
+          </div>
+
+          {resultadoLiveInfo && (
+            <div className={`rounded-xl p-4 text-sm font-medium border ${resultadoLiveInfo.estabilidad.esEstable ? (resultadoLiveInfo.estabilidad.dsi === 0 ? "bg-green-50 border-green-200 text-green-800" : "bg-amber-50 border-amber-200 text-amber-800") : "bg-red-50 border-red-200 text-red-800"}`}>
+              <div>Estabilidad: {resultadoLiveInfo.estabilidad.mensaje}</div>
+              <div className="text-xs font-normal mt-1 opacity-80">
+                Reacciones totales r={resultadoLiveInfo.estabilidad.r} (Fy={resultadoLiveInfo.estabilidad.numFy}, Fx={resultadoLiveInfo.estabilidad.numFx}, M={resultadoLiveInfo.estabilidad.numM}) — ecuaciones = 3 + {resultadoLiveInfo.estabilidad.c} rótula(s) — grado = {resultadoLiveInfo.estabilidad.dsi}
+              </div>
+              {resultadoLiveInfo.estabilidad.advertencias.map((a, i) => (
+                <div key={i} className="text-xs font-normal mt-1">⚠ {a}</div>
+              ))}
+            </div>
+          )}
+          {errorLive && !resultadoLiveInfo && (
+            <div className="bg-red-50 border border-red-200 text-red-800 rounded-xl p-4 text-sm font-medium">
+              ⚠ {errorLive}
+            </div>
+          )}
+
+          <PanelReacciones reacciones={reaccionesDisplay} titulo="REACCIONES (EN VIVO)" unidadFuerza={config.fuerza} unidadMomento={config.momento} />
+
+          {resultadoLive && rotulas.length > 0 && (
+            <div className="bg-white border border-gray-200 rounded-xl p-5">
+              <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">REACCIONES INTERNAS EN RÓTULAS</div>
+              <div className="grid grid-cols-3 gap-3">
+                {rotulas.map((r) => (
+                  <div key={r.id} className="p-3 rounded-lg bg-indigo-50 border-l-4 border-indigo-500">
+                    <div className="text-xs text-indigo-500">Rótula {r.id} (x = {r.x} {config.longitud})</div>
+                    <div className="text-sm font-bold text-indigo-800">M = 0 {config.momento} (por definición)</div>
+                    <div className="text-sm font-bold text-indigo-800">V interno = {deBaseFuerza(resultadoLive.V(aBaseLongitud(r.x))).toFixed(3)} {config.fuerza}</div>
+                    <div className="text-xs text-indigo-400 mt-1">Fuerza axial (horizontal) interna: no calculada — este módulo resuelve solo flexión, no fuerza axial distribuida.</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <button onClick={calcular} className="bg-blue-700 text-white px-5 py-2.5 rounded-lg text-sm hover:bg-blue-800">Calcular desarrollo completo</button>
+
+          {error && <div className="bg-red-50 text-red-700 text-sm rounded-lg p-3">{error}</div>}
+
+          {resultado && puntos && tramos && (
+            <>
+              <div className="bg-white border border-gray-200 rounded-xl p-5">
+                <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">DESARROLLO POR TRAMOS — COMPATIBILIDAD COMPLETA</div>
+                <div className="text-sm mb-1"><Formula tex={`EI \\cdot v''(x) = M(x)`} block /></div>
+                <div className="text-xs text-gray-400 mb-3">
+                  EI = {(EI * deBaseMomento(1) * deBaseLongitud(1)).toFixed(3)} {config.momento}·{config.longitud} &nbsp;(x en {config.longitud})
+                </div>
+                <div className="space-y-4">
+                  {tramos.map((t, i) => {
+                    const k = aBaseLongitud(1)
+                    const factorM = deBaseMomento(1)
+                    const factorEITheta = deBaseMomento(1) * deBaseLongitud(1)
+                    const factorEIv = deBaseMomento(1) * Math.pow(deBaseLongitud(1), 2)
+
+                    const polyMDisplay: Poly = t.polyM.map((p) => ({ power: p.power, coef: p.coef * Math.pow(k, p.power) * factorM }))
+                    const polyThetaDisplay: Poly = t.polyTheta.map((p) => ({ power: p.power, coef: p.coef * Math.pow(k, p.power) * factorEITheta }))
+                    const cThetaDisplay = t.cTheta * factorEITheta
+                    const polyVCompleto = t.polyV.concat([{ power: 1, coef: t.cTheta }])
+                    const polyVDisplay: Poly = polyVCompleto.map((p) => ({ power: p.power, coef: p.coef * Math.pow(k, p.power) * factorEIv }))
+                    const cVDisplay = t.cV * factorEIv
+
+                    return (
+                      <div key={i} className="p-4 bg-gray-50 rounded-lg space-y-2">
+                        <div className="text-xs font-semibold text-gray-500">
+                          Tramo {i + 1}: {deBaseLongitud(t.inicio).toFixed(2)} {config.longitud} ≤ x ≤ {deBaseLongitud(t.fin).toFixed(2)} {config.longitud}
+                          {rotulas.some((r) => Math.abs(r.x - deBaseLongitud(t.inicio)) < 1e-6) && (
+                            <span className="text-blue-600"> — inicia en rótula (M=0)</span>
+                          )}
+                        </div>
+                        <div className="text-sm"><Formula tex={`M(x) = ${polyALatex(polyMDisplay)}`} block /></div>
+                        <div className="text-sm"><Formula tex={`EI \\cdot \\theta(x) = ${polyALatex(polyThetaDisplay, { nombre: t.nombreCTheta, valor: cThetaDisplay })}`} block /></div>
+                        <div className="text-sm"><Formula tex={`EI \\cdot v(x) = ${polyALatex(polyVDisplay, { nombre: t.nombreCV, valor: cVDisplay })}`} block /></div>
+                        <div className="text-xs text-gray-400">
+                          <Formula tex={`${t.nombreCTheta} = ${cThetaDisplay.toFixed(4)} \\qquad ${t.nombreCV} = ${cVDisplay.toFixed(4)}`} />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div className="bg-white border border-gray-200 rounded-xl p-5">
+                <div className="text-xs text-gray-400 font-medium tracking-wider mb-1">DIAGRAMA DE MOMENTO FLECTOR</div>
+                <div className="text-xs text-gray-400 mb-2">Máximo: {Math.max(...puntos.map((p) => p.M)).toFixed(3)} {config.momento} — Mínimo: {Math.min(...puntos.map((p) => p.M)).toFixed(3)} {config.momento}</div>
+                <GraficoInteractivo datos={puntos.map((p) => ({ x: p.x, y: p.M }))} L={L} color="#2563eb" etiqueta="M(x)" unidad={config.momento} unidadLongitud={config.longitud} />
+              </div>
+
+              <div className="bg-white border border-gray-200 rounded-xl p-5">
+                <div className="text-xs text-gray-400 font-medium tracking-wider mb-1">DIAGRAMA DE FUERZA CORTANTE</div>
+                <div className="text-xs text-gray-400 mb-2">Máximo: {Math.max(...puntos.map((p) => p.V)).toFixed(3)} {config.fuerza} — Mínimo: {Math.min(...puntos.map((p) => p.V)).toFixed(3)} {config.fuerza}</div>
+                <GraficoInteractivo datos={puntos.map((p) => ({ x: p.x, y: p.V }))} L={L} color="#f97316" etiqueta="V(x)" unidad={config.fuerza} unidadLongitud={config.longitud} />
+              </div>
+
+              <div className="bg-white border border-gray-200 rounded-xl p-5">
+                <div className="text-xs text-gray-400 font-medium tracking-wider mb-1">DIAGRAMA DE GIRO</div>
+                <div className="text-xs text-gray-400 mb-2">Máximo: {Math.max(...puntos.map((p) => p.theta)).toFixed(6)} rad — Mínimo: {Math.min(...puntos.map((p) => p.theta)).toFixed(6)} rad</div>
+                <GraficoInteractivo datos={puntos.map((p) => ({ x: p.x, y: p.theta }))} L={L} color="#a855f7" etiqueta="θ(x)" unidad="rad" unidadLongitud={config.longitud} />
+              </div>
+
+              <div className="bg-white border border-gray-200 rounded-xl p-5">
+                <div className="text-xs text-gray-400 font-medium tracking-wider mb-1">DEFLEXIÓN</div>
+                <div className="text-xs text-gray-400 mb-2">Máxima: {Math.max(...puntos.map((p) => p.v)).toFixed(5)} {config.desplazamiento} — Mínima: {Math.min(...puntos.map((p) => p.v)).toFixed(5)} {config.desplazamiento}</div>
+                <GraficoInteractivo datos={puntos.map((p) => ({ x: p.x, y: p.v }))} L={L} color="#64748b" etiqueta="v(x)" unidad={config.desplazamiento} unidadLongitud={config.longitud} />
+              </div>
+
+              <div className="bg-white border border-gray-200 rounded-xl p-5">
+                <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">CONDICIONES DE DISEÑO</div>
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+                  <div>
+                    <label className="text-xs text-gray-500">σ admisible tracción/compresión ({config.esfuerzo})</label>
+                    <input type="number" value={sigmaAdmisible} onChange={(e) => setSigmaAdmisible(Number(e.target.value))} className="w-full mt-1 border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500">τ admisible corte ({config.esfuerzo})</label>
+                    <input type="number" value={tauAdmisible} onChange={(e) => setTauAdmisible(Number(e.target.value))} className="w-full mt-1 border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500">S, módulo de sección ({config.modulo_resistente})</label>
+                    <input type="number" value={moduloSeccion} onChange={(e) => setModuloSeccion(Number(e.target.value))} className="w-full mt-1 border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500">A, área de la sección ({config.seccion}²)</label>
+                    <input type="number" value={areaSeccion} onChange={(e) => setAreaSeccion(Number(e.target.value))} className="w-full mt-1 border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500">Deflexión máx. permitida: L /</label>
+                    <input type="number" value={deflexionDenominador} onChange={(e) => setDeflexionDenominador(Number(e.target.value))} className="w-full mt-1 border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {(() => {
+                    const MmaxBase = aBaseMomento(Math.max(...puntos.map((p) => Math.abs(p.M))))
+                    const VmaxBase = aBaseFuerza(Math.max(...puntos.map((p) => Math.abs(p.V))))
+                    const vmaxBase = aBaseDesplazamiento(Math.max(...puntos.map((p) => Math.abs(p.v))))
+                    const Sbase = aBaseModulo(moduloSeccion)
+                    const Abase = aBaseArea(areaSeccion)
+                    const sigmaAdmBase = aBaseEsfuerzo(sigmaAdmisible)
+                    const tauAdmBase = aBaseEsfuerzo(tauAdmisible)
+
+                    const sigmaCalcMPa = Sbase > 0 ? (MmaxBase / Sbase) * 1000 : null
+                    const tauCalcMPa = Abase > 0 ? (VmaxBase / Abase) * 10 : null
+                    const deflexionPermitidaBase = deflexionDenominador > 0 ? datosBase.Lb / deflexionDenominador : null
+
+                    const chequeoSigma = sigmaCalcMPa !== null && sigmaAdmBase > 0 ? sigmaCalcMPa <= sigmaAdmBase : null
+                    const chequeoTau = tauCalcMPa !== null && tauAdmBase > 0 ? tauCalcMPa <= tauAdmBase : null
+                    const chequeoDefl = deflexionPermitidaBase !== null ? vmaxBase <= deflexionPermitidaBase : null
+
+                    function Tarjeta({ titulo, ok, detalle }: { titulo: string; ok: boolean | null; detalle: string }) {
+                      return (
+                        <div className={`p-3 rounded-lg border-l-4 ${ok === null ? "bg-gray-50 border-gray-300" : ok ? "bg-green-50 border-green-500" : "bg-red-50 border-red-500"}`}>
+                          <div className="text-xs text-gray-500">{titulo}</div>
+                          <div className={`text-sm font-bold ${ok === null ? "text-gray-500" : ok ? "text-green-700" : "text-red-700"}`}>
+                            {ok === null ? "Sin datos" : ok ? "✓ Cumple" : "✗ No cumple"}
+                          </div>
+                          <div className="text-xs text-gray-400 mt-1">{detalle}</div>
+                        </div>
+                      )
+                    }
+
+                    return (
+                      <>
+                        <Tarjeta
+                          titulo="Esfuerzo por flexión"
+                          ok={chequeoSigma}
+                          detalle={sigmaCalcMPa !== null ? `σ = ${deBaseEsfuerzo(sigmaCalcMPa).toFixed(2)} ${config.esfuerzo} (adm. ${sigmaAdmisible} ${config.esfuerzo})` : "Ingresa S para calcular"}
+                        />
+                        <Tarjeta
+                          titulo="Esfuerzo cortante"
+                          ok={chequeoTau}
+                          detalle={tauCalcMPa !== null ? `τ = ${deBaseEsfuerzo(tauCalcMPa).toFixed(2)} ${config.esfuerzo} (adm. ${tauAdmisible} ${config.esfuerzo})` : "Ingresa A para calcular"}
+                        />
+                        <Tarjeta
+                          titulo="Deflexión máxima"
+                          ok={chequeoDefl}
+                          detalle={
+                            deflexionPermitidaBase !== null
+                              ? `δ = ${deBaseDesplazamiento(vmaxBase).toFixed(4)} ${config.desplazamiento} (límite L/${deflexionDenominador} = ${deBaseDesplazamiento(deflexionPermitidaBase).toFixed(4)} ${config.desplazamiento})`
+                              : "Ingresa denominador"
+                          }
+                        />
+                      </>
+                    )
+                  })()}
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
-    </div>
-  )
-}
-
-function Prop({ s, n, v }: { s: React.ReactNode; n: string; v: string }) {
-  return (
-    <div className="p-3 bg-gray-50 rounded-lg">
-      <div className="flex items-center gap-2 mb-1">
-        <span className="text-blue-700 font-medium text-sm">{s}</span>
-        <span className="text-xs text-gray-500">{n}</span>
-      </div>
-      <div className="text-sm font-medium text-gray-800">{v}</div>
     </div>
   )
 }
