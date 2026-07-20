@@ -108,9 +108,17 @@ function verificarEstabilidad(apoyos: Apoyo[], rotulas: Rotula[], hayCargaHorizo
     if (ap.tipo === "articulado" || ap.tipo === "empotrado") numFx++
     if (ap.tipo === "empotrado" || ap.tipo === "guia") numM++
   }
-  const r = numFy + numFx + numM
   const c = rotulas.length
-  const dsi = r - 3 - c
+
+  // IMPORTANTE: el grado de indeterminacion relevante para el problema de
+  // FLEXION solo debe contar Fy y M (las reacciones horizontales Fx no
+  // aportan nada a la flexion vertical; se resuelven aparte via ΣFx=0).
+  // r/dsi "totales" (incluyendo Fx) se calculan solo para fines informativos.
+  const rFlexion = numFy + numM
+  const dsiFlexion = rFlexion - 2 - c // solo ΣFy y ΣM son relevantes aqui
+
+  const r = numFy + numFx + numM
+  const dsi = r - 3 - c // informativo (equilibrio global completo, incluye Fx)
 
   const advertencias: string[] = []
   if (numFy === 0) advertencias.push("Ningún apoyo restringe el desplazamiento vertical: la viga es un mecanismo.")
@@ -119,14 +127,33 @@ function verificarEstabilidad(apoyos: Apoyo[], rotulas: Rotula[], hayCargaHorizo
   if (numFx > 1)
     advertencias.push("Más de un apoyo restringe el desplazamiento horizontal: el sistema queda horizontalmente indeterminado (Rx no se calcula automáticamente en ese caso).")
 
-  const esEstable = numFy > 0 && dsi >= 0
+  // Inestabilidad de flexion: no depende de Fx (ver arriba).
+  const inestableFlexion = numFy === 0 || dsiFlexion < 0
+  // Inestabilidad horizontal REAL bajo la carga dada: si hay carga horizontal
+  // y NINGUN apoyo la restringe, la viga literalmente se desliza — esto SI
+  // debe bloquear el calculo (no es solo informativo).
+  const inestableHorizontal = hayCargaHorizontal && numFx === 0
+
+  const esEstable = !inestableFlexion && !inestableHorizontal
 
   let mensaje: string
-  if (!esEstable) mensaje = "Inestable (mecanismo) — faltan restricciones de apoyo."
-  else if (dsi === 0) mensaje = "Estáticamente determinada."
-  else mensaje = `Estáticamente indeterminada de grado ${dsi}.`
+  if (inestableHorizontal) {
+    mensaje = "Inestable — hay carga(s) horizontal(es) aplicada(s) pero ningún apoyo (articulado o empotrado) restringe el desplazamiento horizontal: la viga se desliza."
+  } else if (inestableFlexion) {
+    if (numFy === 0) {
+      mensaje = "Inestable (mecanismo) — ningún apoyo restringe el desplazamiento vertical."
+    } else if (c > 0) {
+      mensaje = `Inestable (mecanismo) — con ${c} rótula(s) faltan ${-dsiFlexion} apoyo(s) adicional(es) que aporten Fy o M para compensarlas (los apoyos horizontales/Fx no cuentan para esto). Cada rótula agrega una condición extra que debe balancearse con una reacción vertical o de momento extra.`
+    } else {
+      mensaje = "Inestable (mecanismo) — faltan restricciones de apoyo verticales."
+    }
+  } else if (dsiFlexion === 0) {
+    mensaje = "Estáticamente determinada (en flexión)."
+  } else {
+    mensaje = `Estáticamente indeterminada de grado ${dsiFlexion} (en flexión).`
+  }
 
-  return { numFy, numFx, numM, r, c, dsi, esEstable, mensaje, advertencias }
+  return { numFy, numFx, numM, r, c, dsi: dsiFlexion, esEstable, mensaje, advertencias }
 }
 
 export interface ResultadoViga {
@@ -224,7 +251,7 @@ export function resolverViga(
     if (c.tipo === "puntual") {
       terminosCarga.push({ coef: -componenteVerticalPuntual(c), power: 1, x0: c.x })
     } else if (c.tipo === "momento") {
-      terminosCarga.push({ coef: c.M, power: 0, x0: c.x })
+      terminosCarga.push({ coef: -c.M, power: 0, x0: c.x }) // +M = antihorario (convencion estandar)
     } else if (c.tipo === "distribuida") {
       const tt = terminosMomentoDeCargaDistribuida(c.xi, c.xf, c.wi, c.wf)
       terminosCarga.push(...tt.map((t) => ({ ...t, coef: -t.coef })))
@@ -248,7 +275,7 @@ export function resolverViga(
   let sumaMomentosCargas = 0
   for (const c of cargas) {
     if (c.tipo === "puntual") sumaMomentosCargas += -componenteVerticalPuntual(c) * c.x
-    if (c.tipo === "momento") sumaMomentosCargas += -c.M
+    if (c.tipo === "momento") sumaMomentosCargas += c.M
     if (c.tipo === "distribuida") {
       const W = ((c.wi + c.wf) / 2) * (c.xf - c.xi)
       const xc = c.xi + ((c.xf - c.xi) * (2 * c.wf + c.wi)) / (3 * (c.wi + c.wf) || 1)
