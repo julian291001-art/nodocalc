@@ -1,11 +1,12 @@
 "use client"
-import { useState, useMemo } from "react"
+import { useState, useMemo, useRef, useEffect } from "react"
 import katex from "katex"
-// @ts-ignore: allow importing CSS side-effect in this client component
+// @ts-ignore: allow importing katex css without type declarations
 import "katex/dist/katex.min.css"
 import Sidebar from "../../components/Sidebar"
 import { resolverViga, Apoyo, Carga, Rotula, ResultadoViga, TipoApoyo, Termino } from "../../lib/vigas/motor"
 import { useUnidadesStore, SistemaUnidades } from "../../store/useUnidadesStore"
+import { useSeccionStore } from "../../store/useSeccionStore"
 import { convertir, factorLongitud } from "../../lib/unidades"
 
 function Formula({ tex, block = false }: { tex: string; block?: boolean }) {
@@ -149,8 +150,8 @@ function evaluarVConLado(terminos: Termino[], x: number, incluirBorde: boolean):
 }
 
 function GraficoInteractivo({
-  datos, L, color, etiqueta, unidad,
-}: { datos: { x: number; y: number }[]; L: number; color: string; etiqueta: string; unidad: string }) {
+  datos, L, color, etiqueta, unidad, unidadLongitud = "m",
+}: { datos: { x: number; y: number }[]; L: number; color: string; etiqueta: string; unidad: string; unidadLongitud?: string }) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null)
   const ancho = 700
   const alto = 230
@@ -217,7 +218,7 @@ function GraficoInteractivo({
           <circle cx={xPix(puntoHover.x)} cy={yPix(puntoHover.y)} r={4.5} fill="white" stroke={color} strokeWidth={2} />
           <g transform={`translate(${tooltipX}, ${margenTop + 4})`}>
             <rect x={-58} y={-4} width={116} height={30} rx={5} fill="#1e293b" opacity={0.92} />
-            <text x={0} y={9} fontSize={9.5} textAnchor="middle" fill="white">x = {puntoHover.x.toFixed(2)} m</text>
+            <text x={0} y={9} fontSize={9.5} textAnchor="middle" fill="white">x = {puntoHover.x.toFixed(2)} {unidadLongitud}</text>
             <text x={0} y={20} fontSize={9.5} textAnchor="middle" fill="white">{puntoHover.y.toFixed(4)} {unidad}</text>
           </g>
         </>
@@ -266,6 +267,9 @@ export default function DobleIntegracion() {
   const [I, setI] = useState(50000)
   const config = useUnidadesStore((s) => s.config)
   const aplicarPreset = useUnidadesStore((s) => s.aplicarPreset)
+  const setConfig = useUnidadesStore((s) => s.setConfig)
+  const seccionImportada = useSeccionStore((s) => s.seccion)
+  const limpiarSeccion = useSeccionStore((s) => s.limpiarSeccion)
 
   function aBaseLongitud(v: number) { return convertir(v, config.longitud, "m", "longitud") }
   function deBaseLongitud(v: number) { return convertir(v, "m", config.longitud, "longitud") }
@@ -284,29 +288,37 @@ export default function DobleIntegracion() {
   }
   function aBaseCargaDistribuida(v: number) { return (v * aBaseFuerza(1)) / aBaseLongitud(1) }
   function deBaseCargaDistribuida(v: number) { return (v * aBaseLongitud(1)) / aBaseFuerza(1) }
+  function deBaseEsfuerzo(v: number) { return convertir(v, "MPa", config.esfuerzo, "esfuerzo") }
+  function aBaseModulo(v: number) {
+    const u = config.modulo_resistente.replace("³", "")
+    const f = factorLongitud[u] ?? 1
+    const fCm = factorLongitud["cm"]
+    return (v * Math.pow(f, 3)) / Math.pow(fCm, 3)
+  }
+  function aBaseArea(v: number) {
+    const f = factorLongitud[config.seccion] ?? 1
+    const fCm = factorLongitud["cm"]
+    return (v * Math.pow(f, 2)) / Math.pow(fCm, 2)
+  }
 
   const EI = useMemo(() => aBaseEsfuerzo(E) * aBaseInercia(I) * 1e-5, [E, I, config])
   const [mensajeImportacion, setMensajeImportacion] = useState<string | null>(null)
 
-  function importarSeccion() {
-    try {
-      const raw = localStorage.getItem("nodocalc_seccion_actual")
-      if (!raw) {
-        setMensajeImportacion("No hay ninguna sección guardada todavía. Ve a Section Builder, calcula una sección y guárdala para usar aquí.")
-        return
-      }
-      const datos = JSON.parse(raw)
-      if (typeof datos.E === "number" && typeof datos.I === "number") {
-        setE(datos.E)
-        setI(datos.I)
-        setMensajeImportacion(`Sección importada: E = ${datos.E} MPa, I = ${datos.I} cm⁴${datos.nombre ? ` (${datos.nombre})` : ""}`)
-      } else {
-        setMensajeImportacion("La sección guardada no tiene el formato esperado (E, I).")
-      }
-    } catch {
-      setMensajeImportacion("No se pudo leer la sección guardada.")
+  useEffect(() => {
+    if (seccionImportada) {
+      setI(seccionImportada.Icx)
+      setMensajeImportacion(
+        `Sección importada desde Section Builder: "${seccionImportada.nombre}" — I = ${seccionImportada.Icx.toFixed(2)} ${config.inercia}. E no se modificó (Section Builder no calcula material) — ajústalo manualmente si corresponde.`
+      )
+      limpiarSeccion()
     }
-  }
+  }, [seccionImportada])
+
+  const [sigmaAdmisible, setSigmaAdmisible] = useState(0)
+  const [tauAdmisible, setTauAdmisible] = useState(0)
+  const [moduloSeccion, setModuloSeccion] = useState(0)
+  const [areaSeccion, setAreaSeccion] = useState(0)
+  const [deflexionDenominador, setDeflexionDenominador] = useState(360)
 
   const [apoyos, setApoyos] = useState<Apoyo[]>([
     { id: "A", x: 0, tipo: "articulado" },
@@ -356,6 +368,67 @@ export default function DobleIntegracion() {
     return out
   }, [resultadoLive, config])
 
+  const prevConfigRef = useRef(config)
+  useEffect(() => {
+    const prev = prevConfigRef.current
+    const cambio =
+      prev.longitud !== config.longitud ||
+      prev.fuerza !== config.fuerza ||
+      prev.momento !== config.momento ||
+      prev.esfuerzo !== config.esfuerzo ||
+      prev.desplazamiento !== config.desplazamiento ||
+      prev.inercia !== config.inercia
+    if (cambio) {
+      setL((v) => convertir(v, prev.longitud, config.longitud, "longitud"))
+      setE((v) => convertir(v, prev.esfuerzo, config.esfuerzo, "esfuerzo"))
+      setI((v) => {
+        const uPrev = prev.inercia.replace("⁴", "")
+        const uNew = config.inercia.replace("⁴", "")
+        const fPrev = factorLongitud[uPrev] ?? 1
+        const fNew = factorLongitud[uNew] ?? 1
+        return v * Math.pow(fPrev / fNew, 4)
+      })
+      setApoyos((arr) =>
+        arr.map((a) => ({
+          ...a,
+          x: convertir(a.x, prev.longitud, config.longitud, "longitud"),
+          asentamiento: a.asentamiento !== undefined ? convertir(a.asentamiento, prev.desplazamiento, config.desplazamiento, "desplazamiento") : undefined,
+        }))
+      )
+      setCargas((arr) =>
+        arr.map((c) => {
+          if (c.tipo === "puntual") return { ...c, x: convertir(c.x, prev.longitud, config.longitud, "longitud"), P: convertir(c.P, prev.fuerza, config.fuerza, "fuerza") }
+          if (c.tipo === "momento") return { ...c, x: convertir(c.x, prev.longitud, config.longitud, "longitud"), M: convertir(c.M, prev.momento, config.momento, "momento") }
+          const kLong = convertir(1, prev.longitud, config.longitud, "longitud")
+          const kFuerza = convertir(1, prev.fuerza, config.fuerza, "fuerza")
+          return {
+            ...c,
+            xi: convertir(c.xi, prev.longitud, config.longitud, "longitud"),
+            xf: convertir(c.xf, prev.longitud, config.longitud, "longitud"),
+            wi: (c.wi * kFuerza) / kLong,
+            wf: (c.wf * kFuerza) / kLong,
+          }
+        })
+      )
+      setRotulas((arr) => arr.map((r) => ({ ...r, x: convertir(r.x, prev.longitud, config.longitud, "longitud") })))
+      setModuloSeccion((v) => {
+        const uPrev = prev.modulo_resistente.replace("³", "")
+        const uNew = config.modulo_resistente.replace("³", "")
+        const fPrev = factorLongitud[uPrev] ?? 1
+        const fNew = factorLongitud[uNew] ?? 1
+        return v * Math.pow(fPrev / fNew, 3)
+      })
+      setAreaSeccion((v) => {
+        const fPrev = factorLongitud[prev.seccion] ?? 1
+        const fNew = factorLongitud[config.seccion] ?? 1
+        return v * Math.pow(fPrev / fNew, 2)
+      })
+      setSigmaAdmisible((v) => convertir(v, prev.esfuerzo, config.esfuerzo, "esfuerzo"))
+      setTauAdmisible((v) => convertir(v, prev.esfuerzo, config.esfuerzo, "esfuerzo"))
+    }
+    prevConfigRef.current = config
+  }, [config])
+
   function agregarApoyo() { setApoyos([...apoyos, { id: nuevoId("Ap"), x: 0, tipo: "rodillo" }]) }
   function actualizarApoyo(id: string, cambios: Partial<Apoyo>) { setApoyos(apoyos.map((a) => (a.id === id ? { ...a, ...cambios } : a))) }
   function borrarApoyo(id: string) { setApoyos(apoyos.filter((a) => a.id !== id)) }
@@ -399,7 +472,7 @@ export default function DobleIntegracion() {
     const criticosSet = new Set(criticosInterioresDisplay.map((xc) => Number(xc.toFixed(9))))
     criticosInterioresDisplay.forEach((xc) => mallaDisplay.push(xc))
     const xsOrdenados = Array.from(new Set(mallaDisplay.map((xv) => Number(xv.toFixed(9))))).sort((a, b) => a - b)
-    const arr: { x: number; M: number; V: number; v: number }[] = []
+    const arr: { x: number; M: number; V: number; v: number; theta: number }[] = []
     xsOrdenados.forEach((xvDisplay) => {
       const xvBase = aBaseLongitud(xvDisplay)
       const esFinal = Math.abs(xvDisplay - L) < 1e-9
@@ -409,12 +482,14 @@ export default function DobleIntegracion() {
           M: deBaseMomento(evaluarMConLado(resultado.terminosM, xvBase, false)),
           V: deBaseFuerza(evaluarVConLado(resultado.terminosM, xvBase, false)),
           v: deBaseDesplazamiento(resultado.v(xvBase, EI)),
+          theta: resultado.theta(xvBase, EI),
         })
         arr.push({
           x: xvDisplay,
           M: deBaseMomento(evaluarMConLado(resultado.terminosM, xvBase, true)),
           V: deBaseFuerza(evaluarVConLado(resultado.terminosM, xvBase, true)),
           v: deBaseDesplazamiento(resultado.v(xvBase, EI)),
+          theta: resultado.theta(xvBase, EI),
         })
       } else if (esFinal) {
         arr.push({
@@ -422,6 +497,7 @@ export default function DobleIntegracion() {
           M: deBaseMomento(evaluarMConLado(resultado.terminosM, xvBase, false)),
           V: deBaseFuerza(evaluarVConLado(resultado.terminosM, xvBase, false)),
           v: deBaseDesplazamiento(resultado.v(xvBase, EI)),
+          theta: resultado.theta(xvBase, EI),
         })
       } else {
         arr.push({
@@ -429,6 +505,7 @@ export default function DobleIntegracion() {
           M: deBaseMomento(evaluarMConLado(resultado.terminosM, xvBase, true)),
           V: deBaseFuerza(evaluarVConLado(resultado.terminosM, xvBase, true)),
           v: deBaseDesplazamiento(resultado.v(xvBase, EI)),
+          theta: resultado.theta(xvBase, EI),
         })
       }
     })
@@ -477,12 +554,52 @@ export default function DobleIntegracion() {
               </div>
             </div>
             <div className="mt-2 text-xs text-gray-400">EI calculado = {EI.toFixed(2)} kN·m² (base interna)</div>
+
+            <div className="mt-3 pt-3 border-t border-gray-100">
+              <div className="text-xs text-gray-400 mb-2">Personalizar unidades de este sistema:</div>
+              <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
+                <div>
+                  <label className="text-[10px] text-gray-400">Longitud</label>
+                  <select value={config.longitud} onChange={(e) => setConfig({ ...config, sistema: "personalizado", longitud: e.target.value as any })} className="w-full border border-gray-300 rounded-lg px-1.5 py-1 text-xs">
+                    {["mm", "cm", "m", "in", "ft"].map((u) => <option key={u} value={u}>{u}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] text-gray-400">Fuerza</label>
+                  <select value={config.fuerza} onChange={(e) => setConfig({ ...config, sistema: "personalizado", fuerza: e.target.value as any })} className="w-full border border-gray-300 rounded-lg px-1.5 py-1 text-xs">
+                    {["N", "kN", "kgf", "tf", "lbf", "kip"].map((u) => <option key={u} value={u}>{u}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] text-gray-400">Momento</label>
+                  <select value={config.momento} onChange={(e) => setConfig({ ...config, sistema: "personalizado", momento: e.target.value as any })} className="w-full border border-gray-300 rounded-lg px-1.5 py-1 text-xs">
+                    {["N·m", "kN·m", "kgf·m", "tf·m", "lbf·ft", "kip·ft"].map((u) => <option key={u} value={u}>{u}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] text-gray-400">Esfuerzo</label>
+                  <select value={config.esfuerzo} onChange={(e) => setConfig({ ...config, sistema: "personalizado", esfuerzo: e.target.value as any })} className="w-full border border-gray-300 rounded-lg px-1.5 py-1 text-xs">
+                    {["Pa", "kPa", "MPa", "kgf/cm²", "tf/m²", "psi", "ksi"].map((u) => <option key={u} value={u}>{u}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] text-gray-400">Inercia</label>
+                  <select value={config.inercia} onChange={(e) => setConfig({ ...config, sistema: "personalizado", inercia: e.target.value as any })} className="w-full border border-gray-300 rounded-lg px-1.5 py-1 text-xs">
+                    {["mm⁴", "cm⁴", "m⁴", "in⁴"].map((u) => <option key={u} value={u}>{u}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] text-gray-400">Desplazamiento</label>
+                  <select value={config.desplazamiento} onChange={(e) => setConfig({ ...config, sistema: "personalizado", desplazamiento: e.target.value as any })} className="w-full border border-gray-300 rounded-lg px-1.5 py-1 text-xs">
+                    {["mm", "cm", "m", "in"].map((u) => <option key={u} value={u}>{u}</option>)}
+                  </select>
+                </div>
+              </div>
+            </div>
+
             <div className="flex gap-3 mt-3">
-              <button onClick={importarSeccion} className="text-xs text-blue-600 hover:underline">
-                Importar sección (E, I) desde Section Builder
-              </button>
-              <a href="/herramientas/unidades" target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:underline">
-                Abrir módulo de unidades
+              <a href="/herramientas/secciones" className="text-xs text-blue-600 hover:underline">
+                Ir a Section Builder para importar una sección →
               </a>
             </div>
             {mensajeImportacion && <div className="text-xs text-gray-500 mt-1">{mensajeImportacion}</div>}
@@ -733,12 +850,12 @@ export default function DobleIntegracion() {
                       const xMedio = (xSvg(p) + xSvg(siguiente)) / 2
                       return (
                         <text key={`cota-${i}`} x={xMedio} y={yCotaTexto} fontSize={9} textAnchor="middle" fill="#64748b">
-                          {dist.toFixed(2)}{config.longitud}
+                          {dist.toFixed(2)}m
                         </text>
                       )
                     })}
                     <text x={(xSvg(0) + xSvg(L)) / 2} y={yCotaTexto + 16} fontSize={9} textAnchor="middle" fill="#94a3b8" fontWeight={600}>
-                      L = {L.toFixed(2)}{config.longitud}
+                      L = {L.toFixed(2)}m
                     </text>
                   </g>
                 )
@@ -837,19 +954,106 @@ export default function DobleIntegracion() {
               <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="text-xs text-gray-400 font-medium tracking-wider mb-1">DIAGRAMA DE MOMENTO FLECTOR</div>
                 <div className="text-xs text-gray-400 mb-2">Máximo: {Math.max(...puntos.map((p) => p.M)).toFixed(3)} {config.momento} — Mínimo: {Math.min(...puntos.map((p) => p.M)).toFixed(3)} {config.momento}</div>
-                <GraficoInteractivo datos={puntos.map((p) => ({ x: p.x, y: p.M }))} L={L} color="#2563eb" etiqueta="M(x)" unidad={config.momento} />
+                <GraficoInteractivo datos={puntos.map((p) => ({ x: p.x, y: p.M }))} L={L} color="#2563eb" etiqueta="M(x)" unidad={config.momento} unidadLongitud={config.longitud} />
               </div>
 
               <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="text-xs text-gray-400 font-medium tracking-wider mb-1">DIAGRAMA DE FUERZA CORTANTE</div>
                 <div className="text-xs text-gray-400 mb-2">Máximo: {Math.max(...puntos.map((p) => p.V)).toFixed(3)} {config.fuerza} — Mínimo: {Math.min(...puntos.map((p) => p.V)).toFixed(3)} {config.fuerza}</div>
-                <GraficoInteractivo datos={puntos.map((p) => ({ x: p.x, y: p.V }))} L={L} color="#f97316" etiqueta="V(x)" unidad={config.fuerza} />
+                <GraficoInteractivo datos={puntos.map((p) => ({ x: p.x, y: p.V }))} L={L} color="#f97316" etiqueta="V(x)" unidad={config.fuerza} unidadLongitud={config.longitud} />
+              </div>
+
+              <div className="bg-white border border-gray-200 rounded-xl p-5">
+                <div className="text-xs text-gray-400 font-medium tracking-wider mb-1">DIAGRAMA DE GIRO</div>
+                <div className="text-xs text-gray-400 mb-2">Máximo: {Math.max(...puntos.map((p) => p.theta)).toFixed(6)} rad — Mínimo: {Math.min(...puntos.map((p) => p.theta)).toFixed(6)} rad</div>
+                <GraficoInteractivo datos={puntos.map((p) => ({ x: p.x, y: p.theta }))} L={L} color="#a855f7" etiqueta="θ(x)" unidad="rad" unidadLongitud={config.longitud} />
               </div>
 
               <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="text-xs text-gray-400 font-medium tracking-wider mb-1">DEFLEXIÓN</div>
                 <div className="text-xs text-gray-400 mb-2">Máxima: {Math.max(...puntos.map((p) => p.v)).toFixed(5)} {config.desplazamiento} — Mínima: {Math.min(...puntos.map((p) => p.v)).toFixed(5)} {config.desplazamiento}</div>
-                <GraficoInteractivo datos={puntos.map((p) => ({ x: p.x, y: p.v }))} L={L} color="#64748b" etiqueta="v(x)" unidad={config.desplazamiento} />
+                <GraficoInteractivo datos={puntos.map((p) => ({ x: p.x, y: p.v }))} L={L} color="#64748b" etiqueta="v(x)" unidad={config.desplazamiento} unidadLongitud={config.longitud} />
+              </div>
+
+              <div className="bg-white border border-gray-200 rounded-xl p-5">
+                <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">CONDICIONES DE DISEÑO</div>
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+                  <div>
+                    <label className="text-xs text-gray-500">σ admisible tracción/compresión ({config.esfuerzo})</label>
+                    <input type="number" value={sigmaAdmisible} onChange={(e) => setSigmaAdmisible(Number(e.target.value))} className="w-full mt-1 border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500">τ admisible corte ({config.esfuerzo})</label>
+                    <input type="number" value={tauAdmisible} onChange={(e) => setTauAdmisible(Number(e.target.value))} className="w-full mt-1 border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500">S, módulo de sección ({config.modulo_resistente})</label>
+                    <input type="number" value={moduloSeccion} onChange={(e) => setModuloSeccion(Number(e.target.value))} className="w-full mt-1 border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500">A, área de la sección ({config.seccion}²)</label>
+                    <input type="number" value={areaSeccion} onChange={(e) => setAreaSeccion(Number(e.target.value))} className="w-full mt-1 border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500">Deflexión máx. permitida: L /</label>
+                    <input type="number" value={deflexionDenominador} onChange={(e) => setDeflexionDenominador(Number(e.target.value))} className="w-full mt-1 border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {(() => {
+                    const MmaxBase = aBaseMomento(Math.max(...puntos.map((p) => Math.abs(p.M))))
+                    const VmaxBase = aBaseFuerza(Math.max(...puntos.map((p) => Math.abs(p.V))))
+                    const vmaxBase = aBaseDesplazamiento(Math.max(...puntos.map((p) => Math.abs(p.v))))
+                    const Sbase = aBaseModulo(moduloSeccion)
+                    const Abase = aBaseArea(areaSeccion)
+                    const sigmaAdmBase = aBaseEsfuerzo(sigmaAdmisible)
+                    const tauAdmBase = aBaseEsfuerzo(tauAdmisible)
+
+                    const sigmaCalcMPa = Sbase > 0 ? (MmaxBase / Sbase) * 1000 : null
+                    const tauCalcMPa = Abase > 0 ? (VmaxBase / Abase) * 10 : null
+                    const deflexionPermitidaBase = deflexionDenominador > 0 ? datosBase.Lb / deflexionDenominador : null
+
+                    const chequeoSigma = sigmaCalcMPa !== null && sigmaAdmBase > 0 ? sigmaCalcMPa <= sigmaAdmBase : null
+                    const chequeoTau = tauCalcMPa !== null && tauAdmBase > 0 ? tauCalcMPa <= tauAdmBase : null
+                    const chequeoDefl = deflexionPermitidaBase !== null ? vmaxBase <= deflexionPermitidaBase : null
+
+                    function Tarjeta({ titulo, ok, detalle }: { titulo: string; ok: boolean | null; detalle: string }) {
+                      return (
+                        <div className={`p-3 rounded-lg border-l-4 ${ok === null ? "bg-gray-50 border-gray-300" : ok ? "bg-green-50 border-green-500" : "bg-red-50 border-red-500"}`}>
+                          <div className="text-xs text-gray-500">{titulo}</div>
+                          <div className={`text-sm font-bold ${ok === null ? "text-gray-500" : ok ? "text-green-700" : "text-red-700"}`}>
+                            {ok === null ? "Sin datos" : ok ? "✓ Cumple" : "✗ No cumple"}
+                          </div>
+                          <div className="text-xs text-gray-400 mt-1">{detalle}</div>
+                        </div>
+                      )
+                    }
+
+                    return (
+                      <>
+                        <Tarjeta
+                          titulo="Esfuerzo por flexión"
+                          ok={chequeoSigma}
+                          detalle={sigmaCalcMPa !== null ? `σ = ${deBaseEsfuerzo(sigmaCalcMPa).toFixed(2)} ${config.esfuerzo} (adm. ${sigmaAdmisible} ${config.esfuerzo})` : "Ingresa S para calcular"}
+                        />
+                        <Tarjeta
+                          titulo="Esfuerzo cortante"
+                          ok={chequeoTau}
+                          detalle={tauCalcMPa !== null ? `τ = ${deBaseEsfuerzo(tauCalcMPa).toFixed(2)} ${config.esfuerzo} (adm. ${tauAdmisible} ${config.esfuerzo})` : "Ingresa A para calcular"}
+                        />
+                        <Tarjeta
+                          titulo="Deflexión máxima"
+                          ok={chequeoDefl}
+                          detalle={
+                            deflexionPermitidaBase !== null
+                              ? `δ = ${deBaseDesplazamiento(vmaxBase).toFixed(4)} ${config.desplazamiento} (límite L/${deflexionDenominador} = ${deBaseDesplazamiento(deflexionPermitidaBase).toFixed(4)} ${config.desplazamiento})`
+                              : "Ingresa denominador"
+                          }
+                        />
+                      </>
+                    )
+                  })()}
+                </div>
               </div>
             </>
           )}
