@@ -15,7 +15,7 @@ export default function Herramientas() {
             <a href="/herramientas/sucs"><HerramientaCard nombre="Clasificación SUCS" desc="Clasifica el suelo según el Sistema Unificado de Clasificación de Suelos." tag="Suelos" /></a>
             <a href="/herramientas/aashto"><HerramientaCard nombre="Clasificación AASHTO" desc="Clasifica el suelo según el método AASHTO para uso en carreteras." tag="Suelos" /></a>
             <a href="/herramientas/fases"><HerramientaCard nombre="Relaciones de fase" desc="Diagrama de fases interactivo. Ingresa parámetros conocidos y calcula todos los demás." tag="Suelos" /></a>
-            <HerramientaCard nombre="Correcciones SPT" desc="Aplica correcciones N60, (N1)60 por energía, sobrecarga y diámetro." tag="Suelos" />
+            <a href="/herramientas/spt"><HerramientaCard nombre="Correcciones SPT" desc="Aplica correcciones N60, (N1)60 por energía, sobrecarga y diámetro." tag="Suelos" /></a>
           </div>
           <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">FLUIDOS</div>
           <div className="grid grid-cols-2 gap-4 mb-6">
