@@ -1,10 +1,12 @@
 "use client"
 import { useState, useMemo } from "react"
 import katex from "katex"
-// @ts-ignore: CSS import for KaTeX styles
+// @ts-ignore: allow importing CSS side-effect in this client component
 import "katex/dist/katex.min.css"
 import Sidebar from "../../components/Sidebar"
 import { resolverViga, Apoyo, Carga, Rotula, ResultadoViga, TipoApoyo, Termino } from "../../lib/vigas/motor"
+import { useUnidadesStore, SistemaUnidades } from "../../store/useUnidadesStore"
+import { convertir, factorLongitud } from "../../lib/unidades"
 
 function Formula({ tex, block = false }: { tex: string; block?: boolean }) {
   const html = katex.renderToString(tex, { throwOnError: false, displayMode: block })
@@ -225,7 +227,9 @@ function GraficoInteractivo({
   )
 }
 
-function PanelReacciones({ reacciones, titulo }: { reacciones: ResultadoViga["reacciones"] | null; titulo: string }) {
+function PanelReacciones({
+  reacciones, titulo, unidadFuerza, unidadMomento,
+}: { reacciones: ResultadoViga["reacciones"] | null; titulo: string; unidadFuerza: string; unidadMomento: string }) {
   if (!reacciones || Object.keys(reacciones).length === 0) return null
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-5">
@@ -236,17 +240,17 @@ function PanelReacciones({ reacciones, titulo }: { reacciones: ResultadoViga["re
             <div className="text-xs text-blue-500">Apoyo {id}</div>
             {r.Fy !== undefined && (
               <div className="text-sm font-bold text-blue-800">
-                Fy = {Math.abs(r.Fy).toFixed(3)} kN {r.Fy >= 0 ? "↑" : "↓"}
+                Fy = {Math.abs(r.Fy).toFixed(3)} {unidadFuerza} {r.Fy >= 0 ? "↑" : "↓"}
               </div>
             )}
             {r.M !== undefined && (
               <div className="text-sm font-bold text-blue-800">
-                M = {Math.abs(r.M).toFixed(3)} kN·m {r.M >= 0 ? "↺" : "↻"}
+                M = {Math.abs(r.M).toFixed(3)} {unidadMomento} {r.M >= 0 ? "↺" : "↻"}
               </div>
             )}
             {r.Rx !== undefined && (
               <div className="text-sm font-bold text-cyan-700">
-                Rx = {Math.abs(r.Rx).toFixed(3)} kN {r.Rx >= 0 ? "→" : "←"}
+                Rx = {Math.abs(r.Rx).toFixed(3)} {unidadFuerza} {r.Rx >= 0 ? "→" : "←"}
               </div>
             )}
           </div>
@@ -260,14 +264,30 @@ export default function DobleIntegracion() {
   const [L, setL] = useState(6)
   const [E, setE] = useState(200000)
   const [I, setI] = useState(50000)
-  const EI = useMemo(() => E * 1000 * I * 1e-8, [E, I])
+  const config = useUnidadesStore((s) => s.config)
+  const aplicarPreset = useUnidadesStore((s) => s.aplicarPreset)
+
+  function aBaseLongitud(v: number) { return convertir(v, config.longitud, "m", "longitud") }
+  function deBaseLongitud(v: number) { return convertir(v, "m", config.longitud, "longitud") }
+  function aBaseFuerza(v: number) { return convertir(v, config.fuerza, "kN", "fuerza") }
+  function deBaseFuerza(v: number) { return convertir(v, "kN", config.fuerza, "fuerza") }
+  function aBaseMomento(v: number) { return convertir(v, config.momento, "kN·m", "momento") }
+  function deBaseMomento(v: number) { return convertir(v, "kN·m", config.momento, "momento") }
+  function aBaseEsfuerzo(v: number) { return convertir(v, config.esfuerzo, "MPa", "esfuerzo") }
+  function aBaseDesplazamiento(v: number) { return convertir(v, config.desplazamiento, "m", "desplazamiento") }
+  function deBaseDesplazamiento(v: number) { return convertir(v, "m", config.desplazamiento, "desplazamiento") }
+  function aBaseInercia(v: number) {
+    const u = config.inercia.replace("⁴", "")
+    const f = factorLongitud[u] ?? 1
+    const fCm = factorLongitud["cm"]
+    return (v * Math.pow(f, 4)) / Math.pow(fCm, 4)
+  }
+  function aBaseCargaDistribuida(v: number) { return (v * aBaseFuerza(1)) / aBaseLongitud(1) }
+  function deBaseCargaDistribuida(v: number) { return (v * aBaseLongitud(1)) / aBaseFuerza(1) }
+
+  const EI = useMemo(() => aBaseEsfuerzo(E) * aBaseInercia(I) * 1e-5, [E, I, config])
   const [mensajeImportacion, setMensajeImportacion] = useState<string | null>(null)
 
-  // Importa E e I guardados por Section Builder en localStorage bajo la
-  // clave "nodocalc_seccion_actual" como JSON { E: number, I: number }.
-  // Requiere que Section Builder tenga un boton que guarde con esa misma
-  // clave -- si aun no lo tiene, esto solo mostrara el mensaje de "no hay
-  // seccion guardada".
   function importarSeccion() {
     try {
       const raw = localStorage.getItem("nodocalc_seccion_actual")
@@ -298,14 +318,43 @@ export default function DobleIntegracion() {
   const [resultado, setResultado] = useState<ResultadoViga | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  const datosBase = useMemo(() => {
+    const Lb = aBaseLongitud(L)
+    const apoyosB: Apoyo[] = apoyos.map((a) => ({
+      ...a,
+      x: aBaseLongitud(a.x),
+      asentamiento: a.asentamiento !== undefined ? aBaseDesplazamiento(a.asentamiento) : undefined,
+    }))
+    const cargasB: Carga[] = cargas.map((c) => {
+      if (c.tipo === "puntual") return { ...c, x: aBaseLongitud(c.x), P: aBaseFuerza(c.P) }
+      if (c.tipo === "momento") return { ...c, x: aBaseLongitud(c.x), M: aBaseMomento(c.M) }
+      return { ...c, xi: aBaseLongitud(c.xi), xf: aBaseLongitud(c.xf), wi: aBaseCargaDistribuida(c.wi), wf: aBaseCargaDistribuida(c.wf) }
+    })
+    const rotulasB: Rotula[] = rotulas.map((r) => ({ ...r, x: aBaseLongitud(r.x) }))
+    return { Lb, apoyosB, cargasB, rotulasB }
+  }, [L, apoyos, cargas, rotulas, config])
+
   const [resultadoLive, errorLive] = useMemo((): [ResultadoViga | null, string | null] => {
     try {
-      return [resolverViga(L, apoyos, cargas, rotulas), null]
+      return [resolverViga(datosBase.Lb, datosBase.apoyosB, datosBase.cargasB, datosBase.rotulasB), null]
     } catch (e: any) {
       return [null, e.message || "Error al calcular"]
     }
-  }, [L, apoyos, cargas, rotulas])
+  }, [datosBase])
   const resultadoLiveInfo = resultadoLive
+
+  const reaccionesDisplay = useMemo(() => {
+    if (!resultadoLive) return null
+    const out: ResultadoViga["reacciones"] = {}
+    Object.entries(resultadoLive.reacciones).forEach(([id, r]) => {
+      out[id] = {
+        Fy: r.Fy !== undefined ? deBaseFuerza(r.Fy) : undefined,
+        M: r.M !== undefined ? deBaseMomento(r.M) : undefined,
+        Rx: r.Rx !== undefined ? deBaseFuerza(r.Rx) : undefined,
+      }
+    })
+    return out
+  }, [resultadoLive, config])
 
   function agregarApoyo() { setApoyos([...apoyos, { id: nuevoId("Ap"), x: 0, tipo: "rodillo" }]) }
   function actualizarApoyo(id: string, cambios: Partial<Apoyo>) { setApoyos(apoyos.map((a) => (a.id === id ? { ...a, ...cambios } : a))) }
@@ -326,7 +375,7 @@ export default function DobleIntegracion() {
   function calcular() {
     try {
       setError(null)
-      const res = resolverViga(L, apoyos, cargas, rotulas)
+      const res = resolverViga(datosBase.Lb, datosBase.apoyosB, datosBase.cargasB, datosBase.rotulasB)
       setResultado(res)
     } catch (e: any) {
       setError(e.message || "Error al resolver la viga")
@@ -343,26 +392,48 @@ export default function DobleIntegracion() {
   const puntos = useMemo(() => {
     if (!resultado) return null
     const n = 140
-    const malla: number[] = []
-    for (let i = 0; i <= n; i++) malla.push((L * i) / n)
-    const criticosInteriores = resultado.puntosCriticos.filter((xc) => xc > 1e-9 && xc < L - 1e-9)
-    const criticosSet = new Set(criticosInteriores.map((xc) => Number(xc.toFixed(9))))
-    criticosInteriores.forEach((xc) => malla.push(xc))
-    const xsOrdenados = Array.from(new Set(malla.map((xv) => Number(xv.toFixed(9))))).sort((a, b) => a - b)
+    const mallaDisplay: number[] = []
+    for (let i = 0; i <= n; i++) mallaDisplay.push((L * i) / n)
+    const criticosDisplay = resultado.puntosCriticos.map((xc) => deBaseLongitud(xc))
+    const criticosInterioresDisplay = criticosDisplay.filter((xc) => xc > 1e-9 && xc < L - 1e-9)
+    const criticosSet = new Set(criticosInterioresDisplay.map((xc) => Number(xc.toFixed(9))))
+    criticosInterioresDisplay.forEach((xc) => mallaDisplay.push(xc))
+    const xsOrdenados = Array.from(new Set(mallaDisplay.map((xv) => Number(xv.toFixed(9))))).sort((a, b) => a - b)
     const arr: { x: number; M: number; V: number; v: number }[] = []
-    xsOrdenados.forEach((xv) => {
-      const esFinal = Math.abs(xv - L) < 1e-9
-      if (criticosSet.has(xv)) {
-        arr.push({ x: xv, M: evaluarMConLado(resultado.terminosM, xv, false), V: evaluarVConLado(resultado.terminosM, xv, false), v: resultado.v(xv, EI) })
-        arr.push({ x: xv, M: evaluarMConLado(resultado.terminosM, xv, true), V: evaluarVConLado(resultado.terminosM, xv, true), v: resultado.v(xv, EI) })
+    xsOrdenados.forEach((xvDisplay) => {
+      const xvBase = aBaseLongitud(xvDisplay)
+      const esFinal = Math.abs(xvDisplay - L) < 1e-9
+      if (criticosSet.has(xvDisplay)) {
+        arr.push({
+          x: xvDisplay,
+          M: deBaseMomento(evaluarMConLado(resultado.terminosM, xvBase, false)),
+          V: deBaseFuerza(evaluarVConLado(resultado.terminosM, xvBase, false)),
+          v: deBaseDesplazamiento(resultado.v(xvBase, EI)),
+        })
+        arr.push({
+          x: xvDisplay,
+          M: deBaseMomento(evaluarMConLado(resultado.terminosM, xvBase, true)),
+          V: deBaseFuerza(evaluarVConLado(resultado.terminosM, xvBase, true)),
+          v: deBaseDesplazamiento(resultado.v(xvBase, EI)),
+        })
       } else if (esFinal) {
-        arr.push({ x: xv, M: evaluarMConLado(resultado.terminosM, xv, false), V: evaluarVConLado(resultado.terminosM, xv, false), v: resultado.v(xv, EI) })
+        arr.push({
+          x: xvDisplay,
+          M: deBaseMomento(evaluarMConLado(resultado.terminosM, xvBase, false)),
+          V: deBaseFuerza(evaluarVConLado(resultado.terminosM, xvBase, false)),
+          v: deBaseDesplazamiento(resultado.v(xvBase, EI)),
+        })
       } else {
-        arr.push({ x: xv, M: evaluarMConLado(resultado.terminosM, xv, true), V: evaluarVConLado(resultado.terminosM, xv, true), v: resultado.v(xv, EI) })
+        arr.push({
+          x: xvDisplay,
+          M: deBaseMomento(evaluarMConLado(resultado.terminosM, xvBase, true)),
+          V: deBaseFuerza(evaluarVConLado(resultado.terminosM, xvBase, true)),
+          v: deBaseDesplazamiento(resultado.v(xvBase, EI)),
+        })
       }
     })
     return arr
-  }, [resultado, L, EI])
+  }, [resultado, L, EI, config])
 
   const tramos = useMemo(() => (resultado ? calcularTramos(resultado, EI) : null), [resultado, EI])
 
@@ -377,22 +448,35 @@ export default function DobleIntegracion() {
 
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
           <div className="bg-white border border-gray-200 rounded-xl p-5">
-            <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">DATOS GENERALES</div>
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-xs text-gray-400 font-medium tracking-wider">DATOS GENERALES</div>
+              <div className="flex gap-1.5">
+                {(["SI", "metrico", "americano"] as Exclude<SistemaUnidades, "personalizado">[]).map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => aplicarPreset(s)}
+                    className={`text-xs px-2.5 py-1 rounded-lg border ${config.sistema === s ? "bg-blue-700 text-white border-blue-700" : "bg-white text-gray-600 border-gray-300"}`}
+                  >
+                    {s === "SI" ? "SI" : s === "metrico" ? "Métrico" : "Americano"}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="grid grid-cols-3 gap-4">
               <div>
-                <label className="text-xs text-gray-500">Longitud de la viga (m)</label>
+                <label className="text-xs text-gray-500">Longitud de la viga ({config.longitud})</label>
                 <input type="number" value={L} onChange={(e) => setL(Number(e.target.value))} className="w-full mt-1 border border-gray-300 rounded-lg px-3 py-2 text-sm" />
               </div>
               <div>
-                <label className="text-xs text-gray-500">E (MPa)</label>
+                <label className="text-xs text-gray-500">E ({config.esfuerzo})</label>
                 <input type="number" value={E} onChange={(e) => setE(Number(e.target.value))} className="w-full mt-1 border border-gray-300 rounded-lg px-3 py-2 text-sm" />
               </div>
               <div>
-                <label className="text-xs text-gray-500">I (cm⁴)</label>
+                <label className="text-xs text-gray-500">I ({config.inercia})</label>
                 <input type="number" value={I} onChange={(e) => setI(Number(e.target.value))} className="w-full mt-1 border border-gray-300 rounded-lg px-3 py-2 text-sm" />
               </div>
             </div>
-            <div className="mt-2 text-xs text-gray-400">EI calculado = {EI.toFixed(2)} kN·m²</div>
+            <div className="mt-2 text-xs text-gray-400">EI calculado = {EI.toFixed(2)} kN·m² (base interna)</div>
             <div className="flex gap-3 mt-3">
               <button onClick={importarSeccion} className="text-xs text-blue-600 hover:underline">
                 Importar sección (E, I) desde Section Builder
@@ -413,11 +497,11 @@ export default function DobleIntegracion() {
               {apoyos.map((a) => (
                 <div key={a.id} className="grid grid-cols-6 gap-2 items-center bg-gray-50 rounded-lg p-2">
                   <span className="text-xs text-gray-500">{a.id}</span>
-                  <input type="number" value={a.x} onChange={(e) => actualizarApoyo(a.id, { x: Number(e.target.value) })} placeholder="x (m)" className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
+                  <input type="number" value={a.x} onChange={(e) => actualizarApoyo(a.id, { x: Number(e.target.value) })} placeholder={`x (${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
                   <select value={a.tipo} onChange={(e) => actualizarApoyo(a.id, { tipo: e.target.value as TipoApoyo })} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm col-span-2">
                     {Object.entries(nombresApoyo).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                   </select>
-                  <input type="number" value={a.asentamiento ?? 0} onChange={(e) => actualizarApoyo(a.id, { asentamiento: Number(e.target.value) })} placeholder="asentamiento (m)" className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
+                  <input type="number" value={a.asentamiento ?? 0} onChange={(e) => actualizarApoyo(a.id, { asentamiento: Number(e.target.value) })} placeholder={`asentamiento (${config.desplazamiento})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
                   <button onClick={() => borrarApoyo(a.id)} className="text-red-500 text-xs hover:underline">Borrar</button>
                 </div>
               ))}
@@ -433,7 +517,7 @@ export default function DobleIntegracion() {
               {rotulas.map((r) => (
                 <div key={r.id} className="grid grid-cols-6 gap-2 items-center bg-gray-50 rounded-lg p-2">
                   <span className="text-xs text-gray-500">{r.id}</span>
-                  <input type="number" value={r.x} onChange={(e) => actualizarRotula(r.id, Number(e.target.value))} placeholder="x (m)" className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
+                  <input type="number" value={r.x} onChange={(e) => actualizarRotula(r.id, Number(e.target.value))} placeholder={`x (${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
                   <button onClick={() => borrarRotula(r.id)} className="text-red-500 text-xs hover:underline">Borrar</button>
                 </div>
               ))}
@@ -457,25 +541,25 @@ export default function DobleIntegracion() {
                   {c.tipo === "puntual" && (
                     <>
                       <span className="text-xs">Puntual</span>
-                      <input type="number" value={c.x} onChange={(e) => actualizarCarga(c.id, { x: Number(e.target.value) })} placeholder="x (m)" className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-24" />
-                      <input type="number" value={c.P} onChange={(e) => actualizarCarga(c.id, { P: Number(e.target.value) })} placeholder="P (kN, ↓+)" className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-28" />
+                      <input type="number" value={c.x} onChange={(e) => actualizarCarga(c.id, { x: Number(e.target.value) })} placeholder={`x (${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-24" />
+                      <input type="number" value={c.P} onChange={(e) => actualizarCarga(c.id, { P: Number(e.target.value) })} placeholder={`P (${config.fuerza}, ↓+)`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-28" />
                       <input type="number" value={c.angulo ?? 0} onChange={(e) => actualizarCarga(c.id, { angulo: Number(e.target.value) })} placeholder="ángulo (°, 0=vertical)" className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-32" />
                     </>
                   )}
                   {c.tipo === "momento" && (
                     <>
                       <span className="text-xs">Momento</span>
-                      <input type="number" value={c.x} onChange={(e) => actualizarCarga(c.id, { x: Number(e.target.value) })} placeholder="x (m)" className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-24" />
-                      <input type="number" value={c.M} onChange={(e) => actualizarCarga(c.id, { M: Number(e.target.value) })} placeholder="M (kN·m, ↺+)" className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-28" />
+                      <input type="number" value={c.x} onChange={(e) => actualizarCarga(c.id, { x: Number(e.target.value) })} placeholder={`x (${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-24" />
+                      <input type="number" value={c.M} onChange={(e) => actualizarCarga(c.id, { M: Number(e.target.value) })} placeholder={`M (${config.momento}, ↺+)`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-28" />
                     </>
                   )}
                   {c.tipo === "distribuida" && (
                     <>
                       <span className="text-xs">Distribuida</span>
-                      <input type="number" value={c.xi} onChange={(e) => actualizarCarga(c.id, { xi: Number(e.target.value) })} placeholder="xi (m)" className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-20" />
-                      <input type="number" value={c.xf} onChange={(e) => actualizarCarga(c.id, { xf: Number(e.target.value) })} placeholder="xf (m)" className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-20" />
-                      <input type="number" value={c.wi} onChange={(e) => actualizarCarga(c.id, { wi: Number(e.target.value) })} placeholder="wi (kN/m)" className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-24" />
-                      <input type="number" value={c.wf} onChange={(e) => actualizarCarga(c.id, { wf: Number(e.target.value) })} placeholder="wf (kN/m)" className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-24" />
+                      <input type="number" value={c.xi} onChange={(e) => actualizarCarga(c.id, { xi: Number(e.target.value) })} placeholder={`xi (${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-20" />
+                      <input type="number" value={c.xf} onChange={(e) => actualizarCarga(c.id, { xf: Number(e.target.value) })} placeholder={`xf (${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-20" />
+                      <input type="number" value={c.wi} onChange={(e) => actualizarCarga(c.id, { wi: Number(e.target.value) })} placeholder={`wi (${config.fuerza}/${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-24" />
+                      <input type="number" value={c.wf} onChange={(e) => actualizarCarga(c.id, { wf: Number(e.target.value) })} placeholder={`wf (${config.fuerza}/${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-24" />
                     </>
                   )}
                   <button onClick={() => borrarCarga(c.id)} className="text-red-500 text-xs hover:underline ml-auto">Borrar</button>
@@ -533,7 +617,7 @@ export default function DobleIntegracion() {
                     <g key={c.id}>
                       <line x1={xPunta - dx} y1={yPunta - dy} x2={xPunta} y2={yPunta} stroke="#dc2626" strokeWidth={2} markerEnd="url(#flecha)" />
                       <text x={xPunta - dx} y={yPunta - dy - 6} fontSize={10} textAnchor="middle" fill="#dc2626">
-                        {c.P}kN{c.angulo ? ` (${c.angulo}°)` : ""}
+                        {c.P}{config.fuerza}{c.angulo ? ` (${c.angulo}°)` : ""}
                       </text>
                     </g>
                   )
@@ -545,7 +629,7 @@ export default function DobleIntegracion() {
                         {c.M >= 0 ? "↺" : "↻"}
                       </text>
                       <text x={xSvg(c.x)} y={yViga - 40} fontSize={11} textAnchor="middle" fill="#dc2626" fontWeight={700}>
-                        {Math.abs(c.M)}kN·m
+                        {Math.abs(c.M)}{config.momento}
                       </text>
                     </g>
                   )
@@ -574,7 +658,7 @@ export default function DobleIntegracion() {
                 return null
               })}
 
-              {resultadoLive && Object.entries(resultadoLive.reacciones).map(([id, r]) => {
+              {reaccionesDisplay && Object.entries(reaccionesDisplay).map(([id, r]) => {
                 const apoyo = apoyos.find((a) => a.id === id)
                 if (!apoyo) return null
                 const xPos = xSvg(apoyo.x)
@@ -590,7 +674,7 @@ export default function DobleIntegracion() {
                           stroke="#16a34a" strokeWidth={2.6} markerEnd="url(#flechaVerde)"
                         />
                         <text x={xPos} y={yViga + 78} fontSize={10} textAnchor="middle" fill="#16a34a" fontWeight={700}>
-                          {Math.abs(r.Fy).toFixed(1)}kN
+                          {Math.abs(r.Fy).toFixed(1)}{config.fuerza}
                         </text>
                       </>
                     )}
@@ -600,7 +684,7 @@ export default function DobleIntegracion() {
                           {r.M >= 0 ? "↺" : "↻"}
                         </text>
                         <text x={xPos} y={yViga - 44} fontSize={11} textAnchor="middle" fill="#16a34a" fontWeight={700}>
-                          {Math.abs(r.M).toFixed(1)}
+                          {Math.abs(r.M).toFixed(1)}{config.momento}
                         </text>
                       </>
                     )}
@@ -614,7 +698,7 @@ export default function DobleIntegracion() {
                           stroke="#0891b2" strokeWidth={2.6} markerEnd="url(#flechaCyan)"
                         />
                         <text x={r.Rx >= 0 ? xPos - 22 : xPos + 22} y={yViga - 8} fontSize={10} textAnchor="middle" fill="#0891b2" fontWeight={700}>
-                          {Math.abs(r.Rx).toFixed(1)}kN
+                          {Math.abs(r.Rx).toFixed(1)}{config.fuerza}
                         </text>
                       </>
                     )}
@@ -649,12 +733,12 @@ export default function DobleIntegracion() {
                       const xMedio = (xSvg(p) + xSvg(siguiente)) / 2
                       return (
                         <text key={`cota-${i}`} x={xMedio} y={yCotaTexto} fontSize={9} textAnchor="middle" fill="#64748b">
-                          {dist.toFixed(2)}m
+                          {dist.toFixed(2)}{config.longitud}
                         </text>
                       )
                     })}
                     <text x={(xSvg(0) + xSvg(L)) / 2} y={yCotaTexto + 16} fontSize={9} textAnchor="middle" fill="#94a3b8" fontWeight={600}>
-                      L = {L.toFixed(2)}m
+                      L = {L.toFixed(2)}{config.longitud}
                     </text>
                   </g>
                 )
@@ -686,7 +770,7 @@ export default function DobleIntegracion() {
             </div>
           )}
 
-          <PanelReacciones reacciones={resultadoLive?.reacciones ?? null} titulo="REACCIONES (EN VIVO)" />
+          <PanelReacciones reacciones={reaccionesDisplay} titulo="REACCIONES (EN VIVO)" unidadFuerza={config.fuerza} unidadMomento={config.momento} />
 
           {resultadoLive && rotulas.length > 0 && (
             <div className="bg-white border border-gray-200 rounded-xl p-5">
@@ -694,9 +778,9 @@ export default function DobleIntegracion() {
               <div className="grid grid-cols-3 gap-3">
                 {rotulas.map((r) => (
                   <div key={r.id} className="p-3 rounded-lg bg-indigo-50 border-l-4 border-indigo-500">
-                    <div className="text-xs text-indigo-500">Rótula {r.id} (x = {r.x} m)</div>
-                    <div className="text-sm font-bold text-indigo-800">M = 0 kN·m (por definición)</div>
-                    <div className="text-sm font-bold text-indigo-800">V interno = {resultadoLive.V(r.x).toFixed(3)} kN</div>
+                    <div className="text-xs text-indigo-500">Rótula {r.id} (x = {r.x} {config.longitud})</div>
+                    <div className="text-sm font-bold text-indigo-800">M = 0 {config.momento} (por definición)</div>
+                    <div className="text-sm font-bold text-indigo-800">V interno = {deBaseFuerza(resultadoLive.V(aBaseLongitud(r.x))).toFixed(3)} {config.fuerza}</div>
                     <div className="text-xs text-indigo-400 mt-1">Fuerza axial (horizontal) interna: no calculada — este módulo resuelve solo flexión, no fuerza axial distribuida.</div>
                   </div>
                 ))}
@@ -712,43 +796,60 @@ export default function DobleIntegracion() {
             <>
               <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">DESARROLLO POR TRAMOS — COMPATIBILIDAD COMPLETA</div>
-                <div className="text-sm mb-3"><Formula tex={`EI \\cdot v''(x) = M(x)`} block /></div>
+                <div className="text-sm mb-1"><Formula tex={`EI \\cdot v''(x) = M(x)`} block /></div>
+                <div className="text-xs text-gray-400 mb-3">
+                  EI = {(EI * deBaseMomento(1) * deBaseLongitud(1)).toFixed(3)} {config.momento}·{config.longitud} &nbsp;(x en {config.longitud})
+                </div>
                 <div className="space-y-4">
-                  {tramos.map((t, i) => (
-                    <div key={i} className="p-4 bg-gray-50 rounded-lg space-y-2">
-                      <div className="text-xs font-semibold text-gray-500">
-                        Tramo {i + 1}: {t.inicio.toFixed(2)} m ≤ x ≤ {t.fin.toFixed(2)} m
-                        {rotulas.some((r) => Math.abs(r.x - t.inicio) < 1e-6) && (
-                          <span className="text-blue-600"> — inicia en rótula (M=0)</span>
-                        )}
+                  {tramos.map((t, i) => {
+                    const k = aBaseLongitud(1)
+                    const factorM = deBaseMomento(1)
+                    const factorEITheta = deBaseMomento(1) * deBaseLongitud(1)
+                    const factorEIv = deBaseMomento(1) * Math.pow(deBaseLongitud(1), 2)
+
+                    const polyMDisplay: Poly = t.polyM.map((p) => ({ power: p.power, coef: p.coef * Math.pow(k, p.power) * factorM }))
+                    const polyThetaDisplay: Poly = t.polyTheta.map((p) => ({ power: p.power, coef: p.coef * Math.pow(k, p.power) * factorEITheta }))
+                    const cThetaDisplay = t.cTheta * factorEITheta
+                    const polyVCompleto = t.polyV.concat([{ power: 1, coef: t.cTheta }])
+                    const polyVDisplay: Poly = polyVCompleto.map((p) => ({ power: p.power, coef: p.coef * Math.pow(k, p.power) * factorEIv }))
+                    const cVDisplay = t.cV * factorEIv
+
+                    return (
+                      <div key={i} className="p-4 bg-gray-50 rounded-lg space-y-2">
+                        <div className="text-xs font-semibold text-gray-500">
+                          Tramo {i + 1}: {deBaseLongitud(t.inicio).toFixed(2)} {config.longitud} ≤ x ≤ {deBaseLongitud(t.fin).toFixed(2)} {config.longitud}
+                          {rotulas.some((r) => Math.abs(r.x - deBaseLongitud(t.inicio)) < 1e-6) && (
+                            <span className="text-blue-600"> — inicia en rótula (M=0)</span>
+                          )}
+                        </div>
+                        <div className="text-sm"><Formula tex={`M(x) = ${polyALatex(polyMDisplay)}`} block /></div>
+                        <div className="text-sm"><Formula tex={`EI \\cdot \\theta(x) = ${polyALatex(polyThetaDisplay, { nombre: t.nombreCTheta, valor: cThetaDisplay })}`} block /></div>
+                        <div className="text-sm"><Formula tex={`EI \\cdot v(x) = ${polyALatex(polyVDisplay, { nombre: t.nombreCV, valor: cVDisplay })}`} block /></div>
+                        <div className="text-xs text-gray-400">
+                          <Formula tex={`${t.nombreCTheta} = ${cThetaDisplay.toFixed(4)} \\qquad ${t.nombreCV} = ${cVDisplay.toFixed(4)}`} />
+                        </div>
                       </div>
-                      <div className="text-sm"><Formula tex={`M(x) = ${polyALatex(t.polyM)}`} block /></div>
-                      <div className="text-sm"><Formula tex={`EI \\cdot \\theta(x) = ${polyALatex(t.polyTheta, { nombre: t.nombreCTheta, valor: t.cTheta })}`} block /></div>
-                      <div className="text-sm"><Formula tex={`EI \\cdot v(x) = ${polyALatex(t.polyV.concat([{ power: 1, coef: t.cTheta }]), { nombre: t.nombreCV, valor: t.cV })}`} block /></div>
-                      <div className="text-xs text-gray-400">
-                        <Formula tex={`${t.nombreCTheta} = ${t.cTheta.toFixed(4)} \\qquad ${t.nombreCV} = ${t.cV.toFixed(4)}`} />
-                      </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
 
               <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="text-xs text-gray-400 font-medium tracking-wider mb-1">DIAGRAMA DE MOMENTO FLECTOR</div>
-                <div className="text-xs text-gray-400 mb-2">Máximo: {Math.max(...puntos.map((p) => p.M)).toFixed(3)} kN·m — Mínimo: {Math.min(...puntos.map((p) => p.M)).toFixed(3)} kN·m</div>
-                <GraficoInteractivo datos={puntos.map((p) => ({ x: p.x, y: p.M }))} L={L} color="#2563eb" etiqueta="M(x)" unidad="kN·m" />
+                <div className="text-xs text-gray-400 mb-2">Máximo: {Math.max(...puntos.map((p) => p.M)).toFixed(3)} {config.momento} — Mínimo: {Math.min(...puntos.map((p) => p.M)).toFixed(3)} {config.momento}</div>
+                <GraficoInteractivo datos={puntos.map((p) => ({ x: p.x, y: p.M }))} L={L} color="#2563eb" etiqueta="M(x)" unidad={config.momento} />
               </div>
 
               <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="text-xs text-gray-400 font-medium tracking-wider mb-1">DIAGRAMA DE FUERZA CORTANTE</div>
-                <div className="text-xs text-gray-400 mb-2">Máximo: {Math.max(...puntos.map((p) => p.V)).toFixed(3)} kN — Mínimo: {Math.min(...puntos.map((p) => p.V)).toFixed(3)} kN</div>
-                <GraficoInteractivo datos={puntos.map((p) => ({ x: p.x, y: p.V }))} L={L} color="#f97316" etiqueta="V(x)" unidad="kN" />
+                <div className="text-xs text-gray-400 mb-2">Máximo: {Math.max(...puntos.map((p) => p.V)).toFixed(3)} {config.fuerza} — Mínimo: {Math.min(...puntos.map((p) => p.V)).toFixed(3)} {config.fuerza}</div>
+                <GraficoInteractivo datos={puntos.map((p) => ({ x: p.x, y: p.V }))} L={L} color="#f97316" etiqueta="V(x)" unidad={config.fuerza} />
               </div>
 
               <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="text-xs text-gray-400 font-medium tracking-wider mb-1">DEFLEXIÓN</div>
-                <div className="text-xs text-gray-400 mb-2">Máxima: {Math.max(...puntos.map((p) => p.v)).toFixed(5)} m — Mínima: {Math.min(...puntos.map((p) => p.v)).toFixed(5)} m</div>
-                <GraficoInteractivo datos={puntos.map((p) => ({ x: p.x, y: p.v }))} L={L} color="#64748b" etiqueta="v(x)" unidad="m" />
+                <div className="text-xs text-gray-400 mb-2">Máxima: {Math.max(...puntos.map((p) => p.v)).toFixed(5)} {config.desplazamiento} — Mínima: {Math.min(...puntos.map((p) => p.v)).toFixed(5)} {config.desplazamiento}</div>
+                <GraficoInteractivo datos={puntos.map((p) => ({ x: p.x, y: p.v }))} L={L} color="#64748b" etiqueta="v(x)" unidad={config.desplazamiento} />
               </div>
             </>
           )}
