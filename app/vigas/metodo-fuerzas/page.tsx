@@ -1,7 +1,7 @@
 "use client"
 import { useState, useMemo, useRef, useEffect } from "react"
 import katex from "katex"
-// @ts-ignore: CSS declaration missing for katex styles
+// @ts-ignore: CSS module declaration not provided for KaTeX styles
 import "katex/dist/katex.min.css"
 import Sidebar from "../../components/Sidebar"
 import { Apoyo, Carga, Rotula, TipoApoyo, Termino } from "../../lib/vigas/motor"
@@ -15,6 +15,7 @@ import {
   calcularConstantesIntegracion,
 } from "../../lib/vigas/motorFuerzas"
 import { useUnidadesStore, SistemaUnidades } from "../../store/useUnidadesStore"
+import { useSeccionStore } from "../../store/useSeccionStore"
 import { convertir, factorLongitud } from "../../lib/unidades"
 
 function Formula({ tex, block = false }: { tex: string; block?: boolean }) {
@@ -307,6 +308,15 @@ export default function MetodoFuerzas() {
   const config = useUnidadesStore((s) => s.config)
   const aplicarPreset = useUnidadesStore((s) => s.aplicarPreset)
   const setConfig = useUnidadesStore((s) => s.setConfig)
+  const seccionImportada = useSeccionStore((s) => s.seccion)
+  const limpiarSeccion = useSeccionStore((s) => s.limpiarSeccion)
+  const [mensajeImportacion, setMensajeImportacion] = useState<string | null>(null)
+  const [alertaLongitud, setAlertaLongitud] = useState<string | null>(null)
+  const [sigmaAdmisible, setSigmaAdmisible] = useState(0)
+  const [tauAdmisible, setTauAdmisible] = useState(0)
+  const [moduloSeccion, setModuloSeccion] = useState(0)
+  const [areaSeccion, setAreaSeccion] = useState(0)
+  const [deflexionDenominador, setDeflexionDenominador] = useState(360)
 
   function aBaseLongitud(v: number) { return convertir(v, config.longitud, "m", "longitud") }
   function deBaseLongitud(v: number) { return convertir(v, "m", config.longitud, "longitud") }
@@ -326,8 +336,46 @@ export default function MetodoFuerzas() {
   function aBaseCargaDistribuida(v: number) { return (v * aBaseFuerza(1)) / aBaseLongitud(1) }
   function aBaseResorteLineal(v: number) { return (v * aBaseFuerza(1)) / aBaseDesplazamiento(1) }
   function aBaseResorteRotacional(v: number) { return (v * aBaseMomento(1)) / 1 } // rad ya es base
+  function deBaseEsfuerzo(v: number) { return convertir(v, "MPa", config.esfuerzo, "esfuerzo") }
+  function aBaseModulo(v: number) {
+    const u = config.modulo_resistente.replace("³", "")
+    const f = factorLongitud[u] ?? 1
+    const fCm = factorLongitud["cm"]
+    return (v * Math.pow(f, 3)) / Math.pow(fCm, 3)
+  }
+  function aBaseArea(v: number) {
+    const f = factorLongitud[config.seccion] ?? 1
+    const fCm = factorLongitud["cm"]
+    return (v * Math.pow(f, 2)) / Math.pow(fCm, 2)
+  }
 
   const EI = useMemo(() => aBaseEsfuerzo(E) * aBaseInercia(I) * 1e-5, [E, I, config])
+
+  useEffect(() => {
+    if (seccionImportada) {
+      setI(seccionImportada.Icx)
+      setAreaSeccion(seccionImportada.A)
+      setModuloSeccion(seccionImportada.Sx_bot)
+      setMensajeImportacion(
+        `Sección importada desde Section Builder: "${seccionImportada.nombre}" — I = ${seccionImportada.Icx.toFixed(2)} ${config.inercia}, A = ${seccionImportada.A.toFixed(2)} ${config.seccion}², S = ${seccionImportada.Sx_bot.toFixed(2)} ${config.modulo_resistente}. E no se modificó — ajústalo manualmente si corresponde.`
+      )
+      limpiarSeccion()
+    }
+  }, [seccionImportada])
+
+  function validarX(v: number, etiqueta: string): number {
+    if (v > L) {
+      setAlertaLongitud(`${etiqueta} no puede ser mayor que la longitud de la viga (${L} ${config.longitud}). Se ajustó a ${L}.`)
+      setTimeout(() => setAlertaLongitud(null), 4000)
+      return L
+    }
+    if (v < 0) {
+      setAlertaLongitud(`${etiqueta} no puede ser negativo. Se ajustó a 0.`)
+      setTimeout(() => setAlertaLongitud(null), 4000)
+      return 0
+    }
+    return v
+  }
 
   const [apoyos, setApoyos] = useState<Apoyo[]>([
     { id: "A", x: 0, tipo: "empotrado" },
@@ -499,7 +547,19 @@ export default function MetodoFuerzas() {
               </div>
             </div>
             <div className="mt-2 text-xs text-gray-400">EI = {EI.toFixed(2)} kN·m² (base interna)</div>
+            <div className="flex gap-3 mt-3">
+              <a href="/herramientas/secciones" className="text-xs text-blue-600 hover:underline">
+                Ir a Section Builder para importar una sección →
+              </a>
+            </div>
+            {mensajeImportacion && <div className="text-xs text-gray-500 mt-1">{mensajeImportacion}</div>}
           </div>
+
+          {alertaLongitud && (
+            <div className="bg-amber-50 border border-amber-300 text-amber-800 rounded-xl p-3 text-sm font-medium">
+              ⚠ {alertaLongitud}
+            </div>
+          )}
 
           <div className={`rounded-xl p-4 text-sm font-medium border ${requeridas === redundantesSel.length ? "bg-green-50 border-green-200 text-green-800" : "bg-amber-50 border-amber-200 text-amber-800"}`}>
             Grado de indeterminación: {n} &nbsp;({resortes.length} resorte(s), automáticamente redundantes + {requeridas} a elegir tú) — llevas marcadas {redundantesSel.length}.
@@ -519,7 +579,7 @@ export default function MetodoFuerzas() {
                 return (
                   <div key={a.id} className="grid grid-cols-8 gap-2 items-center bg-gray-50 rounded-lg p-2">
                     <span className="text-xs text-gray-500">{a.id}</span>
-                    <input type="number" value={a.x} onChange={(e) => actualizarApoyo(a.id, { x: Number(e.target.value) })} placeholder={`x (${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
+                    <input type="number" value={a.x} onChange={(e) => actualizarApoyo(a.id, { x: validarX(Number(e.target.value), `La posición del apoyo ${a.id}`) })} placeholder={`x (${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
                     <select value={a.tipo} onChange={(e) => actualizarApoyo(a.id, { tipo: e.target.value as TipoApoyo })} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm col-span-2">
                       {Object.entries(nombresApoyo).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                     </select>
@@ -556,7 +616,7 @@ export default function MetodoFuerzas() {
               {resortes.map((r) => (
                 <div key={r.id} className="grid grid-cols-5 gap-2 items-center bg-gray-50 rounded-lg p-2">
                   <span className="text-xs text-gray-500">{r.id} ({r.tipo})</span>
-                  <input type="number" value={r.x} onChange={(e) => actualizarResorte(r.id, { x: Number(e.target.value) })} placeholder={`x (${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
+                  <input type="number" value={r.x} onChange={(e) => actualizarResorte(r.id, { x: validarX(Number(e.target.value), `La posición del resorte ${r.id}`) })} placeholder={`x (${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
                   <input
                     type="number"
                     value={r.k}
@@ -580,7 +640,7 @@ export default function MetodoFuerzas() {
               {rotulas.map((r) => (
                 <div key={r.id} className="grid grid-cols-6 gap-2 items-center bg-gray-50 rounded-lg p-2">
                   <span className="text-xs text-gray-500">{r.id}</span>
-                  <input type="number" value={r.x} onChange={(e) => actualizarRotula(r.id, Number(e.target.value))} placeholder={`x (${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
+                  <input type="number" value={r.x} onChange={(e) => actualizarRotula(r.id, validarX(Number(e.target.value), `La posición de la rótula ${r.id}`))} placeholder={`x (${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
                   <button onClick={() => borrarRotula(r.id)} className="text-red-500 text-xs hover:underline">Borrar</button>
                 </div>
               ))}
@@ -603,20 +663,20 @@ export default function MetodoFuerzas() {
                   <span className="text-xs text-gray-500 w-16">{c.id}</span>
                   {c.tipo === "puntual" && (
                     <>
-                      <input type="number" value={c.x} onChange={(e) => actualizarCarga(c.id, { x: Number(e.target.value) })} placeholder={`x (${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-24" />
+                      <input type="number" value={c.x} onChange={(e) => actualizarCarga(c.id, { x: validarX(Number(e.target.value), `La posición de la carga ${c.id}`) })} placeholder={`x (${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-24" />
                       <input type="number" value={c.P} onChange={(e) => actualizarCarga(c.id, { P: Number(e.target.value) })} placeholder={`P (${config.fuerza}, ↓+)`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-28" />
                     </>
                   )}
                   {c.tipo === "momento" && (
                     <>
-                      <input type="number" value={c.x} onChange={(e) => actualizarCarga(c.id, { x: Number(e.target.value) })} placeholder={`x (${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-24" />
+                      <input type="number" value={c.x} onChange={(e) => actualizarCarga(c.id, { x: validarX(Number(e.target.value), `La posición de la carga ${c.id}`) })} placeholder={`x (${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-24" />
                       <input type="number" value={c.M} onChange={(e) => actualizarCarga(c.id, { M: Number(e.target.value) })} placeholder={`M (${config.momento}, ↺+)`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-28" />
                     </>
                   )}
                   {c.tipo === "distribuida" && (
                     <>
-                      <input type="number" value={c.xi} onChange={(e) => actualizarCarga(c.id, { xi: Number(e.target.value) })} placeholder={`xi (${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-20" />
-                      <input type="number" value={c.xf} onChange={(e) => actualizarCarga(c.id, { xf: Number(e.target.value) })} placeholder={`xf (${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-20" />
+                      <input type="number" value={c.xi} onChange={(e) => actualizarCarga(c.id, { xi: validarX(Number(e.target.value), `xi de la carga ${c.id}`) })} placeholder={`xi (${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-20" />
+                      <input type="number" value={c.xf} onChange={(e) => actualizarCarga(c.id, { xf: validarX(Number(e.target.value), `xf de la carga ${c.id}`) })} placeholder={`xf (${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-20" />
                       <input type="number" value={c.wi} onChange={(e) => actualizarCarga(c.id, { wi: Number(e.target.value) })} placeholder={`wi (${config.fuerza}/${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-24" />
                       <input type="number" value={c.wf} onChange={(e) => actualizarCarga(c.id, { wf: Number(e.target.value) })} placeholder={`wf (${config.fuerza}/${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-24" />
                     </>
@@ -625,6 +685,135 @@ export default function MetodoFuerzas() {
                 </div>
               ))}
             </div>
+          </div>
+
+          <div className="bg-white border border-gray-200 rounded-xl p-5">
+            <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">ESQUEMA (viga completa, en vivo)</div>
+            <svg viewBox={`0 0 ${anchoSvg} 260`} className="w-full h-64">
+              <line x1={xSvg(0)} y1={yViga} x2={xSvg(L)} y2={yViga} stroke="#1e3a8a" strokeWidth={4} />
+              {apoyos.map((a) => (
+                <g key={a.id}>
+                  {a.tipo === "rodillo" && (
+                    <>
+                      <polygon points={`${xSvg(a.x)},${yViga} ${xSvg(a.x) - 10},${yViga + 18} ${xSvg(a.x) + 10},${yViga + 18}`} fill="#2563eb" />
+                      <circle cx={xSvg(a.x) - 6} cy={yViga + 22} r={3} fill="#2563eb" />
+                      <circle cx={xSvg(a.x) + 6} cy={yViga + 22} r={3} fill="#2563eb" />
+                    </>
+                  )}
+                  {a.tipo === "articulado" && (
+                    <>
+                      <polygon points={`${xSvg(a.x)},${yViga} ${xSvg(a.x) - 10},${yViga + 18} ${xSvg(a.x) + 10},${yViga + 18}`} fill="#7c3aed" />
+                      <circle cx={xSvg(a.x)} cy={yViga} r={3} fill="white" stroke="#7c3aed" strokeWidth={1.5} />
+                    </>
+                  )}
+                  {a.tipo === "empotrado" && <rect x={xSvg(a.x) - 4} y={yViga - 20} width={8} height={40} fill="#1e3a8a" />}
+                  {a.tipo === "guia" && (
+                    <>
+                      <rect x={xSvg(a.x) - 4} y={yViga - 16} width={8} height={32} fill="#94a3b8" />
+                      <line x1={xSvg(a.x) - 12} y1={yViga + 20} x2={xSvg(a.x) + 12} y2={yViga + 20} stroke="#94a3b8" strokeWidth={2} />
+                    </>
+                  )}
+                  <text x={xSvg(a.x)} y={yViga + 34} fontSize={10} textAnchor="middle" fill="#64748b">{a.id}</text>
+                </g>
+              ))}
+              {resortes.map((r) => {
+                const puntas = 5
+                const alto = r.tipo === "vertical" ? 34 : 26
+                const yTope = yViga + alto
+                let path = `M ${xSvg(r.x)} ${yViga}`
+                for (let i = 1; i <= puntas; i++) {
+                  const yI = yViga + (alto / puntas) * i
+                  const xOff = i % 2 === 0 ? -6 : 6
+                  path += ` L ${xSvg(r.x) + xOff} ${yI}`
+                }
+                return (
+                  <g key={r.id}>
+                    {r.tipo === "vertical" ? (
+                      <path d={path} fill="none" stroke="#0891b2" strokeWidth={1.6} />
+                    ) : (
+                      <circle cx={xSvg(r.x)} cy={yViga + 14} r={10} fill="none" stroke="#0891b2" strokeWidth={1.6} strokeDasharray="3,2" />
+                    )}
+                    <text x={xSvg(r.x)} y={yTope + 14} fontSize={9} textAnchor="middle" fill="#0891b2">{r.id} (k)</text>
+                  </g>
+                )
+              })}
+              {rotulas.map((r) => (
+                <g key={r.id}>
+                  <circle cx={xSvg(r.x)} cy={yViga} r={6} fill="white" stroke="#1e3a8a" strokeWidth={2.5} />
+                  <text x={xSvg(r.x)} y={yViga + 22} fontSize={9} textAnchor="middle" fill="#1e3a8a" fontWeight={700}>{r.id} (M=0)</text>
+                </g>
+              ))}
+              {cargas.map((c) => {
+                if (c.tipo === "puntual")
+                  return (
+                    <g key={c.id}>
+                      <line x1={xSvg(c.x)} y1={yViga - 40} x2={xSvg(c.x)} y2={yViga - 4} stroke="#dc2626" strokeWidth={2} markerEnd="url(#flecha)" />
+                      <text x={xSvg(c.x)} y={yViga - 44} fontSize={10} textAnchor="middle" fill="#dc2626">{c.P}{config.fuerza}</text>
+                    </g>
+                  )
+                if (c.tipo === "momento")
+                  return (
+                    <g key={c.id}>
+                      <text x={xSvg(c.x)} y={yViga - 14} fontSize={26} textAnchor="middle" fill="#dc2626">{c.M >= 0 ? "↺" : "↻"}</text>
+                      <text x={xSvg(c.x)} y={yViga - 36} fontSize={10} textAnchor="middle" fill="#dc2626" fontWeight={700}>{Math.abs(c.M)}{config.momento}</text>
+                    </g>
+                  )
+                if (c.tipo === "distribuida") {
+                  const maxW = Math.max(...cargas.filter((cc) => cc.tipo === "distribuida").map((cc: any) => Math.max(cc.wi, cc.wf)), 1)
+                  const alturaMax = 40
+                  const hi = (c.wi / maxW) * alturaMax
+                  const hf = (c.wf / maxW) * alturaMax
+                  return (
+                    <g key={c.id}>
+                      <polygon points={`${xSvg(c.xi)},${yViga - 8 - hi} ${xSvg(c.xf)},${yViga - 8 - hf} ${xSvg(c.xf)},${yViga - 8} ${xSvg(c.xi)},${yViga - 8}`} fill="#fecaca" opacity={0.5} stroke="#dc2626" strokeWidth={1} />
+                      <text x={xSvg(c.xi)} y={yViga - 8 - hi - 4} fontSize={9} textAnchor="middle" fill="#dc2626">{c.wi}</text>
+                      <text x={xSvg(c.xf)} y={yViga - 8 - hf - 4} fontSize={9} textAnchor="middle" fill="#dc2626">{c.wf}</text>
+                    </g>
+                  )
+                }
+                return null
+              })}
+              {(() => {
+                const puntosDim = Array.from(
+                  new Set(
+                    [
+                      0, L,
+                      ...apoyos.map((a) => a.x),
+                      ...rotulas.map((r) => r.x),
+                      ...resortes.map((r) => r.x),
+                      ...cargas.flatMap((c) => (c.tipo === "distribuida" ? [c.xi, c.xf] : [c.x])),
+                    ].map((v) => Number(v.toFixed(6)))
+                  )
+                ).sort((a, b) => a - b)
+                const yCotaLinea = 200
+                const yCotaTexto = 214
+                return (
+                  <g>
+                    <line x1={xSvg(0)} y1={yCotaLinea} x2={xSvg(L)} y2={yCotaLinea} stroke="#cbd5e1" strokeWidth={1} />
+                    {puntosDim.map((p, i) => (
+                      <line key={`tick-${i}`} x1={xSvg(p)} y1={yCotaLinea - 5} x2={xSvg(p)} y2={yCotaLinea + 5} stroke="#94a3b8" strokeWidth={1} />
+                    ))}
+                    {puntosDim.slice(0, -1).map((p, i) => {
+                      const siguiente = puntosDim[i + 1]
+                      const dist = siguiente - p
+                      if (dist < 1e-6) return null
+                      const xMedio = (xSvg(p) + xSvg(siguiente)) / 2
+                      return (
+                        <text key={`cota-${i}`} x={xMedio} y={yCotaTexto} fontSize={9} textAnchor="middle" fill="#64748b">
+                          {dist.toFixed(2)}{config.longitud}
+                        </text>
+                      )
+                    })}
+                    <text x={(xSvg(0) + xSvg(L)) / 2} y={yCotaTexto + 16} fontSize={9} textAnchor="middle" fill="#94a3b8" fontWeight={600}>
+                      L = {L.toFixed(2)}{config.longitud}
+                    </text>
+                  </g>
+                )
+              })()}
+              <defs>
+                <marker id="flecha" markerWidth={8} markerHeight={8} refX={4} refY={4} orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#dc2626" /></marker>
+              </defs>
+            </svg>
           </div>
 
           <button onClick={calcular} className="bg-blue-700 text-white px-5 py-2.5 rounded-lg text-sm hover:bg-blue-800">Calcular por método de fuerzas</button>
@@ -753,6 +942,87 @@ export default function MetodoFuerzas() {
                     <div className="text-xs text-gray-400 font-medium tracking-wider mb-1">DEFLEXIÓN</div>
                     <div className="text-xs text-gray-400 mb-2">Máxima: {Math.max(...puntos.map((p) => p.v)).toFixed(5)} {config.desplazamiento} — Mínima: {Math.min(...puntos.map((p) => p.v)).toFixed(5)} {config.desplazamiento}</div>
                     <GraficoInteractivo datos={puntos.map((p) => ({ x: p.x, y: p.v }))} L={L} color="#64748b" etiqueta="v(x)" unidad={config.desplazamiento} unidadLongitud={config.longitud} />
+                  </div>
+
+                  <div className="bg-white border border-gray-200 rounded-xl p-5">
+                    <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">CONDICIONES DE DISEÑO</div>
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+                      <div>
+                        <label className="text-xs text-gray-500">σ admisible tracción/compresión ({config.esfuerzo})</label>
+                        <input type="number" value={sigmaAdmisible} onChange={(e) => setSigmaAdmisible(Number(e.target.value))} className="w-full mt-1 border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500">τ admisible corte ({config.esfuerzo})</label>
+                        <input type="number" value={tauAdmisible} onChange={(e) => setTauAdmisible(Number(e.target.value))} className="w-full mt-1 border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500">S, módulo de sección ({config.modulo_resistente})</label>
+                        <input type="number" value={moduloSeccion} onChange={(e) => setModuloSeccion(Number(e.target.value))} className="w-full mt-1 border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500">A, área de la sección ({config.seccion}²)</label>
+                        <input type="number" value={areaSeccion} onChange={(e) => setAreaSeccion(Number(e.target.value))} className="w-full mt-1 border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500">Deflexión máx. permitida: L /</label>
+                        <input type="number" value={deflexionDenominador} onChange={(e) => setDeflexionDenominador(Number(e.target.value))} className="w-full mt-1 border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      {(() => {
+                        const MmaxBase = aBaseMomento(Math.max(...puntos.map((p) => Math.abs(p.M))))
+                        const VmaxBase = aBaseFuerza(Math.max(...puntos.map((p) => Math.abs(p.V))))
+                        const vmaxBase = aBaseDesplazamiento(Math.max(...puntos.map((p) => Math.abs(p.v))))
+                        const Sbase = aBaseModulo(moduloSeccion)
+                        const Abase = aBaseArea(areaSeccion)
+                        const sigmaAdmBase = aBaseEsfuerzo(sigmaAdmisible)
+                        const tauAdmBase = aBaseEsfuerzo(tauAdmisible)
+
+                        const sigmaCalcMPa = Sbase > 0 ? (MmaxBase / Sbase) * 1000 : null
+                        const tauCalcMPa = Abase > 0 ? (VmaxBase / Abase) * 10 : null
+                        const deflexionPermitidaBase = deflexionDenominador > 0 ? aBaseLongitud(L) / deflexionDenominador : null
+
+                        const chequeoSigma = sigmaCalcMPa !== null && sigmaAdmBase > 0 ? sigmaCalcMPa <= sigmaAdmBase : null
+                        const chequeoTau = tauCalcMPa !== null && tauAdmBase > 0 ? tauCalcMPa <= tauAdmBase : null
+                        const chequeoDefl = deflexionPermitidaBase !== null ? vmaxBase <= deflexionPermitidaBase : null
+
+                        function Tarjeta({ titulo, ok, detalle }: { titulo: string; ok: boolean | null; detalle: string }) {
+                          return (
+                            <div className={`p-3 rounded-lg border-l-4 ${ok === null ? "bg-gray-50 border-gray-300" : ok ? "bg-green-50 border-green-500" : "bg-red-50 border-red-500"}`}>
+                              <div className="text-xs text-gray-500">{titulo}</div>
+                              <div className={`text-sm font-bold ${ok === null ? "text-gray-500" : ok ? "text-green-700" : "text-red-700"}`}>
+                                {ok === null ? "Sin datos" : ok ? "✓ Cumple" : "✗ No cumple"}
+                              </div>
+                              <div className="text-xs text-gray-400 mt-1">{detalle}</div>
+                            </div>
+                          )
+                        }
+
+                        return (
+                          <>
+                            <Tarjeta
+                              titulo="Esfuerzo por flexión"
+                              ok={chequeoSigma}
+                              detalle={sigmaCalcMPa !== null ? `σ = ${deBaseEsfuerzo(sigmaCalcMPa).toFixed(2)} ${config.esfuerzo} (adm. ${sigmaAdmisible} ${config.esfuerzo})` : "Ingresa S para calcular"}
+                            />
+                            <Tarjeta
+                              titulo="Esfuerzo cortante"
+                              ok={chequeoTau}
+                              detalle={tauCalcMPa !== null ? `τ = ${deBaseEsfuerzo(tauCalcMPa).toFixed(2)} ${config.esfuerzo} (adm. ${tauAdmisible} ${config.esfuerzo})` : "Ingresa A para calcular"}
+                            />
+                            <Tarjeta
+                              titulo="Deflexión máxima"
+                              ok={chequeoDefl}
+                              detalle={
+                                deflexionPermitidaBase !== null
+                                  ? `δ = ${deBaseDesplazamiento(vmaxBase).toFixed(4)} ${config.desplazamiento} (límite L/${deflexionDenominador} = ${deBaseDesplazamiento(deflexionPermitidaBase).toFixed(4)} ${config.desplazamiento})`
+                                  : "Ingresa denominador"
+                              }
+                            />
+                          </>
+                        )
+                      })()}
+                    </div>
                   </div>
                 </>
               )}
