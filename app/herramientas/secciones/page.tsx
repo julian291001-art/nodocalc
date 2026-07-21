@@ -1088,7 +1088,7 @@ export default function SectionBuilder() {
                 <div className="bg-white border border-gray-200 rounded-xl p-5">
                   <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">CARGAR EN MÓDULO</div>
                   <div className="flex flex-wrap gap-2">
-                    {[{ key: "vigas/doble-integracion", label: "Vigas — Doble integración" }, { key: "porticos", label: "Pórticos" }, { key: "armaduras", label: "Armaduras" }, { key: "matricial", label: "Método Matricial" }, { key: "pandeo", label: "Pandeo" }, { key: "diseno", label: "Diseño Estructural" }].map(mod => (
+                    {[{ key: "vigas/doble-integracion", label: "Vigas — Doble integración" }, { key: "vigas/ecuaciones-singularidad", label: "Vigas — Ecuaciones de singularidad" }, { key: "porticos", label: "Pórticos" }, { key: "armaduras", label: "Armaduras" }, { key: "matricial", label: "Método Matricial" }, { key: "pandeo", label: "Pandeo" }, { key: "diseno", label: "Diseño Estructural" }].map(mod => (
                       <button key={mod.key} onClick={() => cargarEnModulo(mod.key)} className="text-xs bg-blue-700 text-white px-3 py-1.5 rounded-lg hover:bg-blue-800">→ {mod.label}</button>
                     ))}
                   </div>
