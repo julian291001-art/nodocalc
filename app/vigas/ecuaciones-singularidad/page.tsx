@@ -1,8 +1,6 @@
 "use client"
 import { useState, useMemo, useRef, useEffect } from "react"
 import katex from "katex"
-// @ts-ignore: CSS module without type declarations
-import "katex/dist/katex.min.css"
 import Sidebar from "../../components/Sidebar"
 import { resolverViga, Apoyo, Carga, Rotula, ResultadoViga, TipoApoyo, Termino } from "../../lib/vigas/motor"
 import { useUnidadesStore, SistemaUnidades } from "../../store/useUnidadesStore"
@@ -179,7 +177,7 @@ function macaulayALatex(terminos: Termino[]): string {
   terminos.forEach((t, i) => {
     const signo = t.coef >= 0 ? (i === 0 ? "" : "+") : "-"
     const abs = Math.abs(t.coef).toFixed(4)
-    const bracket = Math.abs(t.x0) < 1e-9 ? `\langle x \rangle^{${t.power}}` : `\langle x - ${t.x0.toFixed(2)} \rangle^{${t.power}}`
+    const bracket = Math.abs(t.x0) < 1e-9 ? `\\langle x \\rangle^{${t.power}}` : `\\langle x - ${t.x0.toFixed(2)} \\rangle^{${t.power}}`
     expr += ` ${signo} ${abs}${bracket}`
   })
   expr = expr.trim()
