@@ -33,29 +33,10 @@ import {
   TipoApoyo,
   Termino,
   resolverViga,
+  evalTerminos,
+  integrarTermino,
+  resolverSistemaLineal,
 } from "./motor"
-
-function resolverSistemaLineal(A: number[][], b: number[]): number[] {
-  const n = A.length
-  const M = A.map((fila, i) => [...fila, b[i]])
-
-  for (let col = 0; col < n; col++) {
-    let pivote = col
-    for (let f = col + 1; f < n; f++) {
-      if (Math.abs(M[f][col]) > Math.abs(M[pivote][col])) pivote = f
-    }
-    if (Math.abs(M[pivote][col]) < 1e-10) continue
-    ;[M[col], M[pivote]] = [M[pivote], M[col]]
-
-    for (let f = 0; f < n; f++) {
-      if (f === col) continue
-      const factor = M[f][col] / M[col][col]
-      for (let c = col; c <= n; c++) M[f][c] -= factor * M[col][c]
-    }
-  }
-
-  return M.map((fila, i) => fila[n] / fila[i])
-}
 
 export interface Resorte {
   id: string
@@ -110,15 +91,6 @@ function contarActivos(apoyos: Apoyo[]) {
   return { numFy, numM }
 }
 
-function evalTerminos(terminos: Termino[], x: number): number {
-  return terminos.reduce((acc, t) => {
-    const d = x - t.x0
-    if (d < 0) return acc
-    if (t.power === 0) return acc + t.coef
-    return acc + t.coef * Math.pow(d, t.power)
-  }, 0)
-}
-
 export function gradoIndeterminacion(apoyos: Apoyo[], rotulas: Rotula[], resortes: Resorte[]): number {
   const { numFy, numM } = contarActivos(apoyos)
   const r = numFy + numM + resortes.length
@@ -126,7 +98,7 @@ export function gradoIndeterminacion(apoyos: Apoyo[], rotulas: Rotula[], resorte
 }
 
 // Rebaja el tipo de un apoyo segun que componentes queden activas (no redundantes).
-function tipoRebajado(tipoOriginal: TipoApoyo, tieneFy: boolean, tieneM: boolean): TipoApoyo {
+export function tipoRebajado(tipoOriginal: TipoApoyo, tieneFy: boolean, tieneM: boolean): TipoApoyo {
   if (tipoOriginal === "libre") return "libre"
   if (tipoOriginal === "guia") return tieneM ? "guia" : "libre"
   if (tipoOriginal === "rodillo") return tieneFy ? "rodillo" : "libre"
@@ -341,4 +313,88 @@ export function resolverPorFuerzas(
     reacciones,
     EI,
   }
+}
+
+// ── Constantes de integracion para theta(x) y v(x) del resultado final ─────
+// Una vez superpuesto M(x) (ya incluye TODAS las reacciones, redundantes y
+// no redundantes), faltan las constantes C1, C2 y un salto dC1 por cada
+// rotula (igual que en motor.ts). Como M(x) ya es el definitivo, esto se
+// resuelve con un sistema chico (2 + numRotulas incognitas) usando las
+// mismas condiciones de borde originales de la viga.
+export interface ConstantesIntegracion {
+  C1: number
+  C2: number
+  dC1PorRotula: Record<string, number>
+  theta: (x: number) => number
+  v: (x: number) => number
+}
+
+export function calcularConstantesIntegracion(
+  L: number,
+  apoyosOriginales: Apoyo[],
+  rotulas: Rotula[],
+  terminosM: Termino[],
+  EI: number
+): ConstantesIntegracion {
+  const apoyosOrdenados = [...apoyosOriginales].sort((a, b) => a.x - b.x)
+  const rotulasOrdenadas = [...rotulas].sort((a, b) => a.x - b.x)
+
+  const terminosThetaEI = terminosM.map(integrarTermino)
+  const terminosVEI = terminosThetaEI.map(integrarTermino)
+
+  type Incog = { tipo: "C1" | "C2" | "dC1"; rotulaId?: string }
+  const incognitas: Incog[] = [{ tipo: "C1" }, { tipo: "C2" }, ...rotulasOrdenadas.map((r) => ({ tipo: "dC1" as const, rotulaId: r.id }))]
+  const nInc = incognitas.length
+
+  function filaEnX(x: number, esTheta: boolean): number[] {
+    return incognitas.map((inc) => {
+      if (inc.tipo === "C1") return esTheta ? 1 : x
+      if (inc.tipo === "C2") return esTheta ? 0 : 1
+      const r = rotulasOrdenadas.find((rr) => rr.id === inc.rotulaId)!
+      if (x < r.x) return 0
+      return esTheta ? 1 : x - r.x
+    })
+  }
+
+  const filas: number[][] = []
+  const bs: number[] = []
+  for (const ap of apoyosOrdenados) {
+    const activo = ap.tipo === "rodillo" || ap.tipo === "articulado" || ap.tipo === "empotrado"
+    if (activo) {
+      filas.push(filaEnX(ap.x, false))
+      bs.push((ap.asentamiento ?? 0) * EI - evalTerminos(terminosVEI, ap.x))
+    }
+    const activoM = ap.tipo === "empotrado" || ap.tipo === "guia"
+    if (activoM) {
+      filas.push(filaEnX(ap.x, true))
+      bs.push((ap.giroImpuesto ?? 0) * EI - evalTerminos(terminosThetaEI, ap.x))
+    }
+    if (filas.length >= nInc) break
+  }
+
+  const filasFinal = filas.slice(0, nInc)
+  const bsFinal = bs.slice(0, nInc)
+  const solucion = filasFinal.length === nInc ? resolverSistemaLineal(filasFinal, bsFinal) : new Array(nInc).fill(0)
+
+  let C1 = 0
+  let C2 = 0
+  const dC1PorRotula: Record<string, number> = {}
+  incognitas.forEach((inc, i) => {
+    if (inc.tipo === "C1") C1 = solucion[i]
+    else if (inc.tipo === "C2") C2 = solucion[i]
+    else if (inc.rotulaId) dC1PorRotula[inc.rotulaId] = solucion[i]
+  })
+
+  function theta(x: number): number {
+    let acumulado = C1
+    for (const r of rotulasOrdenadas) if (x >= r.x) acumulado += dC1PorRotula[r.id] ?? 0
+    return (evalTerminos(terminosThetaEI, x) + acumulado) / EI
+  }
+  function v(x: number): number {
+    let extra = C1 * x + C2
+    for (const r of rotulasOrdenadas) if (x >= r.x) extra += (dC1PorRotula[r.id] ?? 0) * (x - r.x)
+    return (evalTerminos(terminosVEI, x) + extra) / EI
+  }
+
+  return { C1, C2, dC1PorRotula, theta, v }
 }

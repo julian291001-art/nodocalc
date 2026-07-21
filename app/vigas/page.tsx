@@ -22,7 +22,7 @@ export default function Vigas() {
           <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">MÉTODOS DE LA FUERZA</div>
           <div className="grid grid-cols-2 gap-4 mb-6">
             <MetodoCard nombre="Tres Momentos (Clapeyron)" desc="Análisis de vigas continuas con apoyos simples mediante la ecuación de tres momentos." tag="Fuerzas" />
-            <MetodoCard nombre="Método de las fuerzas" desc="Compatibilidad de deformaciones para estructuras hiperestáticas." tag="Fuerzas" />
+            <a href="/vigas/metodo-fuerzas"><MetodoCard nombre="Método de las fuerzas" desc="Compatibilidad de deformaciones para estructuras hiperestáticas." tag="Fuerzas" /></a>
             <MetodoCard nombre="Trabajo virtual" desc="Principio de trabajos virtuales para cálculo de deflexiones y reacciones." tag="Energía" />
             <MetodoCard nombre="Teorema de Castigliano" desc="Derivada de la energía de deformación respecto a una fuerza generalizada." tag="Energía" />
             <MetodoCard nombre="Trabajo real de deformación" desc="Energía de deformación total almacenada en la viga bajo carga." tag="Energía" />
