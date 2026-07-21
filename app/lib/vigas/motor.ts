@@ -31,19 +31,19 @@ export interface Termino {
   x0: number
 }
 
-function evalTermino(t: Termino, x: number): number {
+export function evalTermino(t: Termino, x: number): number {
   const d = x - t.x0
   if (d < 0) return 0
   if (t.power === 0) return d >= 0 ? t.coef : 0
   return t.coef * Math.pow(d, t.power)
 }
 
-function integrarTermino(t: Termino): Termino {
+export function integrarTermino(t: Termino): Termino {
   const nuevaPower = t.power + 1
   return { coef: t.coef / nuevaPower, power: nuevaPower, x0: t.x0 }
 }
 
-function evalTerminos(terminos: Termino[], x: number): number {
+export function evalTerminos(terminos: Termino[], x: number): number {
   return terminos.reduce((acc, t) => acc + evalTermino(t, x), 0)
 }
 
@@ -110,15 +110,11 @@ function verificarEstabilidad(apoyos: Apoyo[], rotulas: Rotula[], hayCargaHorizo
   }
   const c = rotulas.length
 
-  // IMPORTANTE: el grado de indeterminacion relevante para el problema de
-  // FLEXION solo debe contar Fy y M (las reacciones horizontales Fx no
-  // aportan nada a la flexion vertical; se resuelven aparte via ΣFx=0).
-  // r/dsi "totales" (incluyendo Fx) se calculan solo para fines informativos.
   const rFlexion = numFy + numM
-  const dsiFlexion = rFlexion - 2 - c // solo ΣFy y ΣM son relevantes aqui
+  const dsiFlexion = rFlexion - 2 - c
 
   const r = numFy + numFx + numM
-  const dsi = r - 3 - c // informativo (equilibrio global completo, incluye Fx)
+  const dsi = r - 3 - c
 
   const advertencias: string[] = []
   if (numFy === 0) advertencias.push("Ningún apoyo restringe el desplazamiento vertical: la viga es un mecanismo.")
@@ -127,11 +123,7 @@ function verificarEstabilidad(apoyos: Apoyo[], rotulas: Rotula[], hayCargaHorizo
   if (numFx > 1)
     advertencias.push("Más de un apoyo restringe el desplazamiento horizontal: el sistema queda horizontalmente indeterminado (Rx no se calcula automáticamente en ese caso).")
 
-  // Inestabilidad de flexion: no depende de Fx (ver arriba).
   const inestableFlexion = numFy === 0 || dsiFlexion < 0
-  // Inestabilidad horizontal REAL bajo la carga dada: si hay carga horizontal
-  // y NINGUN apoyo la restringe, la viga literalmente se desliza — esto SI
-  // debe bloquear el calculo (no es solo informativo).
   const inestableHorizontal = hayCargaHorizontal && numFx === 0
 
   const esEstable = !inestableFlexion && !inestableHorizontal
@@ -170,7 +162,7 @@ export interface ResultadoViga {
   estabilidad: ResultadoEstabilidad
 }
 
-function resolverSistemaLineal(A: number[][], b: number[]): number[] {
+export function resolverSistemaLineal(A: number[][], b: number[]): number[] {
   const n = A.length
   const M = A.map((fila, i) => [...fila, b[i]])
 
@@ -366,9 +358,6 @@ export function resolverViga(
     }
   })
 
-  // Reaccion horizontal (Fx): solo se resuelve automaticamente si hay
-  // exactamente UN apoyo que restringe horizontal (articulado o empotrado).
-  // Con 0 o 2+, ya se avisó en "estabilidad.advertencias" y no se asigna.
   if (estabilidad.numFx === 1) {
     let sumaHorizontal = 0
     for (const c of cargas) {
