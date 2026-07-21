@@ -34,8 +34,8 @@ import {
   Termino,
   resolverViga,
   evalTerminos,
-  integrarTermino,
   resolverSistemaLineal,
+  integrarTermino,
 } from "./motor"
 
 export interface Resorte {
