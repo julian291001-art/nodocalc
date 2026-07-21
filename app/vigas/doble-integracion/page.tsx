@@ -1,7 +1,7 @@
 "use client"
 import { useState, useMemo, useRef, useEffect } from "react"
 import katex from "katex"
-// @ts-ignore: allow importing katex css without type declarations
+// @ts-ignore: allow side-effect CSS import for KaTeX styles
 import "katex/dist/katex.min.css"
 import Sidebar from "../../components/Sidebar"
 import { resolverViga, Apoyo, Carga, Rotula, ResultadoViga, TipoApoyo, Termino } from "../../lib/vigas/motor"
@@ -271,6 +271,9 @@ export default function DobleIntegracion() {
   const seccionImportada = useSeccionStore((s) => s.seccion)
   const limpiarSeccion = useSeccionStore((s) => s.limpiarSeccion)
 
+  // Conversion entre las unidades elegidas por el usuario y las unidades
+  // base internas del motor (m, kN, kN/m, kN·m, MPa, cm4) -- el motor
+  // siempre calcula en esta base fija; solo se convierte en la entrada/salida.
   function aBaseLongitud(v: number) { return convertir(v, config.longitud, "m", "longitud") }
   function deBaseLongitud(v: number) { return convertir(v, "m", config.longitud, "longitud") }
   function aBaseFuerza(v: number) { return convertir(v, config.fuerza, "kN", "fuerza") }
@@ -304,21 +307,49 @@ export default function DobleIntegracion() {
   const EI = useMemo(() => aBaseEsfuerzo(E) * aBaseInercia(I) * 1e-5, [E, I, config])
   const [mensajeImportacion, setMensajeImportacion] = useState<string | null>(null)
 
+  // Al volver de Section Builder, si hay una seccion esperando en el store
+  // compartido, se aplica automaticamente a I. Como ambas paginas leen el
+  // mismo useUnidadesStore, Icx ya viene expresado en las unidades de
+  // "config.inercia" actuales -- no hace falta convertir.
   useEffect(() => {
     if (seccionImportada) {
       setI(seccionImportada.Icx)
+      setAreaSeccion(seccionImportada.A)
+      // Para el chequeo de esfuerzo se usa el modulo resistente inferior
+      // (Sx_bot), tipicamente el mas critico en flexion positiva. Si Sx_top
+      // es menor (seccion asimetrica), se podria preferir ese; se deja
+      // Sx_bot por ser el mas comun de reportar.
+      setModuloSeccion(seccionImportada.Sx_bot)
       setMensajeImportacion(
-        `Sección importada desde Section Builder: "${seccionImportada.nombre}" — I = ${seccionImportada.Icx.toFixed(2)} ${config.inercia}. E no se modificó (Section Builder no calcula material) — ajústalo manualmente si corresponde.`
+        `Sección importada desde Section Builder: "${seccionImportada.nombre}" — I = ${seccionImportada.Icx.toFixed(2)} ${config.inercia}, A = ${seccionImportada.A.toFixed(2)} ${config.seccion}², S = ${seccionImportada.Sx_bot.toFixed(2)} ${config.modulo_resistente}. E no se modificó (Section Builder no calcula material) — ajústalo manualmente si corresponde.`
       )
       limpiarSeccion()
     }
   }, [seccionImportada])
 
+  // Condiciones de diseño (opcional): el usuario define admisibles y se comparan en vivo.
   const [sigmaAdmisible, setSigmaAdmisible] = useState(0)
   const [tauAdmisible, setTauAdmisible] = useState(0)
   const [moduloSeccion, setModuloSeccion] = useState(0)
   const [areaSeccion, setAreaSeccion] = useState(0)
   const [deflexionDenominador, setDeflexionDenominador] = useState(360)
+  const [alertaLongitud, setAlertaLongitud] = useState<string | null>(null)
+
+  // Valida que una posicion x este dentro de [0, L]; si no, la recorta y
+  // muestra una alerta temporal.
+  function validarX(v: number, etiqueta: string): number {
+    if (v > L) {
+      setAlertaLongitud(`${etiqueta} no puede ser mayor que la longitud de la viga (${L} ${config.longitud}). Se ajustó a ${L}.`)
+      setTimeout(() => setAlertaLongitud(null), 4000)
+      return L
+    }
+    if (v < 0) {
+      setAlertaLongitud(`${etiqueta} no puede ser negativo. Se ajustó a 0.`)
+      setTimeout(() => setAlertaLongitud(null), 4000)
+      return 0
+    }
+    return v
+  }
 
   const [apoyos, setApoyos] = useState<Apoyo[]>([
     { id: "A", x: 0, tipo: "articulado" },
@@ -330,6 +361,7 @@ export default function DobleIntegracion() {
   const [resultado, setResultado] = useState<ResultadoViga | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  // Datos convertidos a unidades base internas (m, kN, kN/m, kN·m) para el motor.
   const datosBase = useMemo(() => {
     const Lb = aBaseLongitud(L)
     const apoyosB: Apoyo[] = apoyos.map((a) => ({
@@ -355,6 +387,7 @@ export default function DobleIntegracion() {
   }, [datosBase])
   const resultadoLiveInfo = resultadoLive
 
+  // Reacciones convertidas a las unidades elegidas por el usuario, para mostrar.
   const reaccionesDisplay = useMemo(() => {
     if (!resultadoLive) return null
     const out: ResultadoViga["reacciones"] = {}
@@ -368,6 +401,10 @@ export default function DobleIntegracion() {
     return out
   }, [resultadoLive, config])
 
+  // Reconversion real de los valores ya ingresados cuando el usuario cambia
+  // de sistema de unidades (o de una unidad individual): en vez de re-
+  // interpretar el mismo numero bajo la nueva unidad, se convierte el
+  // valor fisico real.
   const prevConfigRef = useRef(config)
   useEffect(() => {
     const prev = prevConfigRef.current
@@ -462,6 +499,14 @@ export default function DobleIntegracion() {
   const yViga = 120
   function xSvg(xv: number) { return margen + xv * escala }
 
+  // Muestreo: puntos críticos INTERIORES reciben doble muestra (izq/der).
+  // En x=L usamos SOLO el valor "izquierda" (el que se aproxima desde
+  // dentro de la viga) — es el único físicamente significativo y coincide
+  // exactamente con la ecuación del último tramo. El valor "derecha" en L
+  // mezclaría el salto de la reacción con términos de cierre de cargas que
+  // terminan justo ahí, dando un número sin sentido físico.
+  // Malla en unidades de DISPLAY (lo que el usuario eligio), convirtiendo a
+  // base solo al evaluar M(x)/V(x)/v(x), y el resultado de vuelta a display.
   const puntos = useMemo(() => {
     if (!resultado) return null
     const n = 140
@@ -605,6 +650,12 @@ export default function DobleIntegracion() {
             {mensajeImportacion && <div className="text-xs text-gray-500 mt-1">{mensajeImportacion}</div>}
           </div>
 
+          {alertaLongitud && (
+            <div className="bg-amber-50 border border-amber-300 text-amber-800 rounded-xl p-3 text-sm font-medium">
+              ⚠ {alertaLongitud}
+            </div>
+          )}
+
           <div className="bg-white border border-gray-200 rounded-xl p-5">
             <div className="flex items-center justify-between mb-3">
               <div className="text-xs text-gray-400 font-medium tracking-wider">APOYOS</div>
@@ -614,7 +665,7 @@ export default function DobleIntegracion() {
               {apoyos.map((a) => (
                 <div key={a.id} className="grid grid-cols-6 gap-2 items-center bg-gray-50 rounded-lg p-2">
                   <span className="text-xs text-gray-500">{a.id}</span>
-                  <input type="number" value={a.x} onChange={(e) => actualizarApoyo(a.id, { x: Number(e.target.value) })} placeholder={`x (${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
+                  <input type="number" value={a.x} onChange={(e) => actualizarApoyo(a.id, { x: validarX(Number(e.target.value), `La posición del apoyo ${a.id}`) })} placeholder={`x (${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
                   <select value={a.tipo} onChange={(e) => actualizarApoyo(a.id, { tipo: e.target.value as TipoApoyo })} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm col-span-2">
                     {Object.entries(nombresApoyo).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                   </select>
@@ -634,7 +685,7 @@ export default function DobleIntegracion() {
               {rotulas.map((r) => (
                 <div key={r.id} className="grid grid-cols-6 gap-2 items-center bg-gray-50 rounded-lg p-2">
                   <span className="text-xs text-gray-500">{r.id}</span>
-                  <input type="number" value={r.x} onChange={(e) => actualizarRotula(r.id, Number(e.target.value))} placeholder={`x (${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
+                  <input type="number" value={r.x} onChange={(e) => actualizarRotula(r.id, validarX(Number(e.target.value), `La posición de la rótula ${r.id}`))} placeholder={`x (${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
                   <button onClick={() => borrarRotula(r.id)} className="text-red-500 text-xs hover:underline">Borrar</button>
                 </div>
               ))}
@@ -658,7 +709,7 @@ export default function DobleIntegracion() {
                   {c.tipo === "puntual" && (
                     <>
                       <span className="text-xs">Puntual</span>
-                      <input type="number" value={c.x} onChange={(e) => actualizarCarga(c.id, { x: Number(e.target.value) })} placeholder={`x (${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-24" />
+                      <input type="number" value={c.x} onChange={(e) => actualizarCarga(c.id, { x: validarX(Number(e.target.value), `La posición de la carga ${c.id}`) })} placeholder={`x (${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-24" />
                       <input type="number" value={c.P} onChange={(e) => actualizarCarga(c.id, { P: Number(e.target.value) })} placeholder={`P (${config.fuerza}, ↓+)`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-28" />
                       <input type="number" value={c.angulo ?? 0} onChange={(e) => actualizarCarga(c.id, { angulo: Number(e.target.value) })} placeholder="ángulo (°, 0=vertical)" className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-32" />
                     </>
@@ -666,15 +717,15 @@ export default function DobleIntegracion() {
                   {c.tipo === "momento" && (
                     <>
                       <span className="text-xs">Momento</span>
-                      <input type="number" value={c.x} onChange={(e) => actualizarCarga(c.id, { x: Number(e.target.value) })} placeholder={`x (${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-24" />
+                      <input type="number" value={c.x} onChange={(e) => actualizarCarga(c.id, { x: validarX(Number(e.target.value), `La posición de la carga ${c.id}`) })} placeholder={`x (${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-24" />
                       <input type="number" value={c.M} onChange={(e) => actualizarCarga(c.id, { M: Number(e.target.value) })} placeholder={`M (${config.momento}, ↺+)`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-28" />
                     </>
                   )}
                   {c.tipo === "distribuida" && (
                     <>
                       <span className="text-xs">Distribuida</span>
-                      <input type="number" value={c.xi} onChange={(e) => actualizarCarga(c.id, { xi: Number(e.target.value) })} placeholder={`xi (${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-20" />
-                      <input type="number" value={c.xf} onChange={(e) => actualizarCarga(c.id, { xf: Number(e.target.value) })} placeholder={`xf (${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-20" />
+                      <input type="number" value={c.xi} onChange={(e) => actualizarCarga(c.id, { xi: validarX(Number(e.target.value), `xi de la carga ${c.id}`) })} placeholder={`xi (${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-20" />
+                      <input type="number" value={c.xf} onChange={(e) => actualizarCarga(c.id, { xf: validarX(Number(e.target.value), `xf de la carga ${c.id}`) })} placeholder={`xf (${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-20" />
                       <input type="number" value={c.wi} onChange={(e) => actualizarCarga(c.id, { wi: Number(e.target.value) })} placeholder={`wi (${config.fuerza}/${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-24" />
                       <input type="number" value={c.wf} onChange={(e) => actualizarCarga(c.id, { wf: Number(e.target.value) })} placeholder={`wf (${config.fuerza}/${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-24" />
                     </>
@@ -775,6 +826,7 @@ export default function DobleIntegracion() {
                 return null
               })}
 
+              {/* Flechas de reacción en vivo: verde, debajo de la viga */}
               {reaccionesDisplay && Object.entries(reaccionesDisplay).map(([id, r]) => {
                 const apoyo = apoyos.find((a) => a.id === id)
                 if (!apoyo) return null
@@ -823,6 +875,7 @@ export default function DobleIntegracion() {
                 )
               })}
 
+              {/* Cotas: lineas de acotacion con distancias entre puntos clave */}
               {(() => {
                 const puntosDim = Array.from(
                   new Set(
@@ -850,12 +903,12 @@ export default function DobleIntegracion() {
                       const xMedio = (xSvg(p) + xSvg(siguiente)) / 2
                       return (
                         <text key={`cota-${i}`} x={xMedio} y={yCotaTexto} fontSize={9} textAnchor="middle" fill="#64748b">
-                          {dist.toFixed(2)}m
+                          {dist.toFixed(2)}{config.longitud}
                         </text>
                       )
                     })}
                     <text x={(xSvg(0) + xSvg(L)) / 2} y={yCotaTexto + 16} fontSize={9} textAnchor="middle" fill="#94a3b8" fontWeight={600}>
-                      L = {L.toFixed(2)}m
+                      L = {L.toFixed(2)}{config.longitud}
                     </text>
                   </g>
                 )
@@ -919,10 +972,10 @@ export default function DobleIntegracion() {
                 </div>
                 <div className="space-y-4">
                   {tramos.map((t, i) => {
-                    const k = aBaseLongitud(1)
-                    const factorM = deBaseMomento(1)
-                    const factorEITheta = deBaseMomento(1) * deBaseLongitud(1)
-                    const factorEIv = deBaseMomento(1) * Math.pow(deBaseLongitud(1), 2)
+                    const k = aBaseLongitud(1) // metros por 1 unidad de longitud elegida
+                    const factorM = deBaseMomento(1) // unidad de momento elegida por 1 kN·m
+                    const factorEITheta = deBaseMomento(1) * deBaseLongitud(1) // EI·θ -> [momento·longitud]
+                    const factorEIv = deBaseMomento(1) * Math.pow(deBaseLongitud(1), 2) // EI·v -> [momento·longitud²]
 
                     const polyMDisplay: Poly = t.polyM.map((p) => ({ power: p.power, coef: p.coef * Math.pow(k, p.power) * factorM }))
                     const polyThetaDisplay: Poly = t.polyTheta.map((p) => ({ power: p.power, coef: p.coef * Math.pow(k, p.power) * factorEITheta }))
@@ -1009,8 +1062,8 @@ export default function DobleIntegracion() {
                     const sigmaAdmBase = aBaseEsfuerzo(sigmaAdmisible)
                     const tauAdmBase = aBaseEsfuerzo(tauAdmisible)
 
-                    const sigmaCalcMPa = Sbase > 0 ? (MmaxBase / Sbase) * 1000 : null
-                    const tauCalcMPa = Abase > 0 ? (VmaxBase / Abase) * 10 : null
+                    const sigmaCalcMPa = Sbase > 0 ? (MmaxBase / Sbase) * 1000 : null // kN·m / cm³ -> MPa
+                    const tauCalcMPa = Abase > 0 ? (VmaxBase / Abase) * 10 : null // kN/cm² -> MPa
                     const deflexionPermitidaBase = deflexionDenominador > 0 ? datosBase.Lb / deflexionDenominador : null
 
                     const chequeoSigma = sigmaCalcMPa !== null && sigmaAdmBase > 0 ? sigmaCalcMPa <= sigmaAdmBase : null
