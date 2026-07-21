@@ -1,7 +1,7 @@
 "use client"
 import { useState, useMemo, useRef, useEffect } from "react"
 import katex from "katex"
-// @ts-ignore: CSS module declaration not provided for KaTeX styles
+// @ts-ignore: CSS module declaration missing for KaTeX styles
 import "katex/dist/katex.min.css"
 import Sidebar from "../../components/Sidebar"
 import { Apoyo, Carga, Rotula, TipoApoyo, Termino } from "../../lib/vigas/motor"
@@ -256,18 +256,31 @@ function EsquemaEstado({
             </g>
           )
         if (c.tipo === "distribuida" && c.xi !== undefined && c.xf !== undefined && c.wi !== undefined && c.wf !== undefined) {
-          const maxW = Math.max(c.wi, c.wf, 1)
+          const xi = c.xi
+          const xf = c.xf
+          const wi = c.wi
+          const wf = c.wf
+          const maxW = Math.max(wi, wf, 1)
           const alturaMax = 26
-          const hi = (c.wi / maxW) * alturaMax
-          const hf = (c.wf / maxW) * alturaMax
+          const hi = (wi / maxW) * alturaMax
+          const hf = (wf / maxW) * alturaMax
+          const yTopoIzq = yViga - 6 - hi
+          const yTopoDer = yViga - 6 - hf
+          const numFlechas = Math.max(3, Math.round((xSvg(xf) - xSvg(xi)) / 28))
           return (
             <g key={i}>
               <polygon
-                points={`${xSvg(c.xi)},${yViga - 6 - hi} ${xSvg(c.xf)},${yViga - 6 - hf} ${xSvg(c.xf)},${yViga - 6} ${xSvg(c.xi)},${yViga - 6}`}
+                points={`${xSvg(xi)},${yTopoIzq} ${xSvg(xf)},${yTopoDer} ${xSvg(xf)},${yViga - 6} ${xSvg(xi)},${yViga - 6}`}
                 fill="#fecaca" opacity={0.5} stroke="#dc2626" strokeWidth={1}
               />
-              <text x={xSvg(c.xi)} y={yViga - 6 - hi - 4} fontSize={8} textAnchor="middle" fill="#dc2626">{c.wi}</text>
-              <text x={xSvg(c.xf)} y={yViga - 6 - hf - 4} fontSize={8} textAnchor="middle" fill="#dc2626">{c.wf}</text>
+              {Array.from({ length: numFlechas + 1 }).map((_, j) => {
+                const t = j / numFlechas
+                const xf2 = xSvg(xi) + t * (xSvg(xf) - xSvg(xi))
+                const yTopo = yTopoIzq + t * (yTopoDer - yTopoIzq)
+                return <line key={j} x1={xf2} y1={yTopo} x2={xf2} y2={yViga - 6} stroke="#dc2626" strokeWidth={0.8} markerEnd="url(#flechaMini)" />
+              })}
+              <text x={xSvg(xi)} y={yTopoIzq - 4} fontSize={8} textAnchor="middle" fill="#dc2626">{wi}</text>
+              <text x={xSvg(xf)} y={yTopoDer - 4} fontSize={8} textAnchor="middle" fill="#dc2626">{wf}</text>
             </g>
           )
         }
@@ -547,6 +560,49 @@ export default function MetodoFuerzas() {
               </div>
             </div>
             <div className="mt-2 text-xs text-gray-400">EI = {EI.toFixed(2)} kN·m² (base interna)</div>
+
+            <div className="mt-3 pt-3 border-t border-gray-100">
+              <div className="text-xs text-gray-400 mb-2">Personalizar unidades de este sistema:</div>
+              <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
+                <div>
+                  <label className="text-[10px] text-gray-400">Longitud</label>
+                  <select value={config.longitud} onChange={(e) => setConfig({ ...config, sistema: "personalizado", longitud: e.target.value as any })} className="w-full border border-gray-300 rounded-lg px-1.5 py-1 text-xs">
+                    {["mm", "cm", "m", "in", "ft"].map((u) => <option key={u} value={u}>{u}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] text-gray-400">Fuerza</label>
+                  <select value={config.fuerza} onChange={(e) => setConfig({ ...config, sistema: "personalizado", fuerza: e.target.value as any })} className="w-full border border-gray-300 rounded-lg px-1.5 py-1 text-xs">
+                    {["N", "kN", "kgf", "tf", "lbf", "kip"].map((u) => <option key={u} value={u}>{u}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] text-gray-400">Momento</label>
+                  <select value={config.momento} onChange={(e) => setConfig({ ...config, sistema: "personalizado", momento: e.target.value as any })} className="w-full border border-gray-300 rounded-lg px-1.5 py-1 text-xs">
+                    {["N·m", "kN·m", "kgf·m", "tf·m", "lbf·ft", "kip·ft"].map((u) => <option key={u} value={u}>{u}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] text-gray-400">Esfuerzo</label>
+                  <select value={config.esfuerzo} onChange={(e) => setConfig({ ...config, sistema: "personalizado", esfuerzo: e.target.value as any })} className="w-full border border-gray-300 rounded-lg px-1.5 py-1 text-xs">
+                    {["Pa", "kPa", "MPa", "kgf/cm²", "tf/m²", "psi", "ksi"].map((u) => <option key={u} value={u}>{u}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] text-gray-400">Inercia</label>
+                  <select value={config.inercia} onChange={(e) => setConfig({ ...config, sistema: "personalizado", inercia: e.target.value as any })} className="w-full border border-gray-300 rounded-lg px-1.5 py-1 text-xs">
+                    {["mm⁴", "cm⁴", "m⁴", "in⁴"].map((u) => <option key={u} value={u}>{u}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] text-gray-400">Desplazamiento</label>
+                  <select value={config.desplazamiento} onChange={(e) => setConfig({ ...config, sistema: "personalizado", desplazamiento: e.target.value as any })} className="w-full border border-gray-300 rounded-lg px-1.5 py-1 text-xs">
+                    {["mm", "cm", "m", "in"].map((u) => <option key={u} value={u}>{u}</option>)}
+                  </select>
+                </div>
+              </div>
+            </div>
+
             <div className="flex gap-3 mt-3">
               <a href="/herramientas/secciones" className="text-xs text-blue-600 hover:underline">
                 Ir a Section Builder para importar una sección →
@@ -763,16 +819,60 @@ export default function MetodoFuerzas() {
                   const alturaMax = 40
                   const hi = (c.wi / maxW) * alturaMax
                   const hf = (c.wf / maxW) * alturaMax
+                  const yTopoIzq = yViga - 8 - hi
+                  const yTopoDer = yViga - 8 - hf
+                  const numFlechas = Math.max(3, Math.round((xSvg(c.xf) - xSvg(c.xi)) / 30))
                   return (
                     <g key={c.id}>
-                      <polygon points={`${xSvg(c.xi)},${yViga - 8 - hi} ${xSvg(c.xf)},${yViga - 8 - hf} ${xSvg(c.xf)},${yViga - 8} ${xSvg(c.xi)},${yViga - 8}`} fill="#fecaca" opacity={0.5} stroke="#dc2626" strokeWidth={1} />
-                      <text x={xSvg(c.xi)} y={yViga - 8 - hi - 4} fontSize={9} textAnchor="middle" fill="#dc2626">{c.wi}</text>
-                      <text x={xSvg(c.xf)} y={yViga - 8 - hf - 4} fontSize={9} textAnchor="middle" fill="#dc2626">{c.wf}</text>
+                      <polygon points={`${xSvg(c.xi)},${yTopoIzq} ${xSvg(c.xf)},${yTopoDer} ${xSvg(c.xf)},${yViga - 8} ${xSvg(c.xi)},${yViga - 8}`} fill="#fecaca" opacity={0.5} stroke="#dc2626" strokeWidth={1} />
+                      {Array.from({ length: numFlechas + 1 }).map((_, i) => {
+                        const t = i / numFlechas
+                        const xf2 = xSvg(c.xi) + t * (xSvg(c.xf) - xSvg(c.xi))
+                        const yTopo = yTopoIzq + t * (yTopoDer - yTopoIzq)
+                        return <line key={i} x1={xf2} y1={yTopo} x2={xf2} y2={yViga - 8} stroke="#dc2626" strokeWidth={1} markerEnd="url(#flechaChica)" />
+                      })}
+                      <text x={xSvg(c.xi)} y={yTopoIzq - 4} fontSize={9} textAnchor="middle" fill="#dc2626">{c.wi}</text>
+                      <text x={xSvg(c.xf)} y={yTopoDer - 4} fontSize={9} textAnchor="middle" fill="#dc2626">{c.wf}</text>
                     </g>
                   )
                 }
                 return null
               })}
+
+              {resultado && Object.entries(resultado.reacciones).map(([id, r]) => {
+                const apoyo = apoyos.find((a) => a.id === id)
+                if (!apoyo) return null
+                const xPos = xSvg(apoyo.x)
+                return (
+                  <g key={`reac-${id}`}>
+                    {r.Fy !== undefined && Math.abs(r.Fy) > 1e-6 && (
+                      <>
+                        <line
+                          x1={xPos}
+                          y1={r.Fy >= 0 ? yViga + 64 : yViga + 34}
+                          x2={xPos}
+                          y2={r.Fy >= 0 ? yViga + 34 : yViga + 64}
+                          stroke="#16a34a" strokeWidth={2.6} markerEnd="url(#flechaVerde)"
+                        />
+                        <text x={xPos} y={yViga + 78} fontSize={10} textAnchor="middle" fill="#16a34a" fontWeight={700}>
+                          {Math.abs(deBaseFuerza(r.Fy)).toFixed(1)}{config.fuerza}
+                        </text>
+                      </>
+                    )}
+                    {r.M !== undefined && Math.abs(r.M) > 1e-6 && (
+                      <>
+                        <text x={xPos} y={yViga - 20} fontSize={26} textAnchor="middle" fill="#16a34a">
+                          {r.M >= 0 ? "↺" : "↻"}
+                        </text>
+                        <text x={xPos} y={yViga - 42} fontSize={10} textAnchor="middle" fill="#16a34a" fontWeight={700}>
+                          {Math.abs(deBaseMomento(r.M)).toFixed(1)}{config.momento}
+                        </text>
+                      </>
+                    )}
+                  </g>
+                )
+              })}
+
               {(() => {
                 const puntosDim = Array.from(
                   new Set(
@@ -812,6 +912,8 @@ export default function MetodoFuerzas() {
               })()}
               <defs>
                 <marker id="flecha" markerWidth={8} markerHeight={8} refX={4} refY={4} orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#dc2626" /></marker>
+                <marker id="flechaChica" markerWidth={6} markerHeight={6} refX={3} refY={3} orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#dc2626" /></marker>
+                <marker id="flechaVerde" markerWidth={8} markerHeight={8} refX={4} refY={4} orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#16a34a" /></marker>
               </defs>
             </svg>
           </div>
