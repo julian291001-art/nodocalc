@@ -1,8 +1,8 @@
 "use client"
 import { useState, useMemo, useRef, useEffect } from "react"
 import katex from "katex"
-// @ts-ignore: CSS module declaration missing for KaTeX styles
-import "katex/dist/katex.min.css"
+// @ts-ignore: allow side-effect css import without type declarations
+import "katex/dist/katex.css"
 import Sidebar from "../../components/Sidebar"
 import { Apoyo, Carga, Rotula, TipoApoyo, Termino } from "../../lib/vigas/motor"
 import {
@@ -93,6 +93,15 @@ function tramosDeTerminos(terminosM: Termino[], puntosCriticos: number[]): { ini
     out.push({ inicio, fin, poly: polinomioTramo(terminosM, inicio) })
   }
   return out
+}
+
+// Redondea a 6 decimales para eliminar ruido de punto flotante (valores
+// que deberian ser exactamente cero, o iguales entre si, pero terminan
+// siendo 1e-13/1e-14 por acumulacion de error numerico en la integracion
+// y la eliminacion gaussiana).
+function limpiar(v: number): number {
+  const r = Math.round(v * 1e6) / 1e6
+  return Object.is(r, -0) ? 0 : r
 }
 
 function evaluarMConLado(terminos: Termino[], x: number, incluirBorde: boolean): number {
@@ -256,31 +265,29 @@ function EsquemaEstado({
             </g>
           )
         if (c.tipo === "distribuida" && c.xi !== undefined && c.xf !== undefined && c.wi !== undefined && c.wf !== undefined) {
-          const xi = c.xi
-          const xf = c.xf
-          const wi = c.wi
-          const wf = c.wf
-          const maxW = Math.max(wi, wf, 1)
+          const maxW = Math.max(c.wi, c.wf, 1)
           const alturaMax = 26
-          const hi = (wi / maxW) * alturaMax
-          const hf = (wf / maxW) * alturaMax
+          const hi = (c.wi / maxW) * alturaMax
+          const hf = (c.wf / maxW) * alturaMax
           const yTopoIzq = yViga - 6 - hi
           const yTopoDer = yViga - 6 - hf
-          const numFlechas = Math.max(3, Math.round((xSvg(xf) - xSvg(xi)) / 28))
+          const xiSvg = xSvg(c.xi!)
+          const xfSvg = xSvg(c.xf!)
+          const numFlechas = Math.max(3, Math.round((xfSvg - xiSvg) / 28))
           return (
             <g key={i}>
               <polygon
-                points={`${xSvg(xi)},${yTopoIzq} ${xSvg(xf)},${yTopoDer} ${xSvg(xf)},${yViga - 6} ${xSvg(xi)},${yViga - 6}`}
+                points={`${xiSvg},${yTopoIzq} ${xfSvg},${yTopoDer} ${xfSvg},${yViga - 6} ${xiSvg},${yViga - 6}`}
                 fill="#fecaca" opacity={0.5} stroke="#dc2626" strokeWidth={1}
               />
               {Array.from({ length: numFlechas + 1 }).map((_, j) => {
                 const t = j / numFlechas
-                const xf2 = xSvg(xi) + t * (xSvg(xf) - xSvg(xi))
+                const xf2 = xiSvg + t * (xfSvg - xiSvg)
                 const yTopo = yTopoIzq + t * (yTopoDer - yTopoIzq)
                 return <line key={j} x1={xf2} y1={yTopo} x2={xf2} y2={yViga - 6} stroke="#dc2626" strokeWidth={0.8} markerEnd="url(#flechaMini)" />
               })}
-              <text x={xSvg(xi)} y={yTopoIzq - 4} fontSize={8} textAnchor="middle" fill="#dc2626">{wi}</text>
-              <text x={xSvg(xf)} y={yTopoDer - 4} fontSize={8} textAnchor="middle" fill="#dc2626">{wf}</text>
+              <text x={xiSvg} y={yTopoIzq - 4} fontSize={8} textAnchor="middle" fill="#dc2626">{c.wi}</text>
+              <text x={xfSvg} y={yTopoDer - 4} fontSize={8} textAnchor="middle" fill="#dc2626">{c.wf}</text>
             </g>
           )
         }
@@ -499,12 +506,12 @@ export default function MetodoFuerzas() {
       const esFinal = Math.abs(xvDisplay - L) < 1e-9
       const incluirBorde = !(criticosSet.has(xvDisplay) || esFinal) ? true : false
       if (criticosSet.has(xvDisplay)) {
-        arr.push({ x: xvDisplay, M: deBaseMomento(evaluarMConLado(resultado.terminosM, xvBase, false)), V: deBaseFuerza(evaluarVConLado(resultado.terminosM, xvBase, false)), v: deBaseDesplazamiento(constantesFinal.v(xvBase)), theta: constantesFinal.theta(xvBase) })
-        arr.push({ x: xvDisplay, M: deBaseMomento(evaluarMConLado(resultado.terminosM, xvBase, true)), V: deBaseFuerza(evaluarVConLado(resultado.terminosM, xvBase, true)), v: deBaseDesplazamiento(constantesFinal.v(xvBase)), theta: constantesFinal.theta(xvBase) })
+        arr.push({ x: xvDisplay, M: limpiar(deBaseMomento(evaluarMConLado(resultado.terminosM, xvBase, false))), V: limpiar(deBaseFuerza(evaluarVConLado(resultado.terminosM, xvBase, false))), v: limpiar(deBaseDesplazamiento(constantesFinal.v(xvBase))), theta: limpiar(constantesFinal.theta(xvBase)) })
+        arr.push({ x: xvDisplay, M: limpiar(deBaseMomento(evaluarMConLado(resultado.terminosM, xvBase, true))), V: limpiar(deBaseFuerza(evaluarVConLado(resultado.terminosM, xvBase, true))), v: limpiar(deBaseDesplazamiento(constantesFinal.v(xvBase))), theta: limpiar(constantesFinal.theta(xvBase)) })
       } else if (esFinal) {
-        arr.push({ x: xvDisplay, M: deBaseMomento(evaluarMConLado(resultado.terminosM, xvBase, false)), V: deBaseFuerza(evaluarVConLado(resultado.terminosM, xvBase, false)), v: deBaseDesplazamiento(constantesFinal.v(xvBase)), theta: constantesFinal.theta(xvBase) })
+        arr.push({ x: xvDisplay, M: limpiar(deBaseMomento(evaluarMConLado(resultado.terminosM, xvBase, false))), V: limpiar(deBaseFuerza(evaluarVConLado(resultado.terminosM, xvBase, false))), v: limpiar(deBaseDesplazamiento(constantesFinal.v(xvBase))), theta: limpiar(constantesFinal.theta(xvBase)) })
       } else {
-        arr.push({ x: xvDisplay, M: deBaseMomento(evaluarMConLado(resultado.terminosM, xvBase, true)), V: deBaseFuerza(evaluarVConLado(resultado.terminosM, xvBase, true)), v: deBaseDesplazamiento(constantesFinal.v(xvBase)), theta: constantesFinal.theta(xvBase) })
+        arr.push({ x: xvDisplay, M: limpiar(deBaseMomento(evaluarMConLado(resultado.terminosM, xvBase, true))), V: limpiar(deBaseFuerza(evaluarVConLado(resultado.terminosM, xvBase, true))), v: limpiar(deBaseDesplazamiento(constantesFinal.v(xvBase))), theta: limpiar(constantesFinal.theta(xvBase)) })
       }
     })
     return arr
@@ -1003,7 +1010,7 @@ export default function MetodoFuerzas() {
                     return (
                       <div key={i} className="p-3 rounded-lg bg-purple-50 border-l-4 border-purple-500">
                         <div className="text-xs text-purple-500">X{i + 1}</div>
-                        <div className="text-sm font-bold text-purple-800">{esFy ? deBaseFuerza(x).toFixed(3) + " " + config.fuerza : deBaseMomento(x).toFixed(3) + " " + config.momento}</div>
+                        <div className="text-sm font-bold text-purple-800">{esFy ? limpiar(deBaseFuerza(x)).toFixed(3) + " " + config.fuerza : limpiar(deBaseMomento(x)).toFixed(3) + " " + config.momento}</div>
                       </div>
                     )
                   })}
@@ -1016,8 +1023,8 @@ export default function MetodoFuerzas() {
                   {Object.entries(resultado.reacciones).map(([id, r]) => (
                     <div key={id} className="p-3 rounded-lg bg-blue-50 border-l-4 border-blue-600">
                       <div className="text-xs text-blue-500">{id}</div>
-                      {r.Fy !== undefined && <div className="text-sm font-bold text-blue-800">Fy = {Math.abs(deBaseFuerza(r.Fy)).toFixed(3)} {config.fuerza} {r.Fy >= 0 ? "↑" : "↓"}</div>}
-                      {r.M !== undefined && <div className="text-sm font-bold text-blue-800">M = {Math.abs(deBaseMomento(r.M)).toFixed(3)} {config.momento} {r.M >= 0 ? "↺" : "↻"}</div>}
+                      {r.Fy !== undefined && <div className="text-sm font-bold text-blue-800">Fy = {Math.abs(limpiar(deBaseFuerza(r.Fy))).toFixed(3)} {config.fuerza} {limpiar(r.Fy) >= 0 ? "↑" : "↓"}</div>}
+                      {r.M !== undefined && <div className="text-sm font-bold text-blue-800">M = {Math.abs(limpiar(deBaseMomento(r.M))).toFixed(3)} {config.momento} {limpiar(r.M) >= 0 ? "↺" : "↻"}</div>}
                     </div>
                   ))}
                 </div>

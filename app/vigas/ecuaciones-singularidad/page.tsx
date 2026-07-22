@@ -1,6 +1,8 @@
 "use client"
 import { useState, useMemo, useRef, useEffect } from "react"
 import katex from "katex"
+// @ts-ignore: allow side-effect CSS import without type declarations
+import "katex/dist/katex.min.css"
 import Sidebar from "../../components/Sidebar"
 import { resolverViga, Apoyo, Carga, Rotula, ResultadoViga, TipoApoyo, Termino } from "../../lib/vigas/motor"
 import { useUnidadesStore, SistemaUnidades } from "../../store/useUnidadesStore"
@@ -124,6 +126,14 @@ function calcularTramos(resultado: ResultadoViga, EI: number): DatosTramo[] {
     tramos.push({ inicio, fin, polyM, polyTheta, polyV, cTheta, cV, nombreCTheta, nombreCV })
   }
   return tramos
+}
+
+// Redondea a 6 decimales para eliminar ruido de punto flotante (valores
+// que deberian ser exactamente cero o iguales entre si, pero terminan
+// siendo 1e-13/1e-14 por acumulacion de error numerico).
+function limpiar(v: number): number {
+  const r = Math.round(v * 1e6) / 1e6
+  return Object.is(r, -0) ? 0 : r
 }
 
 function evaluarMConLado(terminos: Termino[], x: number, incluirBorde: boolean): number {
@@ -484,9 +494,9 @@ export default function EcuacionesSingularidad() {
     const out: ResultadoViga["reacciones"] = {}
     Object.entries(resultadoLive.reacciones).forEach(([id, r]) => {
       out[id] = {
-        Fy: r.Fy !== undefined ? deBaseFuerza(r.Fy) : undefined,
-        M: r.M !== undefined ? deBaseMomento(r.M) : undefined,
-        Rx: r.Rx !== undefined ? deBaseFuerza(r.Rx) : undefined,
+        Fy: r.Fy !== undefined ? limpiar(deBaseFuerza(r.Fy)) : undefined,
+        M: r.M !== undefined ? limpiar(deBaseMomento(r.M)) : undefined,
+        Rx: r.Rx !== undefined ? limpiar(deBaseFuerza(r.Rx)) : undefined,
       }
     })
     return out
@@ -615,33 +625,33 @@ export default function EcuacionesSingularidad() {
       if (criticosSet.has(xvDisplay)) {
         arr.push({
           x: xvDisplay,
-          M: deBaseMomento(evaluarMConLado(resultado.terminosM, xvBase, false)),
-          V: deBaseFuerza(evaluarVConLado(resultado.terminosM, xvBase, false)),
-          v: deBaseDesplazamiento(resultado.v(xvBase, EI)),
-          theta: resultado.theta(xvBase, EI),
+          M: limpiar(deBaseMomento(evaluarMConLado(resultado.terminosM, xvBase, false))),
+          V: limpiar(deBaseFuerza(evaluarVConLado(resultado.terminosM, xvBase, false))),
+          v: limpiar(deBaseDesplazamiento(resultado.v(xvBase, EI))),
+          theta: limpiar(resultado.theta(xvBase, EI)),
         })
         arr.push({
           x: xvDisplay,
-          M: deBaseMomento(evaluarMConLado(resultado.terminosM, xvBase, true)),
-          V: deBaseFuerza(evaluarVConLado(resultado.terminosM, xvBase, true)),
-          v: deBaseDesplazamiento(resultado.v(xvBase, EI)),
-          theta: resultado.theta(xvBase, EI),
+          M: limpiar(deBaseMomento(evaluarMConLado(resultado.terminosM, xvBase, true))),
+          V: limpiar(deBaseFuerza(evaluarVConLado(resultado.terminosM, xvBase, true))),
+          v: limpiar(deBaseDesplazamiento(resultado.v(xvBase, EI))),
+          theta: limpiar(resultado.theta(xvBase, EI)),
         })
       } else if (esFinal) {
         arr.push({
           x: xvDisplay,
-          M: deBaseMomento(evaluarMConLado(resultado.terminosM, xvBase, false)),
-          V: deBaseFuerza(evaluarVConLado(resultado.terminosM, xvBase, false)),
-          v: deBaseDesplazamiento(resultado.v(xvBase, EI)),
-          theta: resultado.theta(xvBase, EI),
+          M: limpiar(deBaseMomento(evaluarMConLado(resultado.terminosM, xvBase, false))),
+          V: limpiar(deBaseFuerza(evaluarVConLado(resultado.terminosM, xvBase, false))),
+          v: limpiar(deBaseDesplazamiento(resultado.v(xvBase, EI))),
+          theta: limpiar(resultado.theta(xvBase, EI)),
         })
       } else {
         arr.push({
           x: xvDisplay,
-          M: deBaseMomento(evaluarMConLado(resultado.terminosM, xvBase, true)),
-          V: deBaseFuerza(evaluarVConLado(resultado.terminosM, xvBase, true)),
-          v: deBaseDesplazamiento(resultado.v(xvBase, EI)),
-          theta: resultado.theta(xvBase, EI),
+          M: limpiar(deBaseMomento(evaluarMConLado(resultado.terminosM, xvBase, true))),
+          V: limpiar(deBaseFuerza(evaluarVConLado(resultado.terminosM, xvBase, true))),
+          v: limpiar(deBaseDesplazamiento(resultado.v(xvBase, EI))),
+          theta: limpiar(resultado.theta(xvBase, EI)),
         })
       }
     })
