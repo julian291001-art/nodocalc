@@ -1,8 +1,7 @@
 "use client"
 import { useState, useMemo, useRef, useEffect } from "react"
 import katex from "katex"
-// @ts-ignore: allow side-effect css import without type declarations
-import "katex/dist/katex.css"
+// Load KaTeX CSS at runtime to avoid TypeScript complaints about side-effect CSS imports
 import Sidebar from "../../components/Sidebar"
 import { Apoyo, Carga, Rotula, TipoApoyo, Termino } from "../../lib/vigas/motor"
 import {
@@ -19,6 +18,16 @@ import { useSeccionStore } from "../../store/useSeccionStore"
 import { convertir, factorLongitud } from "../../lib/unidades"
 
 function Formula({ tex, block = false }: { tex: string; block?: boolean }) {
+  useEffect(() => {
+    if (typeof document === "undefined") return
+    if (!document.getElementById("katex-css")) {
+      const link = document.createElement("link")
+      link.id = "katex-css"
+      link.rel = "stylesheet"
+      link.href = "https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css"
+      document.head.appendChild(link)
+    }
+  }, [])
   const html = katex.renderToString(tex, { throwOnError: false, displayMode: block })
   return <span dangerouslySetInnerHTML={{ __html: html }} />
 }
@@ -250,13 +259,21 @@ function EsquemaEstado({
         </g>
       ))}
       {cargas.map((c, i) => {
-        if (c.tipo === "puntual" && c.x !== undefined && c.P !== undefined)
+        if (c.tipo === "puntual" && c.x !== undefined && c.P !== undefined) {
+          const haciaArriba = c.P < 0 // P negativo = carga unitaria hacia arriba (sentido asumido de la reaccion liberada)
           return (
             <g key={i}>
-              <line x1={xSvg(c.x)} y1={yViga - 30} x2={xSvg(c.x)} y2={yViga - 3} stroke="#dc2626" strokeWidth={1.6} markerEnd="url(#flechaMini)" />
-              <text x={xSvg(c.x)} y={yViga - 34} fontSize={9} textAnchor="middle" fill="#dc2626">{c.P < 0 ? `${Math.abs(c.P)}${unidadFuerza}↑` : `${c.P}${unidadFuerza}`}</text>
+              <line
+                x1={xSvg(c.x)}
+                y1={haciaArriba ? yViga - 3 : yViga - 30}
+                x2={xSvg(c.x)}
+                y2={haciaArriba ? yViga - 30 : yViga - 3}
+                stroke="#dc2626" strokeWidth={1.6} markerEnd="url(#flechaMini)"
+              />
+              <text x={xSvg(c.x)} y={yViga - 34} fontSize={9} textAnchor="middle" fill="#dc2626">{haciaArriba ? `${Math.abs(c.P)}${unidadFuerza}↑` : `${c.P}${unidadFuerza}`}</text>
             </g>
           )
+        }
         if (c.tipo === "momento" && c.x !== undefined && c.M !== undefined)
           return (
             <g key={i}>
@@ -271,23 +288,23 @@ function EsquemaEstado({
           const hf = (c.wf / maxW) * alturaMax
           const yTopoIzq = yViga - 6 - hi
           const yTopoDer = yViga - 6 - hf
-          const xiSvg = xSvg(c.xi!)
-          const xfSvg = xSvg(c.xf!)
-          const numFlechas = Math.max(3, Math.round((xfSvg - xiSvg) / 28))
+          const numFlechas = Math.max(3, Math.round(((xSvg(c.xf) ?? 0) - (xSvg(c.xi) ?? 0)) / 28))
           return (
             <g key={i}>
               <polygon
-                points={`${xiSvg},${yTopoIzq} ${xfSvg},${yTopoDer} ${xfSvg},${yViga - 6} ${xiSvg},${yViga - 6}`}
+                points={`${xSvg(c.xi)},${yTopoIzq} ${xSvg(c.xf)},${yTopoDer} ${xSvg(c.xf)},${yViga - 6} ${xSvg(c.xi)},${yViga - 6}`}
                 fill="#fecaca" opacity={0.5} stroke="#dc2626" strokeWidth={1}
               />
               {Array.from({ length: numFlechas + 1 }).map((_, j) => {
                 const t = j / numFlechas
+                const xiSvg = (xSvg(c.xi ?? 0) ?? 0) as number
+                const xfSvg = (xSvg(c.xf ?? 0) ?? 0) as number
                 const xf2 = xiSvg + t * (xfSvg - xiSvg)
                 const yTopo = yTopoIzq + t * (yTopoDer - yTopoIzq)
                 return <line key={j} x1={xf2} y1={yTopo} x2={xf2} y2={yViga - 6} stroke="#dc2626" strokeWidth={0.8} markerEnd="url(#flechaMini)" />
               })}
-              <text x={xiSvg} y={yTopoIzq - 4} fontSize={8} textAnchor="middle" fill="#dc2626">{c.wi}</text>
-              <text x={xfSvg} y={yTopoDer - 4} fontSize={8} textAnchor="middle" fill="#dc2626">{c.wf}</text>
+              <text x={xSvg(c.xi) ?? 0} y={yTopoIzq - 4} fontSize={8} textAnchor="middle" fill="#dc2626">{c.wi}</text>
+              <text x={xSvg(c.xf) ?? 0} y={yTopoDer - 4} fontSize={8} textAnchor="middle" fill="#dc2626">{c.wf}</text>
             </g>
           )
         }
@@ -317,6 +334,15 @@ function TablaTramos({ terminosM, puntosCriticos, unidadLongitud, unidadMomento,
           </div>
         )
       })}
+    </div>
+  )
+}
+
+function Campo({ label, children, className = "" }: { label: string; children: React.ReactNode; className?: string }) {
+  return (
+    <div className={className}>
+      <label className="text-[9px] text-gray-400 block mb-0.5 whitespace-nowrap">{label}</label>
+      {children}
     </div>
   )
 }
@@ -354,8 +380,32 @@ export default function MetodoFuerzas() {
     return (v * Math.pow(f, 4)) / Math.pow(fCm, 4)
   }
   function aBaseCargaDistribuida(v: number) { return (v * aBaseFuerza(1)) / aBaseLongitud(1) }
-  function aBaseResorteLineal(v: number) { return (v * aBaseFuerza(1)) / aBaseDesplazamiento(1) }
-  function aBaseResorteRotacional(v: number) { return (v * aBaseMomento(1)) / 1 } // rad ya es base
+
+  // Factores propios para las unidades de rigidez de resortes (no vienen en
+  // la tabla "convertir" general porque son unidades compuestas propias).
+  // Base interna: N/m para resorte lineal, N·m/rad para resorte rotacional.
+  const factorResorteLineal: Record<string, number> = {
+    "N/m": 1, "kN/m": 1000, "kgf/cm": 980.665, "tf/m": 9806.65, "kip/in": 175126.835,
+  }
+  const factorResorteRotacional: Record<string, number> = {
+    "N·m/rad": 1, "kN·m/rad": 1000, "kgf·m/rad": 9.80665, "tf·m/rad": 9806.65,
+  }
+  function aBaseResorteLineal(v: number) {
+    const factor = factorResorteLineal[config.resorte_lineal] ?? 1000
+    return (v * factor) / 1000 // -> kN/m (base interna del motor)
+  }
+  function deBaseResorteLineal(v: number) {
+    const factor = factorResorteLineal[config.resorte_lineal] ?? 1000
+    return (v * 1000) / factor // kN/m -> unidad elegida
+  }
+  function aBaseResorteRotacional(v: number) {
+    const factor = factorResorteRotacional[config.resorte_rotacional] ?? 1000
+    return (v * factor) / 1000 // -> kN·m/rad (base interna del motor)
+  }
+  function deBaseResorteRotacional(v: number) {
+    const factor = factorResorteRotacional[config.resorte_rotacional] ?? 1000
+    return (v * 1000) / factor // kN·m/rad -> unidad elegida
+  }
   function deBaseEsfuerzo(v: number) { return convertir(v, "MPa", config.esfuerzo, "esfuerzo") }
   function aBaseModulo(v: number) {
     const u = config.modulo_resistente.replace("³", "")
@@ -445,6 +495,82 @@ export default function MetodoFuerzas() {
   }
   function actualizarResorte(id: string, cambios: Partial<Resorte>) { setResortes(resortes.map((r) => (r.id === id ? { ...r, ...cambios } : r))) }
   function borrarResorte(id: string) { setResortes(resortes.filter((r) => r.id !== id)) }
+
+  const prevConfigRef = useRef(config)
+  useEffect(() => {
+    const prev = prevConfigRef.current
+    const cambio =
+      prev.longitud !== config.longitud ||
+      prev.fuerza !== config.fuerza ||
+      prev.momento !== config.momento ||
+      prev.esfuerzo !== config.esfuerzo ||
+      prev.desplazamiento !== config.desplazamiento ||
+      prev.inercia !== config.inercia ||
+      prev.resorte_lineal !== config.resorte_lineal ||
+      prev.resorte_rotacional !== config.resorte_rotacional
+    if (cambio) {
+      setL((v) => convertir(v, prev.longitud, config.longitud, "longitud"))
+      setE((v) => convertir(v, prev.esfuerzo, config.esfuerzo, "esfuerzo"))
+      setI((v) => {
+        const uPrev = prev.inercia.replace("⁴", "")
+        const uNew = config.inercia.replace("⁴", "")
+        const fPrev = factorLongitud[uPrev] ?? 1
+        const fNew = factorLongitud[uNew] ?? 1
+        return v * Math.pow(fPrev / fNew, 4)
+      })
+      setApoyos((arr) =>
+        arr.map((a) => ({
+          ...a,
+          x: convertir(a.x, prev.longitud, config.longitud, "longitud"),
+          asentamiento: a.asentamiento !== undefined ? convertir(a.asentamiento, prev.desplazamiento, config.desplazamiento, "desplazamiento") : undefined,
+        }))
+      )
+      setCargas((arr) =>
+        arr.map((c) => {
+          if (c.tipo === "puntual") return { ...c, x: convertir(c.x, prev.longitud, config.longitud, "longitud"), P: convertir(c.P, prev.fuerza, config.fuerza, "fuerza") }
+          if (c.tipo === "momento") return { ...c, x: convertir(c.x, prev.longitud, config.longitud, "longitud"), M: convertir(c.M, prev.momento, config.momento, "momento") }
+          const kLong = convertir(1, prev.longitud, config.longitud, "longitud")
+          const kFuerza = convertir(1, prev.fuerza, config.fuerza, "fuerza")
+          return {
+            ...c,
+            xi: convertir(c.xi, prev.longitud, config.longitud, "longitud"),
+            xf: convertir(c.xf, prev.longitud, config.longitud, "longitud"),
+            wi: (c.wi * kFuerza) / kLong,
+            wf: (c.wf * kFuerza) / kLong,
+          }
+        })
+      )
+      setRotulas((arr) => arr.map((r) => ({ ...r, x: convertir(r.x, prev.longitud, config.longitud, "longitud") })))
+      setResortes((arr) =>
+        arr.map((r) => {
+          const xNueva = convertir(r.x, prev.longitud, config.longitud, "longitud")
+          if (r.tipo === "vertical") {
+            const fPrev = factorResorteLineal[prev.resorte_lineal] ?? 1000
+            const fNew = factorResorteLineal[config.resorte_lineal] ?? 1000
+            return { ...r, x: xNueva, k: (r.k * fPrev) / fNew }
+          }
+          const fPrev = factorResorteRotacional[prev.resorte_rotacional] ?? 1000
+          const fNew = factorResorteRotacional[config.resorte_rotacional] ?? 1000
+          return { ...r, x: xNueva, k: (r.k * fPrev) / fNew }
+        })
+      )
+      setModuloSeccion((v) => {
+        const uPrev = prev.modulo_resistente.replace("³", "")
+        const uNew = config.modulo_resistente.replace("³", "")
+        const fPrev = factorLongitud[uPrev] ?? 1
+        const fNew = factorLongitud[uNew] ?? 1
+        return v * Math.pow(fPrev / fNew, 3)
+      })
+      setAreaSeccion((v) => {
+        const fPrev = factorLongitud[prev.seccion] ?? 1
+        const fNew = factorLongitud[config.seccion] ?? 1
+        return v * Math.pow(fPrev / fNew, 2)
+      })
+      setSigmaAdmisible((v) => convertir(v, prev.esfuerzo, config.esfuerzo, "esfuerzo"))
+      setTauAdmisible((v) => convertir(v, prev.esfuerzo, config.esfuerzo, "esfuerzo"))
+    }
+    prevConfigRef.current = config
+  }, [config])
 
   const [resultado, setResultado] = useState<ResultadoFuerzas | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -607,6 +733,18 @@ export default function MetodoFuerzas() {
                     {["mm", "cm", "m", "in"].map((u) => <option key={u} value={u}>{u}</option>)}
                   </select>
                 </div>
+                <div>
+                  <label className="text-[10px] text-gray-400">Rigidez resorte lineal</label>
+                  <select value={config.resorte_lineal} onChange={(e) => setConfig({ ...config, sistema: "personalizado", resorte_lineal: e.target.value as any })} className="w-full border border-gray-300 rounded-lg px-1.5 py-1 text-xs">
+                    {["N/m", "kN/m", "kgf/cm", "tf/m", "kip/in"].map((u) => <option key={u} value={u}>{u}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[10px] text-gray-400">Rigidez resorte rotacional</label>
+                  <select value={config.resorte_rotacional} onChange={(e) => setConfig({ ...config, sistema: "personalizado", resorte_rotacional: e.target.value as any })} className="w-full border border-gray-300 rounded-lg px-1.5 py-1 text-xs">
+                    {["N·m/rad", "kN·m/rad", "kgf·m/rad", "tf·m/rad"].map((u) => <option key={u} value={u}>{u}</option>)}
+                  </select>
+                </div>
               </div>
             </div>
 
@@ -634,6 +772,15 @@ export default function MetodoFuerzas() {
             <div className="flex items-center justify-between mb-3">
               <div className="text-xs text-gray-400 font-medium tracking-wider">APOYOS — marca cuáles reacciones son redundantes</div>
               <button onClick={agregarApoyo} className="text-xs bg-blue-700 text-white px-3 py-1.5 rounded-lg hover:bg-blue-800">+ Agregar apoyo</button>
+            </div>
+            <div className="grid grid-cols-8 gap-2 px-2 mb-1">
+              <span className="text-[10px] text-gray-400 uppercase tracking-wide">ID</span>
+              <span className="text-[10px] text-gray-400 uppercase tracking-wide">Posición x ({config.longitud})</span>
+              <span className="text-[10px] text-gray-400 uppercase tracking-wide col-span-2">Tipo de apoyo</span>
+              <span className="text-[10px] text-gray-400 uppercase tracking-wide">Asentamiento ({config.desplazamiento})</span>
+              <span className="text-[10px] text-gray-400 uppercase tracking-wide">Giro impuesto (rad)</span>
+              <span className="text-[10px] text-gray-400 uppercase tracking-wide">¿Redundante?</span>
+              <span></span>
             </div>
             <div className="space-y-2">
               {apoyos.map((a) => {
@@ -679,14 +826,12 @@ export default function MetodoFuerzas() {
               {resortes.map((r) => (
                 <div key={r.id} className="grid grid-cols-5 gap-2 items-center bg-gray-50 rounded-lg p-2">
                   <span className="text-xs text-gray-500">{r.id} ({r.tipo})</span>
-                  <input type="number" value={r.x} onChange={(e) => actualizarResorte(r.id, { x: validarX(Number(e.target.value), `La posición del resorte ${r.id}`) })} placeholder={`x (${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
-                  <input
-                    type="number"
-                    value={r.k}
-                    onChange={(e) => actualizarResorte(r.id, { k: Number(e.target.value) })}
-                    placeholder={r.tipo === "vertical" ? `k (${config.fuerza}/${config.desplazamiento})` : `k (${config.momento}/rad)`}
-                    className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm col-span-2"
-                  />
+                  <Campo label={`Posición x (${config.longitud})`}>
+                    <input type="number" value={r.x} onChange={(e) => actualizarResorte(r.id, { x: validarX(Number(e.target.value), `La posición del resorte ${r.id}`) })} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-full" />
+                  </Campo>
+                  <Campo label={r.tipo === "vertical" ? `Rigidez k (${config.resorte_lineal})` : `Rigidez k (${config.resorte_rotacional})`} className="col-span-2">
+                    <input type="number" value={r.k} onChange={(e) => actualizarResorte(r.id, { k: Number(e.target.value) })} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-full" />
+                  </Campo>
                   <button onClick={() => borrarResorte(r.id)} className="text-red-500 text-xs hover:underline">Borrar</button>
                 </div>
               ))}
@@ -703,7 +848,9 @@ export default function MetodoFuerzas() {
               {rotulas.map((r) => (
                 <div key={r.id} className="grid grid-cols-6 gap-2 items-center bg-gray-50 rounded-lg p-2">
                   <span className="text-xs text-gray-500">{r.id}</span>
-                  <input type="number" value={r.x} onChange={(e) => actualizarRotula(r.id, validarX(Number(e.target.value), `La posición de la rótula ${r.id}`))} placeholder={`x (${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
+                  <Campo label={`Posición x (${config.longitud})`}>
+                    <input type="number" value={r.x} onChange={(e) => actualizarRotula(r.id, validarX(Number(e.target.value), `La posición de la rótula ${r.id}`))} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-full" />
+                  </Campo>
                   <button onClick={() => borrarRotula(r.id)} className="text-red-500 text-xs hover:underline">Borrar</button>
                 </div>
               ))}
@@ -723,25 +870,41 @@ export default function MetodoFuerzas() {
             <div className="space-y-2">
               {cargas.map((c) => (
                 <div key={c.id} className="bg-gray-50 rounded-lg p-2 flex items-center gap-2 flex-wrap">
-                  <span className="text-xs text-gray-500 w-16">{c.id}</span>
+                  <span className="text-xs text-gray-500 w-16">{c.id}<br /><span className="text-[9px] text-gray-400">({c.tipo})</span></span>
                   {c.tipo === "puntual" && (
                     <>
-                      <input type="number" value={c.x} onChange={(e) => actualizarCarga(c.id, { x: validarX(Number(e.target.value), `La posición de la carga ${c.id}`) })} placeholder={`x (${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-24" />
-                      <input type="number" value={c.P} onChange={(e) => actualizarCarga(c.id, { P: Number(e.target.value) })} placeholder={`P (${config.fuerza}, ↓+)`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-28" />
+                      <Campo label={`Posición x (${config.longitud})`}>
+                        <input type="number" value={c.x} onChange={(e) => actualizarCarga(c.id, { x: validarX(Number(e.target.value), `La posición de la carga ${c.id}`) })} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-24" />
+                      </Campo>
+                      <Campo label={`Fuerza P (${config.fuerza}, ↓ positivo)`}>
+                        <input type="number" value={c.P} onChange={(e) => actualizarCarga(c.id, { P: Number(e.target.value) })} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-28" />
+                      </Campo>
                     </>
                   )}
                   {c.tipo === "momento" && (
                     <>
-                      <input type="number" value={c.x} onChange={(e) => actualizarCarga(c.id, { x: validarX(Number(e.target.value), `La posición de la carga ${c.id}`) })} placeholder={`x (${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-24" />
-                      <input type="number" value={c.M} onChange={(e) => actualizarCarga(c.id, { M: Number(e.target.value) })} placeholder={`M (${config.momento}, ↺+)`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-28" />
+                      <Campo label={`Posición x (${config.longitud})`}>
+                        <input type="number" value={c.x} onChange={(e) => actualizarCarga(c.id, { x: validarX(Number(e.target.value), `La posición de la carga ${c.id}`) })} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-24" />
+                      </Campo>
+                      <Campo label={`Momento M (${config.momento}, ↺ positivo)`}>
+                        <input type="number" value={c.M} onChange={(e) => actualizarCarga(c.id, { M: Number(e.target.value) })} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-28" />
+                      </Campo>
                     </>
                   )}
                   {c.tipo === "distribuida" && (
                     <>
-                      <input type="number" value={c.xi} onChange={(e) => actualizarCarga(c.id, { xi: validarX(Number(e.target.value), `xi de la carga ${c.id}`) })} placeholder={`xi (${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-20" />
-                      <input type="number" value={c.xf} onChange={(e) => actualizarCarga(c.id, { xf: validarX(Number(e.target.value), `xf de la carga ${c.id}`) })} placeholder={`xf (${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-20" />
-                      <input type="number" value={c.wi} onChange={(e) => actualizarCarga(c.id, { wi: Number(e.target.value) })} placeholder={`wi (${config.fuerza}/${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-24" />
-                      <input type="number" value={c.wf} onChange={(e) => actualizarCarga(c.id, { wf: Number(e.target.value) })} placeholder={`wf (${config.fuerza}/${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-24" />
+                      <Campo label={`Inicio xi (${config.longitud})`}>
+                        <input type="number" value={c.xi} onChange={(e) => actualizarCarga(c.id, { xi: validarX(Number(e.target.value), `xi de la carga ${c.id}`) })} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-20" />
+                      </Campo>
+                      <Campo label={`Fin xf (${config.longitud})`}>
+                        <input type="number" value={c.xf} onChange={(e) => actualizarCarga(c.id, { xf: validarX(Number(e.target.value), `xf de la carga ${c.id}`) })} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-20" />
+                      </Campo>
+                      <Campo label={`Carga inicial wi (${config.fuerza}/${config.longitud})`}>
+                        <input type="number" value={c.wi} onChange={(e) => actualizarCarga(c.id, { wi: Number(e.target.value) })} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-24" />
+                      </Campo>
+                      <Campo label={`Carga final wf (${config.fuerza}/${config.longitud})`}>
+                        <input type="number" value={c.wf} onChange={(e) => actualizarCarga(c.id, { wf: Number(e.target.value) })} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-24" />
+                      </Campo>
                     </>
                   )}
                   <button onClick={() => borrarCarga(c.id)} className="text-red-500 text-xs hover:underline ml-auto">Borrar</button>

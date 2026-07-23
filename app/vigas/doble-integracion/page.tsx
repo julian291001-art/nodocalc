@@ -269,6 +269,15 @@ function PanelReacciones({
   )
 }
 
+function Campo({ label, children, className = "" }: { label: string; children: React.ReactNode; className?: string }) {
+  return (
+    <div className={className}>
+      <label className="text-[9px] text-gray-400 block mb-0.5 whitespace-nowrap">{label}</label>
+      {children}
+    </div>
+  )
+}
+
 export default function DobleIntegracion() {
   const [L, setL] = useState(6)
   const [E, setE] = useState(200000)
@@ -669,15 +678,22 @@ export default function DobleIntegracion() {
               <div className="text-xs text-gray-400 font-medium tracking-wider">APOYOS</div>
               <button onClick={agregarApoyo} className="text-xs bg-blue-700 text-white px-3 py-1.5 rounded-lg hover:bg-blue-800">+ Agregar apoyo</button>
             </div>
+            <div className="grid grid-cols-6 gap-2 px-2 mb-1">
+              <span className="text-[10px] text-gray-400 uppercase tracking-wide">ID</span>
+              <span className="text-[10px] text-gray-400 uppercase tracking-wide">Posición x ({config.longitud})</span>
+              <span className="text-[10px] text-gray-400 uppercase tracking-wide col-span-2">Tipo de apoyo</span>
+              <span className="text-[10px] text-gray-400 uppercase tracking-wide">Asentamiento ({config.desplazamiento})</span>
+              <span></span>
+            </div>
             <div className="space-y-2">
               {apoyos.map((a) => (
                 <div key={a.id} className="grid grid-cols-6 gap-2 items-center bg-gray-50 rounded-lg p-2">
                   <span className="text-xs text-gray-500">{a.id}</span>
-                  <input type="number" value={a.x} onChange={(e) => actualizarApoyo(a.id, { x: validarX(Number(e.target.value), `La posición del apoyo ${a.id}`) })} placeholder={`x (${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
+                  <input type="number" value={a.x} onChange={(e) => actualizarApoyo(a.id, { x: validarX(Number(e.target.value), `La posición del apoyo ${a.id}`) })} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
                   <select value={a.tipo} onChange={(e) => actualizarApoyo(a.id, { tipo: e.target.value as TipoApoyo })} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm col-span-2">
                     {Object.entries(nombresApoyo).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                   </select>
-                  <input type="number" value={a.asentamiento ?? 0} onChange={(e) => actualizarApoyo(a.id, { asentamiento: Number(e.target.value) })} placeholder={`asentamiento (${config.desplazamiento})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
+                  <input type="number" value={a.asentamiento ?? 0} onChange={(e) => actualizarApoyo(a.id, { asentamiento: Number(e.target.value) })} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
                   <button onClick={() => borrarApoyo(a.id)} className="text-red-500 text-xs hover:underline">Borrar</button>
                 </div>
               ))}
@@ -693,7 +709,9 @@ export default function DobleIntegracion() {
               {rotulas.map((r) => (
                 <div key={r.id} className="grid grid-cols-6 gap-2 items-center bg-gray-50 rounded-lg p-2">
                   <span className="text-xs text-gray-500">{r.id}</span>
-                  <input type="number" value={r.x} onChange={(e) => actualizarRotula(r.id, validarX(Number(e.target.value), `La posición de la rótula ${r.id}`))} placeholder={`x (${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm" />
+                  <Campo label={`Posición x (${config.longitud})`}>
+                    <input type="number" value={r.x} onChange={(e) => actualizarRotula(r.id, validarX(Number(e.target.value), `La posición de la rótula ${r.id}`))} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-full" />
+                  </Campo>
                   <button onClick={() => borrarRotula(r.id)} className="text-red-500 text-xs hover:underline">Borrar</button>
                 </div>
               ))}
@@ -716,26 +734,44 @@ export default function DobleIntegracion() {
                   <span className="text-xs text-gray-500 w-16">{c.id}</span>
                   {c.tipo === "puntual" && (
                     <>
-                      <span className="text-xs">Puntual</span>
-                      <input type="number" value={c.x} onChange={(e) => actualizarCarga(c.id, { x: validarX(Number(e.target.value), `La posición de la carga ${c.id}`) })} placeholder={`x (${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-24" />
-                      <input type="number" value={c.P} onChange={(e) => actualizarCarga(c.id, { P: Number(e.target.value) })} placeholder={`P (${config.fuerza}, ↓+)`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-28" />
-                      <input type="number" value={c.angulo ?? 0} onChange={(e) => actualizarCarga(c.id, { angulo: Number(e.target.value) })} placeholder="ángulo (°, 0=vertical)" className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-32" />
+                      <span className="text-xs text-gray-400">Puntual</span>
+                      <Campo label={`Posición x (${config.longitud})`}>
+                        <input type="number" value={c.x} onChange={(e) => actualizarCarga(c.id, { x: validarX(Number(e.target.value), `La posición de la carga ${c.id}`) })} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-24" />
+                      </Campo>
+                      <Campo label={`Fuerza P (${config.fuerza}, ↓ positivo)`}>
+                        <input type="number" value={c.P} onChange={(e) => actualizarCarga(c.id, { P: Number(e.target.value) })} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-28" />
+                      </Campo>
+                      <Campo label="Ángulo (°, 0 = vertical)">
+                        <input type="number" value={c.angulo ?? 0} onChange={(e) => actualizarCarga(c.id, { angulo: Number(e.target.value) })} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-32" />
+                      </Campo>
                     </>
                   )}
                   {c.tipo === "momento" && (
                     <>
-                      <span className="text-xs">Momento</span>
-                      <input type="number" value={c.x} onChange={(e) => actualizarCarga(c.id, { x: validarX(Number(e.target.value), `La posición de la carga ${c.id}`) })} placeholder={`x (${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-24" />
-                      <input type="number" value={c.M} onChange={(e) => actualizarCarga(c.id, { M: Number(e.target.value) })} placeholder={`M (${config.momento}, ↺+)`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-28" />
+                      <span className="text-xs text-gray-400">Momento</span>
+                      <Campo label={`Posición x (${config.longitud})`}>
+                        <input type="number" value={c.x} onChange={(e) => actualizarCarga(c.id, { x: validarX(Number(e.target.value), `La posición de la carga ${c.id}`) })} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-24" />
+                      </Campo>
+                      <Campo label={`Momento M (${config.momento}, ↺ positivo)`}>
+                        <input type="number" value={c.M} onChange={(e) => actualizarCarga(c.id, { M: Number(e.target.value) })} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-28" />
+                      </Campo>
                     </>
                   )}
                   {c.tipo === "distribuida" && (
                     <>
-                      <span className="text-xs">Distribuida</span>
-                      <input type="number" value={c.xi} onChange={(e) => actualizarCarga(c.id, { xi: validarX(Number(e.target.value), `xi de la carga ${c.id}`) })} placeholder={`xi (${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-20" />
-                      <input type="number" value={c.xf} onChange={(e) => actualizarCarga(c.id, { xf: validarX(Number(e.target.value), `xf de la carga ${c.id}`) })} placeholder={`xf (${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-20" />
-                      <input type="number" value={c.wi} onChange={(e) => actualizarCarga(c.id, { wi: Number(e.target.value) })} placeholder={`wi (${config.fuerza}/${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-24" />
-                      <input type="number" value={c.wf} onChange={(e) => actualizarCarga(c.id, { wf: Number(e.target.value) })} placeholder={`wf (${config.fuerza}/${config.longitud})`} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-24" />
+                      <span className="text-xs text-gray-400">Distribuida</span>
+                      <Campo label={`Inicio xi (${config.longitud})`}>
+                        <input type="number" value={c.xi} onChange={(e) => actualizarCarga(c.id, { xi: validarX(Number(e.target.value), `xi de la carga ${c.id}`) })} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-20" />
+                      </Campo>
+                      <Campo label={`Fin xf (${config.longitud})`}>
+                        <input type="number" value={c.xf} onChange={(e) => actualizarCarga(c.id, { xf: validarX(Number(e.target.value), `xf de la carga ${c.id}`) })} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-20" />
+                      </Campo>
+                      <Campo label={`Carga inicial wi (${config.fuerza}/${config.longitud})`}>
+                        <input type="number" value={c.wi} onChange={(e) => actualizarCarga(c.id, { wi: Number(e.target.value) })} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-24" />
+                      </Campo>
+                      <Campo label={`Carga final wf (${config.fuerza}/${config.longitud})`}>
+                        <input type="number" value={c.wf} onChange={(e) => actualizarCarga(c.id, { wf: Number(e.target.value) })} className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm w-24" />
+                      </Campo>
                     </>
                   )}
                   <button onClick={() => borrarCarga(c.id)} className="text-red-500 text-xs hover:underline ml-auto">Borrar</button>
