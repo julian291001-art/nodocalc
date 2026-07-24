@@ -1,7 +1,7 @@
 "use client"
 import { useState, useMemo, useRef, useEffect } from "react"
 import katex from "katex"
-// @ts-ignore: allow importing CSS for KaTeX side-effects in this file
+// @ts-ignore
 import "katex/dist/katex.min.css"
 import Sidebar from "../../components/Sidebar"
 import { Apoyo, Carga, Rotula, TipoApoyo, Termino } from "../../lib/vigas/motor"
@@ -318,29 +318,33 @@ function EsquemaEstado({
             </g>
           )
         if (c.tipo === "distribuida" && c.xi !== undefined && c.xf !== undefined && c.wi !== undefined && c.wf !== undefined) {
-          const maxW = Math.max(c.wi, c.wf, 1)
+          const xi = c.xi
+          const xf = c.xf
+          const wi = c.wi
+          const wf = c.wf
+          const xSvgXi = xSvg(xi)
+          const xSvgXf = xSvg(xf)
+          const maxW = Math.max(wi, wf, 1)
           const alturaMax = 26
-          const hi = (c.wi / maxW) * alturaMax
-          const hf = (c.wf / maxW) * alturaMax
+          const hi = (wi / maxW) * alturaMax
+          const hf = (wf / maxW) * alturaMax
           const yTopoIzq = yViga - 6 - hi
           const yTopoDer = yViga - 6 - hf
-          const xiSvg = xSvg(c.xi!)
-          const xfSvg = xSvg(c.xf!)
-          const numFlechas = Math.max(3, Math.round((xfSvg - xiSvg) / 28))
+          const numFlechas = Math.max(3, Math.round((xSvgXf - xSvgXi) / 28))
           return (
             <g key={i}>
               <polygon
-                points={`${xiSvg},${yTopoIzq} ${xfSvg},${yTopoDer} ${xfSvg},${yViga - 6} ${xiSvg},${yViga - 6}`}
+                points={`${xSvgXi},${yTopoIzq} ${xSvgXf},${yTopoDer} ${xSvgXf},${yViga - 6} ${xSvgXi},${yViga - 6}`}
                 fill="#fecaca" opacity={0.5} stroke="#dc2626" strokeWidth={1}
               />
               {Array.from({ length: numFlechas + 1 }).map((_, j) => {
                 const t = j / numFlechas
-                const xf2 = xiSvg + t * (xfSvg - xiSvg)
+                const xf2 = xSvgXi + t * (xSvgXf - xSvgXi)
                 const yTopo = yTopoIzq + t * (yTopoDer - yTopoIzq)
                 return <line key={j} x1={xf2} y1={yTopo} x2={xf2} y2={yViga - 6} stroke="#dc2626" strokeWidth={0.8} markerEnd="url(#flechaMini)" />
               })}
-              <text x={xiSvg} y={yTopoIzq - 4} fontSize={8} textAnchor="middle" fill="#dc2626">{c.wi}</text>
-              <text x={xfSvg} y={yTopoDer - 4} fontSize={8} textAnchor="middle" fill="#dc2626">{c.wf}</text>
+              <text x={xSvgXi} y={yTopoIzq - 4} fontSize={8} textAnchor="middle" fill="#dc2626">{wi}</text>
+              <text x={xSvgXf} y={yTopoDer - 4} fontSize={8} textAnchor="middle" fill="#dc2626">{wf}</text>
             </g>
           )
         }
@@ -664,6 +668,7 @@ export default function TrabajoVirtual() {
     delta: number // unidades base (m si deflexion, rad si giro)
     xPuntoBase: number
     apoyosPrimariaBase: { id: string; x: number; tipo: TipoApoyo }[]
+    reacciones: Record<string, { Fy?: number; M?: number }>
   }
   const [resultadoDef, setResultadoDef] = useState<ResultadoDeformacion | null>(null)
 
@@ -711,6 +716,7 @@ export default function TrabajoVirtual() {
       let terminosMReal: Termino[]
       let puntosCriticosReal: number[]
       let apoyosPrimariaBase: { id: string; x: number; tipo: TipoApoyo }[]
+      let reaccionesReal: Record<string, { Fy?: number; M?: number }>
 
       if (n === 0) {
         // Viga determinada: el estado real se resuelve directo, sin redundantes.
@@ -718,6 +724,7 @@ export default function TrabajoVirtual() {
         terminosMReal = real.terminosM
         puntosCriticosReal = real.puntosCriticos
         apoyosPrimariaBase = apoyosB.map((a) => ({ id: a.id, x: a.x, tipo: a.tipo }))
+        reaccionesReal = real.reacciones
       } else {
         // Viga indeterminada: se resuelve igual que en modo "reacciones" (mismas
         // redundantes elegidas) para obtener el M(x) real ya superpuesto, y la
@@ -734,6 +741,7 @@ export default function TrabajoVirtual() {
           const tieneM = tieneMOriginal && !esRedundante(a.id, "M")
           return { id: a.id, x: a.x, tipo: tipoRebajado(a.tipo, tieneFy, tieneM) }
         })
+        reaccionesReal = res.reacciones
       }
 
       // Estado virtual: carga unitaria en el punto de interes, sobre la primaria.
@@ -756,6 +764,7 @@ export default function TrabajoVirtual() {
         delta,
         xPuntoBase,
         apoyosPrimariaBase,
+        reacciones: reaccionesReal,
       })
     } catch (e: any) {
       setError(e.message || "Error al resolver la deformación por trabajo virtual")
@@ -1247,7 +1256,7 @@ export default function TrabajoVirtual() {
                 return null
               })}
 
-              {resultado && Object.entries(resultado.reacciones).map(([id, r]) => {
+              {(resultado?.reacciones ?? resultadoDef?.reacciones) && Object.entries(resultado?.reacciones ?? resultadoDef?.reacciones ?? {}).map(([id, r]) => {
                 const apoyo = apoyos.find((a) => a.id === id)
                 if (!apoyo) return null
                 const xPos = xSvg(apoyo.x)
