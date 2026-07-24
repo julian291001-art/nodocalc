@@ -1,7 +1,7 @@
 "use client"
 import { useState, useMemo, useRef, useEffect } from "react"
 import katex from "katex"
-// @ts-ignore: side-effect CSS import (handled by Next.js/global styles)
+// @ts-ignore: allow importing CSS for KaTeX side-effects in this file
 import "katex/dist/katex.min.css"
 import Sidebar from "../../components/Sidebar"
 import { Apoyo, Carga, Rotula, TipoApoyo, Termino } from "../../lib/vigas/motor"
@@ -93,6 +93,49 @@ function tramosDeTerminos(terminosM: Termino[], puntosCriticos: number[]): { ini
     const inicio = puntosCriticos[i]
     const fin = puntosCriticos[i + 1]
     out.push({ inicio, fin, poly: polinomioTramo(terminosM, inicio) })
+  }
+  return out
+}
+
+// ── Proceso manual paso a paso: multiplicar dos polinomios e integrarlos
+// entre limites (antiderivada evaluada en b menos en a). Con esto se puede
+// mostrar, tramo por tramo, exactamente como se llega a cada integral de
+// trabajo virtual, en vez de solo decir "se integro numericamente".
+function multiplicarPoly(p1: Poly, p2: Poly): Poly {
+  const acumulado: Record<number, number> = {}
+  for (const t1 of p1) {
+    for (const t2 of p2) {
+      const power = t1.power + t2.power
+      acumulado[power] = (acumulado[power] || 0) + t1.coef * t2.coef
+    }
+  }
+  return Object.entries(acumulado)
+    .map(([power, coef]) => ({ power: Number(power), coef }))
+    .filter((p) => Math.abs(p.coef) > 1e-12)
+    .sort((a, b) => b.power - a.power)
+}
+
+function antiderivadaPoly(poly: Poly): Poly {
+  return poly.map((p) => ({ power: p.power + 1, coef: p.coef / (p.power + 1) }))
+}
+
+function integrarPolyEntre(poly: Poly, a: number, b: number): number {
+  const F = antiderivadaPoly(poly)
+  const evalF = (x: number) => F.reduce((acc, t) => acc + t.coef * Math.pow(x, t.power), 0)
+  return evalF(b) - evalF(a)
+}
+
+// Une los puntos criticos de dos conjuntos de terminos (M real y m virtual
+// pueden tener discontinuidades en lugares distintos) para que cada tramo
+// use el M(x) y el m(x) correctos y consistentes entre si.
+function tramosCombinados(terminosA: Termino[], terminosB: Termino[], puntosA: number[], puntosB: number[]): { inicio: number; fin: number; polyA: Poly; polyB: Poly }[] {
+  const puntos = Array.from(new Set([...puntosA, ...puntosB].map((v) => Number(v.toFixed(9))))).sort((a, b) => a - b)
+  const out: { inicio: number; fin: number; polyA: Poly; polyB: Poly }[] = []
+  for (let i = 0; i < puntos.length - 1; i++) {
+    const inicio = puntos[i]
+    const fin = puntos[i + 1]
+    if (fin - inicio < 1e-9) continue
+    out.push({ inicio, fin, polyA: polinomioTramo(terminosA, inicio), polyB: polinomioTramo(terminosB, inicio) })
   }
   return out
 }
@@ -281,21 +324,23 @@ function EsquemaEstado({
           const hf = (c.wf / maxW) * alturaMax
           const yTopoIzq = yViga - 6 - hi
           const yTopoDer = yViga - 6 - hf
-          const numFlechas = Math.max(3, Math.round((xSvg(c.xf) - xSvg(c.xi)) / 28))
+          const xiSvg = xSvg(c.xi!)
+          const xfSvg = xSvg(c.xf!)
+          const numFlechas = Math.max(3, Math.round((xfSvg - xiSvg) / 28))
           return (
             <g key={i}>
               <polygon
-                points={`${xSvg(c.xi)},${yTopoIzq} ${xSvg(c.xf)},${yTopoDer} ${xSvg(c.xf)},${yViga - 6} ${xSvg(c.xi)},${yViga - 6}`}
+                points={`${xiSvg},${yTopoIzq} ${xfSvg},${yTopoDer} ${xfSvg},${yViga - 6} ${xiSvg},${yViga - 6}`}
                 fill="#fecaca" opacity={0.5} stroke="#dc2626" strokeWidth={1}
               />
               {Array.from({ length: numFlechas + 1 }).map((_, j) => {
                 const t = j / numFlechas
-                const xf2 = xSvg(c.xi!) + t * (xSvg(c.xf!) - xSvg(c.xi!))
+                const xf2 = xiSvg + t * (xfSvg - xiSvg)
                 const yTopo = yTopoIzq + t * (yTopoDer - yTopoIzq)
                 return <line key={j} x1={xf2} y1={yTopo} x2={xf2} y2={yViga - 6} stroke="#dc2626" strokeWidth={0.8} markerEnd="url(#flechaMini)" />
               })}
-              <text x={xSvg(c.xi)} y={yTopoIzq - 4} fontSize={8} textAnchor="middle" fill="#dc2626">{c.wi}</text>
-              <text x={xSvg(c.xf)} y={yTopoDer - 4} fontSize={8} textAnchor="middle" fill="#dc2626">{c.wf}</text>
+              <text x={xiSvg} y={yTopoIzq - 4} fontSize={8} textAnchor="middle" fill="#dc2626">{c.wi}</text>
+              <text x={xfSvg} y={yTopoDer - 4} fontSize={8} textAnchor="middle" fill="#dc2626">{c.wf}</text>
             </g>
           )
         }
@@ -325,6 +370,47 @@ function TablaTramos({ terminosM, puntosCriticos, unidadLongitud, unidadMomento,
           </div>
         )
       })}
+    </div>
+  )
+}
+
+function ProcesoIntegral({
+  terminosA, puntosA, terminosB, puntosB, EI, deBaseLongitudFn, nombreIntegral,
+}: {
+  terminosA: Termino[]; puntosA: number[]; terminosB: Termino[]; puntosB: number[]; EI: number
+  deBaseLongitudFn: (v: number) => number; nombreIntegral: string
+}) {
+  const tramos = tramosCombinados(terminosA, terminosB, puntosA, puntosB)
+  let sumaBase = 0
+  const filas = tramos.map((t) => {
+    const prod = multiplicarPoly(t.polyA, t.polyB)
+    const valor = integrarPolyEntre(prod, t.inicio, t.fin)
+    sumaBase += valor
+    return { ...t, prod, valor }
+  })
+
+  return (
+    <div className="space-y-2">
+      <div className="text-[11px] text-gray-400">Todo en unidades base internas (kN, m) para que la integral se pueda verificar a mano sin mezclar conversiones.</div>
+      {filas.map((f, i) => (
+        <div key={i} className="text-xs bg-gray-50 rounded p-2 border border-gray-100">
+          <div className="text-gray-400 mb-1">
+            {deBaseLongitudFn(f.inicio).toFixed(3)} m ≤ x ≤ {deBaseLongitudFn(f.fin).toFixed(3)} m
+          </div>
+          <div className="overflow-x-auto">
+            <Formula tex={`M(x)\\cdot m(x) = ${polyALatex(f.prod)}`} block />
+          </div>
+          <div className="text-gray-500 mt-1">
+            <Formula tex={`\\int_{${f.inicio.toFixed(2)}}^{${f.fin.toFixed(2)}} M(x)m(x)\,dx = ${f.valor.toFixed(6)}`} />
+          </div>
+        </div>
+      ))}
+      <div className="text-xs font-semibold text-gray-600 pt-2 border-t border-gray-200">
+        <Formula tex={`\\sum \\text{tramos} = ${sumaBase.toFixed(6)}`} />
+      </div>
+      <div className="text-sm font-bold text-purple-700">
+        <Formula tex={`${nombreIntegral} = \\frac{${sumaBase.toFixed(6)}}{${EI.toFixed(3)}} = ${(sumaBase / EI).toFixed(8)}`} />
+      </div>
     </div>
   )
 }
@@ -1306,8 +1392,29 @@ export default function TrabajoVirtual() {
                   <Formula tex={`\\Delta_i = \\int_0^L \\frac{M(x)\\, m_i(x)}{EI}\\,dx \\qquad \\text{con} \\quad M(x) = M_0(x) + \\sum_j X_j\\, m_j(x)`} block />
                   <div>Sustituyendo y separando la integral (M₀ no depende de las Xⱼ):</div>
                   <Formula tex={`\\underbrace{\\int_0^L \\frac{M_0(x)\\, m_i(x)}{EI}dx}_{\\delta_{iL}} + \\sum_j X_j \\underbrace{\\int_0^L \\frac{m_i(x)\\, m_j(x)}{EI}dx}_{\\delta_{ij}} = \\Delta_i`} block />
-                  <div>Cada δᵢⱼ y δᵢL se evalúa numéricamente (Simpson) sobre los M₀(x)/mᵢ(x) de los estados de arriba. Resolviendo el sistema resultante:</div>
+                  <div>Cada δᵢⱼ y δᵢL se evalúa numéricamente (Simpson) sobre los M₀(x)/mᵢ(x) de los estados de arriba.</div>
                 </div>
+
+                <div className="mb-4 space-y-4">
+                  {resultado.redundantes.map((_, i) => (
+                    <div key={i} className="p-3 bg-gray-50 rounded-lg">
+                      <div className="text-xs text-gray-500 font-medium mb-2">
+                        δ{i + 1}L — proceso manual, tramo por tramo (M₀(x) contra m{i + 1}(x)):
+                      </div>
+                      <ProcesoIntegral
+                        terminosA={resultado.estado0.terminosM}
+                        puntosA={resultado.estado0.puntosCriticos}
+                        terminosB={resultado.estadosUnitarios[i].terminosM}
+                        puntosB={resultado.estadosUnitarios[i].puntosCriticos}
+                        EI={EI}
+                        deBaseLongitudFn={deBaseLongitud}
+                        nombreIntegral={`\\delta_{${i + 1}L}`}
+                      />
+                    </div>
+                  ))}
+                </div>
+
+                <div className="text-xs text-gray-500 mb-2">Resolviendo el sistema resultante (incluyendo los δᵢⱼ cruzados, calculados de la misma manera):</div>
                 <div className="overflow-x-auto">
                   <table className="text-xs border-collapse">
                     <thead>
@@ -1509,7 +1616,19 @@ export default function TrabajoVirtual() {
                   <Formula tex={`1 \\cdot ${tipoDeformacion === "deflexion" ? "\\delta" : "\\theta"} = \\int_0^L \\frac{M(x)\\, m(x)}{EI}\\,dx`} block />
                 </div>
                 <div className="text-xs text-gray-400 mb-3">
-                  EI = {(EI * deBaseMomento(1) * deBaseLongitud(1)).toFixed(3)} {config.momento}·{config.longitud} — integral evaluada numéricamente (Simpson) usando M(x) y m(x) de arriba.
+                  EI = {EI.toFixed(3)} kN·m² (base interna)
+                </div>
+                <div className="mb-4">
+                  <div className="text-xs text-gray-400 font-medium tracking-wider mb-2">PROCESO MANUAL, TRAMO POR TRAMO</div>
+                  <ProcesoIntegral
+                    terminosA={resultadoDef.terminosMReal}
+                    puntosA={resultadoDef.puntosCriticosReal}
+                    terminosB={resultadoDef.terminosMVirtual}
+                    puntosB={resultadoDef.puntosCriticosVirtual}
+                    EI={EI}
+                    deBaseLongitudFn={deBaseLongitud}
+                    nombreIntegral={tipoDeformacion === "deflexion" ? "\\delta" : "\\theta"}
+                  />
                 </div>
                 <div className="p-4 rounded-lg bg-purple-50 border-l-4 border-purple-500">
                   <div className="text-xs text-purple-500">{tipoDeformacion === "deflexion" ? "Deflexión" : "Giro"} en x = {xPunto} {config.longitud}</div>
