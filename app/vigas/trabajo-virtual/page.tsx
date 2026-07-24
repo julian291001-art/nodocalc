@@ -1,7 +1,7 @@
 "use client"
 import { useState, useMemo, useRef, useEffect } from "react"
 import katex from "katex"
-// @ts-ignore
+// @ts-ignore: CSS import without type declarations
 import "katex/dist/katex.min.css"
 import Sidebar from "../../components/Sidebar"
 import { Apoyo, Carga, Rotula, TipoApoyo, Termino } from "../../lib/vigas/motor"
@@ -275,33 +275,30 @@ function EsquemaEstado({
             </g>
           )
         if (c.tipo === "distribuida" && c.xi !== undefined && c.xf !== undefined && c.wi !== undefined && c.wf !== undefined) {
-          const xi = c.xi
-          const xf = c.xf
-          const wi = c.wi
-          const wf = c.wf
-          const maxW = Math.max(wi, wf, 1)
+          const xSvgCxi = xSvg(c.xi)
+          const xSvgCxf = xSvg(c.xf)
+          if (xSvgCxi === undefined || xSvgCxf === undefined) return null
+          const maxW = Math.max(c.wi, c.wf, 1)
           const alturaMax = 26
-          const hi = (wi / maxW) * alturaMax
-          const hf = (wf / maxW) * alturaMax
+          const hi = (c.wi / maxW) * alturaMax
+          const hf = (c.wf / maxW) * alturaMax
           const yTopoIzq = yViga - 6 - hi
           const yTopoDer = yViga - 6 - hf
-          const x0 = xSvg(xi)
-          const x1 = xSvg(xf)
-          const numFlechas = Math.max(3, Math.round((x1 - x0) / 28))
+          const numFlechas = Math.max(3, Math.round((xSvgCxf - xSvgCxi) / 28))
           return (
             <g key={i}>
               <polygon
-                points={`${x0},${yTopoIzq} ${x1},${yTopoDer} ${x1},${yViga - 6} ${x0},${yViga - 6}`}
+                points={`${xSvgCxi},${yTopoIzq} ${xSvgCxf},${yTopoDer} ${xSvgCxf},${yViga - 6} ${xSvgCxi},${yViga - 6}`}
                 fill="#fecaca" opacity={0.5} stroke="#dc2626" strokeWidth={1}
               />
               {Array.from({ length: numFlechas + 1 }).map((_, j) => {
                 const t = j / numFlechas
-                const xf2 = x0 + t * (x1 - x0)
+                const xf2 = xSvgCxi + t * (xSvgCxf - xSvgCxi)
                 const yTopo = yTopoIzq + t * (yTopoDer - yTopoIzq)
                 return <line key={j} x1={xf2} y1={yTopo} x2={xf2} y2={yViga - 6} stroke="#dc2626" strokeWidth={0.8} markerEnd="url(#flechaMini)" />
               })}
-              <text x={x0} y={yTopoIzq - 4} fontSize={8} textAnchor="middle" fill="#dc2626">{wi}</text>
-              <text x={x1} y={yTopoDer - 4} fontSize={8} textAnchor="middle" fill="#dc2626">{wf}</text>
+              <text x={xSvgCxi} y={yTopoIzq - 4} fontSize={8} textAnchor="middle" fill="#dc2626">{c.wi}</text>
+              <text x={xSvgCxf} y={yTopoDer - 4} fontSize={8} textAnchor="middle" fill="#dc2626">{c.wf}</text>
             </g>
           )
         }
