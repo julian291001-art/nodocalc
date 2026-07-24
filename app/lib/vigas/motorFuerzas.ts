@@ -115,7 +115,7 @@ function esRedundanteApoyo(redundantes: Redundante[], apoyoId: string, component
 }
 
 // Integracion numerica (Simpson) del producto de dos funciones M(x) sobre [0,L].
-function integrarProducto(f: (x: number) => number, g: (x: number) => number, L: number, n = 2000): number {
+export function integrarProducto(f: (x: number) => number, g: (x: number) => number, L: number, n = 2000): number {
   if (L <= 0) return 0
   const pasos = n % 2 === 0 ? n : n + 1
   const h = L / pasos
