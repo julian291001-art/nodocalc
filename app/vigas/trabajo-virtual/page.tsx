@@ -1,7 +1,7 @@
 "use client"
 import { useState, useMemo, useRef, useEffect } from "react"
 import katex from "katex"
-// @ts-ignore: CSS import without type declarations
+// @ts-ignore: side-effect CSS import (handled by Next.js/global styles)
 import "katex/dist/katex.min.css"
 import Sidebar from "../../components/Sidebar"
 import { Apoyo, Carga, Rotula, TipoApoyo, Termino } from "../../lib/vigas/motor"
@@ -275,30 +275,27 @@ function EsquemaEstado({
             </g>
           )
         if (c.tipo === "distribuida" && c.xi !== undefined && c.xf !== undefined && c.wi !== undefined && c.wf !== undefined) {
-          const xSvgCxi = xSvg(c.xi)
-          const xSvgCxf = xSvg(c.xf)
-          if (xSvgCxi === undefined || xSvgCxf === undefined) return null
           const maxW = Math.max(c.wi, c.wf, 1)
           const alturaMax = 26
           const hi = (c.wi / maxW) * alturaMax
           const hf = (c.wf / maxW) * alturaMax
           const yTopoIzq = yViga - 6 - hi
           const yTopoDer = yViga - 6 - hf
-          const numFlechas = Math.max(3, Math.round((xSvgCxf - xSvgCxi) / 28))
+          const numFlechas = Math.max(3, Math.round((xSvg(c.xf) - xSvg(c.xi)) / 28))
           return (
             <g key={i}>
               <polygon
-                points={`${xSvgCxi},${yTopoIzq} ${xSvgCxf},${yTopoDer} ${xSvgCxf},${yViga - 6} ${xSvgCxi},${yViga - 6}`}
+                points={`${xSvg(c.xi)},${yTopoIzq} ${xSvg(c.xf)},${yTopoDer} ${xSvg(c.xf)},${yViga - 6} ${xSvg(c.xi)},${yViga - 6}`}
                 fill="#fecaca" opacity={0.5} stroke="#dc2626" strokeWidth={1}
               />
               {Array.from({ length: numFlechas + 1 }).map((_, j) => {
                 const t = j / numFlechas
-                const xf2 = xSvgCxi + t * (xSvgCxf - xSvgCxi)
+                const xf2 = xSvg(c.xi!) + t * (xSvg(c.xf!) - xSvg(c.xi!))
                 const yTopo = yTopoIzq + t * (yTopoDer - yTopoIzq)
                 return <line key={j} x1={xf2} y1={yTopo} x2={xf2} y2={yViga - 6} stroke="#dc2626" strokeWidth={0.8} markerEnd="url(#flechaMini)" />
               })}
-              <text x={xSvgCxi} y={yTopoIzq - 4} fontSize={8} textAnchor="middle" fill="#dc2626">{c.wi}</text>
-              <text x={xSvgCxf} y={yTopoDer - 4} fontSize={8} textAnchor="middle" fill="#dc2626">{c.wf}</text>
+              <text x={xSvg(c.xi)} y={yTopoIzq - 4} fontSize={8} textAnchor="middle" fill="#dc2626">{c.wi}</text>
+              <text x={xSvg(c.xf)} y={yTopoDer - 4} fontSize={8} textAnchor="middle" fill="#dc2626">{c.wf}</text>
             </g>
           )
         }
@@ -656,7 +653,7 @@ export default function TrabajoVirtual() {
       // Estado virtual: carga unitaria en el punto de interes, sobre la primaria.
       const cargaVirtual: Carga =
         tipoDeformacion === "deflexion"
-          ? { id: "virtual", tipo: "puntual", x: xPuntoBase, P: -1 }
+          ? { id: "virtual", tipo: "puntual", x: xPuntoBase, P: 1 } // hacia abajo, igual convencion que las cargas reales
           : { id: "virtual", tipo: "momento", x: xPuntoBase, M: 1 }
       const apoyosPrimariaCompletos: Apoyo[] = apoyosPrimariaBase.map((a) => ({ id: a.id, x: a.x, tipo: a.tipo }))
       const virtual = resolverViga(Lb, apoyosPrimariaCompletos, [cargaVirtual], rotulasB)
@@ -719,6 +716,39 @@ export default function TrabajoVirtual() {
     })
     return arr
   }, [resultado, constantesFinal, L, config])
+
+  const constantesDef = useMemo(() => {
+    if (!resultadoDef) return null
+    const apoyosB = apoyos.map((a) => ({ ...a, x: aBaseLongitud(a.x), asentamiento: a.asentamiento !== undefined ? aBaseDesplazamiento(a.asentamiento) : undefined }))
+    const rotulasB = rotulas.map((r) => ({ ...r, x: aBaseLongitud(r.x) }))
+    return calcularConstantesIntegracion(aBaseLongitud(L), apoyosB, rotulasB, resultadoDef.terminosMReal, EI)
+  }, [resultadoDef, EI, config])
+
+  const puntosDef = useMemo(() => {
+    if (!resultadoDef || !constantesDef) return null
+    const nMalla = 140
+    const arr: { x: number; M: number; V: number; v: number; theta: number }[] = []
+    const criticosDisplay = resultadoDef.puntosCriticosReal.map((xc) => deBaseLongitud(xc))
+    const mallaDisplay: number[] = []
+    for (let i = 0; i <= nMalla; i++) mallaDisplay.push((L * i) / nMalla)
+    const interiores = criticosDisplay.filter((xc) => xc > 1e-9 && xc < L - 1e-9)
+    const criticosSet = new Set(interiores.map((xc) => Number(xc.toFixed(9))))
+    interiores.forEach((xc) => mallaDisplay.push(xc))
+    const xsOrdenados = Array.from(new Set(mallaDisplay.map((xv) => Number(xv.toFixed(9))))).sort((a, b) => a - b)
+    xsOrdenados.forEach((xvDisplay) => {
+      const xvBase = aBaseLongitud(xvDisplay)
+      const esFinal = Math.abs(xvDisplay - L) < 1e-9
+      if (criticosSet.has(xvDisplay)) {
+        arr.push({ x: xvDisplay, M: limpiar(deBaseMomento(evaluarMConLado(resultadoDef.terminosMReal, xvBase, false))), V: limpiar(deBaseFuerza(evaluarVConLado(resultadoDef.terminosMReal, xvBase, false))), v: limpiar(deBaseDesplazamiento(constantesDef.v(xvBase))), theta: limpiar(constantesDef.theta(xvBase)) })
+        arr.push({ x: xvDisplay, M: limpiar(deBaseMomento(evaluarMConLado(resultadoDef.terminosMReal, xvBase, true))), V: limpiar(deBaseFuerza(evaluarVConLado(resultadoDef.terminosMReal, xvBase, true))), v: limpiar(deBaseDesplazamiento(constantesDef.v(xvBase))), theta: limpiar(constantesDef.theta(xvBase)) })
+      } else if (esFinal) {
+        arr.push({ x: xvDisplay, M: limpiar(deBaseMomento(evaluarMConLado(resultadoDef.terminosMReal, xvBase, false))), V: limpiar(deBaseFuerza(evaluarVConLado(resultadoDef.terminosMReal, xvBase, false))), v: limpiar(deBaseDesplazamiento(constantesDef.v(xvBase))), theta: limpiar(constantesDef.theta(xvBase)) })
+      } else {
+        arr.push({ x: xvDisplay, M: limpiar(deBaseMomento(evaluarMConLado(resultadoDef.terminosMReal, xvBase, true))), V: limpiar(deBaseFuerza(evaluarVConLado(resultadoDef.terminosMReal, xvBase, true))), v: limpiar(deBaseDesplazamiento(constantesDef.v(xvBase))), theta: limpiar(constantesDef.theta(xvBase)) })
+      }
+    })
+    return arr
+  }, [resultadoDef, constantesDef, L, config])
 
   const factorK = aBaseLongitud(1)
   const factorM = deBaseMomento(1)
@@ -1273,7 +1303,7 @@ export default function TrabajoVirtual() {
                 <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">ECUACIONES DE COMPATIBILIDAD (TRABAJO VIRTUAL)</div>
                 <div className="text-xs text-gray-500 mb-3 space-y-1">
                   <div>Para cada redundante Xᵢ, el desplazamiento real en ese punto liberado debe coincidir con la condición real de apoyo (0, o el asentamiento/giro impuesto):</div>
-                  <Formula tex={`\Delta_i = \int_0^L \frac{M(x)\, m_i(x)}{EI}\,dx \qquad \text{con} \quad M(x) = M_0(x) + \sum_j X_j\, m_j(x)`} block />
+                  <Formula tex={`\\Delta_i = \\int_0^L \\frac{M(x)\\, m_i(x)}{EI}\\,dx \\qquad \\text{con} \\quad M(x) = M_0(x) + \\sum_j X_j\\, m_j(x)`} block />
                   <div>Sustituyendo y separando la integral (M₀ no depende de las Xⱼ):</div>
                   <Formula tex={`\\underbrace{\\int_0^L \\frac{M_0(x)\\, m_i(x)}{EI}dx}_{\\delta_{iL}} + \\sum_j X_j \\underbrace{\\int_0^L \\frac{m_i(x)\\, m_j(x)}{EI}dx}_{\\delta_{ij}} = \\Delta_i`} block />
                   <div>Cada δᵢⱼ y δᵢL se evalúa numéricamente (Simpson) sobre los M₀(x)/mᵢ(x) de los estados de arriba. Resolviendo el sistema resultante:</div>
@@ -1461,7 +1491,7 @@ export default function TrabajoVirtual() {
                   apoyosPrimaria={resultadoDef.apoyosPrimariaBase.map((a) => ({ ...a, x: deBaseLongitud(a.x) }))}
                   cargas={[
                     tipoDeformacion === "deflexion"
-                      ? { tipo: "puntual", x: xPunto, P: -1 }
+                      ? { tipo: "puntual", x: xPunto, P: 1 }
                       : { tipo: "momento", x: xPunto, M: 1 },
                   ] as any}
                   unidadLongitud={config.longitud}
@@ -1476,7 +1506,7 @@ export default function TrabajoVirtual() {
               <div className="bg-white border border-gray-200 rounded-xl p-5">
                 <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">TRABAJO VIRTUAL — RESULTADO</div>
                 <div className="text-sm mb-2">
-                  <Formula tex={`1 \cdot ${tipoDeformacion === "deflexion" ? "\delta" : "\theta"} = \int_0^L \frac{M(x)\, m(x)}{EI}\,dx`} block />
+                  <Formula tex={`1 \\cdot ${tipoDeformacion === "deflexion" ? "\\delta" : "\\theta"} = \\int_0^L \\frac{M(x)\\, m(x)}{EI}\\,dx`} block />
                 </div>
                 <div className="text-xs text-gray-400 mb-3">
                   EI = {(EI * deBaseMomento(1) * deBaseLongitud(1)).toFixed(3)} {config.momento}·{config.longitud} — integral evaluada numéricamente (Simpson) usando M(x) y m(x) de arriba.
@@ -1493,6 +1523,31 @@ export default function TrabajoVirtual() {
                   </div>
                 </div>
               </div>
+
+              {puntosDef && (
+                <>
+                  <div className="bg-white border border-gray-200 rounded-xl p-5">
+                    <div className="text-xs text-gray-400 font-medium tracking-wider mb-1">DIAGRAMA DE MOMENTO FLECTOR (VIGA REAL)</div>
+                    <div className="text-xs text-gray-400 mb-2">Máximo: {Math.max(...puntosDef.map((p) => p.M)).toFixed(3)} {config.momento} — Mínimo: {Math.min(...puntosDef.map((p) => p.M)).toFixed(3)} {config.momento}</div>
+                    <GraficoInteractivo datos={puntosDef.map((p) => ({ x: p.x, y: p.M }))} L={L} color="#2563eb" etiqueta="M(x)" unidad={config.momento} unidadLongitud={config.longitud} />
+                  </div>
+                  <div className="bg-white border border-gray-200 rounded-xl p-5">
+                    <div className="text-xs text-gray-400 font-medium tracking-wider mb-1">DIAGRAMA DE FUERZA CORTANTE</div>
+                    <div className="text-xs text-gray-400 mb-2">Máximo: {Math.max(...puntosDef.map((p) => p.V)).toFixed(3)} {config.fuerza} — Mínimo: {Math.min(...puntosDef.map((p) => p.V)).toFixed(3)} {config.fuerza}</div>
+                    <GraficoInteractivo datos={puntosDef.map((p) => ({ x: p.x, y: p.V }))} L={L} color="#f97316" etiqueta="V(x)" unidad={config.fuerza} unidadLongitud={config.longitud} />
+                  </div>
+                  <div className="bg-white border border-gray-200 rounded-xl p-5">
+                    <div className="text-xs text-gray-400 font-medium tracking-wider mb-1">DIAGRAMA DE GIRO</div>
+                    <div className="text-xs text-gray-400 mb-2">Máximo: {Math.max(...puntosDef.map((p) => p.theta)).toFixed(6)} rad — Mínimo: {Math.min(...puntosDef.map((p) => p.theta)).toFixed(6)} rad</div>
+                    <GraficoInteractivo datos={puntosDef.map((p) => ({ x: p.x, y: p.theta }))} L={L} color="#a855f7" etiqueta="θ(x)" unidad="rad" unidadLongitud={config.longitud} />
+                  </div>
+                  <div className="bg-white border border-gray-200 rounded-xl p-5">
+                    <div className="text-xs text-gray-400 font-medium tracking-wider mb-1">DEFLEXIÓN</div>
+                    <div className="text-xs text-gray-400 mb-2">Máxima: {Math.max(...puntosDef.map((p) => p.v)).toFixed(5)} {config.desplazamiento} — Mínima: {Math.min(...puntosDef.map((p) => p.v)).toFixed(5)} {config.desplazamiento}</div>
+                    <GraficoInteractivo datos={puntosDef.map((p) => ({ x: p.x, y: p.v }))} L={L} color="#64748b" etiqueta="v(x)" unidad={config.desplazamiento} unidadLongitud={config.longitud} />
+                  </div>
+                </>
+              )}
             </>
           )}
         </div>
