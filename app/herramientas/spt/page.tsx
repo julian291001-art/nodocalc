@@ -516,7 +516,7 @@ export default function CorreccionSPT() {
                       <Th>Espesor ({unidadLongitud})</Th>
                       <Th>N (golpes/pie)</Th>
                       <Th>σ'ᵥ ({unidadEsfuerzo})</Th>
-                      <Th></Th>
+                      <Th>&nbsp;</Th>
                     </tr>
                   </thead>
                   <tbody>
