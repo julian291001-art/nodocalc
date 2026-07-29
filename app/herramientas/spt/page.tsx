@@ -24,34 +24,43 @@ const fmt = (x: number | undefined, dec = 2): string =>
 // ─────────────────────────────────────────────────────────────────────────────
 // FACTORES DE CAMPO (η) — Skempton (1986), citados en Bowles (1988)
 // ─────────────────────────────────────────────────────────────────────────────
-type HammerPresetId = "colombia45" | "donut45" | "safety60" | "auto75" | "custom"
+type HammerPresetId = string
+const CUSTOM_ID = "custom"
 
+// Tabla 2.5 (1. Variación de ηH) — Braja Das, Fundamentos de Ingeniería Geotécnica
 const HAMMER_PRESETS: { id: HammerPresetId; label: string; value: number }[] = [
   { id: "colombia45", label: "Colombia (recomendado — González, 1999) · 45%", value: 45 },
-  { id: "donut45", label: 'Martillo "dona" (donut), cuerda y polea · 45%', value: 45 },
-  { id: "safety60", label: "Martillo de seguridad, cuerda y polea · 60%", value: 60 },
-  { id: "auto75", label: "Martillo automático / trip · 75%", value: 75 },
-  { id: "custom", label: "Personalizado (calibrado en campo)", value: NaN },
+  { id: "jp_toroide_libre", label: "Japón — Toroide, caída libre · 78%", value: 78 },
+  { id: "jp_toroide_cuerda", label: "Japón — Toroide, cuerda y polea · 67%", value: 67 },
+  { id: "us_seguridad_cuerda", label: "Estados Unidos — De seguridad, cuerda y polea · 60%", value: 60 },
+  { id: "us_toroide_cuerda", label: "Estados Unidos — Toroide, cuerda y polea · 45%", value: 45 },
+  { id: "ar_toroide_cuerda", label: "Argentina — Toroide, cuerda y polea · 45%", value: 45 },
+  { id: "cn_toroide_libre", label: "China — Toroide, caída libre · 60%", value: 60 },
+  { id: "cn_toroide_cuerda", label: "China — Toroide, cuerda y polea · 50%", value: 50 },
+  { id: CUSTOM_ID, label: "Personalizado (calibrado en campo)", value: NaN },
 ]
 
+// Tabla 2.5 (2. Variación de ηB) — Braja Das
 const DIAMETRO_OPCIONES = [
   { label: "60 – 120 mm (usual)", value: 1.00 },
   { label: "150 mm", value: 1.05 },
   { label: "200 mm", value: 1.15 },
 ]
 
+// Tabla 2.5 (3. Variación de ηS) — Braja Das
 const MUESTREADOR_OPCIONES = [
-  { label: "Estándar, sin revestimiento", value: 1.00 },
-  { label: "Con revestimiento — arena densa / arcilla", value: 0.90 },
-  { label: "Con revestimiento — arena suelta", value: 0.80 },
+  { label: "Muestreador estándar", value: 1.00 },
+  { label: "Con recubrimiento para arena y arcilla densas", value: 0.80 },
+  { label: "Con recubrimiento para arena suelta", value: 0.90 },
 ]
 
+// Tabla 2.5 (4. Variación de ηR) — Braja Das. Depende de la profundidad, se calcula
+// automáticamente por capa (no es un input manual).
 function etaRDeLongitud(Lm: number): number {
-  if (!Number.isFinite(Lm) || Lm <= 0) return 1.0
-  if (Lm < 3) return 0.75
-  if (Lm < 4) return 0.80
-  if (Lm < 6) return 0.85
-  if (Lm < 10) return 0.95
+  if (!Number.isFinite(Lm) || Lm <= 0) return 0.75
+  if (Lm <= 4) return 0.75
+  if (Lm <= 6) return 0.85
+  if (Lm <= 10) return 0.95
   return 1.00
 }
 
@@ -145,11 +154,21 @@ function regresion(puntos: PuntoTauSigma[]): { cPrima: number; tanPhi: number; p
 // ─────────────────────────────────────────────────────────────────────────────
 // TIPOS DE CAPA Y CÁLCULO POR CAPA
 // ─────────────────────────────────────────────────────────────────────────────
-type Capa = { id: string; nombre: string; espesor: string; N: string; sigma: string }
+type TipoSuelo = "granular" | "cohesivo" | "intermedio"
+const TIPO_SUELO_OPCIONES: { label: string; value: TipoSuelo }[] = [
+  { label: "Intermedio / sin definir", value: "intermedio" },
+  { label: "Granular (c' ≈ 0)", value: "granular" },
+  { label: "Cohesivo", value: "cohesivo" },
+]
+
+type Capa = { id: string; nombre: string; espesor: string; N: string; sigma: string; tipo: TipoSuelo }
 
 type CapaCalculada = {
   capa: Capa
   profundidadMediaM: number
+  etaH: number
+  etaB: number
+  etaS: number
   etaR: number
   Ncorr: number
   N60: number
@@ -190,7 +209,7 @@ function calcularCapa(
   const phiEq = correlacionesPhiEq(N145)
 
   return {
-    capa, profundidadMediaM, etaR, Ncorr, N60, N45, sigmaPa, Rs, Cn, N160, N145, phiEq,
+    capa, profundidadMediaM, etaH, etaB, etaS, etaR, Ncorr, N60, N45, sigmaPa, Rs, Cn, N160, N145, phiEq,
     densidad: claseDensidad(N160),
     consistencia: claseConsistencia(N60),
     wolff: 27.1 + 0.3 * N160 - 0.00054 * N160 * N160,
@@ -312,8 +331,8 @@ function GraficoTauSigma({
 // PLANTILLA / LECTURA DE EXCEL
 // ─────────────────────────────────────────────────────────────────────────────
 function descargarPlantilla(unidadLongitud: string, unidadEsfuerzo: string) {
-  const encabezados = ["Nombre Capa", `Espesor (${unidadLongitud})`, "N (golpes/pie)", `σ'v (${unidadEsfuerzo})`]
-  const filaEjemplo = ["Limo arenoso", 3, 12, 0.8]
+  const encabezados = ["Nombre Capa", `Espesor (${unidadLongitud})`, "N (golpes/pie)", `σ'v (${unidadEsfuerzo})`, "Tipo de suelo (granular/cohesivo/intermedio)"]
+  const filaEjemplo = ["Limo arenoso", 3, 12, 0.8, "intermedio"]
   const hoja = XLSX.utils.aoa_to_sheet([encabezados, filaEjemplo])
   const libro = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(libro, hoja, "Capas SPT")
@@ -345,11 +364,11 @@ export default function CorreccionSPT() {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const agregarCapa = () => {
-    setCapas(prev => [...prev, { id: `c${contadorId}`, nombre: "", espesor: "", N: "", sigma: "" }])
+    setCapas(prev => [...prev, { id: `c${contadorId}`, nombre: "", espesor: "", N: "", sigma: "", tipo: "intermedio" }])
     setContadorId(c => c + 1)
   }
   const quitarCapa = (id: string) => setCapas(prev => prev.filter(c => c.id !== id))
-  const actualizarCapa = (id: string, campo: keyof Capa, valor: string) => {
+  const actualizarCapa = <K extends keyof Capa>(id: string, campo: K, valor: Capa[K]) => {
     setCapas(prev => prev.map(c => c.id === id ? { ...c, [campo]: valor } : c))
   }
 
@@ -366,14 +385,17 @@ export default function CorreccionSPT() {
       for (let i = 1; i < filas.length; i++) {
         const fila = filas[i]
         if (!fila || fila.length === 0) continue
-        const [nombre, espesor, N, sigma] = fila
+        const [nombre, espesor, N, sigma, tipoRaw] = fila
         if (nombre === undefined && espesor === undefined && N === undefined && sigma === undefined) continue
+        const tipoTxt = String(tipoRaw ?? "").trim().toLowerCase()
+        const tipo: TipoSuelo = tipoTxt.startsWith("gran") ? "granular" : tipoTxt.startsWith("coh") ? "cohesivo" : "intermedio"
         nuevas.push({
           id: `c${idc}`,
           nombre: String(nombre ?? ""),
           espesor: espesor !== undefined ? String(espesor) : "",
           N: N !== undefined ? String(N) : "",
           sigma: sigma !== undefined ? String(sigma) : "",
+          tipo,
         })
         idc++
       }
@@ -404,14 +426,15 @@ export default function CorreccionSPT() {
 
   // Regresión τ vs σ' agrupando por nombre de capa
   const gruposPorNombre = useMemo(() => {
-    const grupos: Record<string, PuntoTauSigma[]> = {}
+    const grupos: Record<string, { puntos: PuntoTauSigma[]; tieneCohesivo: boolean }> = {}
     for (const c of capasValidas) {
       if (!c.phiEq) continue
       const sigmaKPa = c.sigmaPa / 1000
       const tauKPa = sigmaKPa * Math.tan(c.phiEq.promedio * Math.PI / 180)
       const nombre = c.capa.nombre.trim() || "Sin nombre"
-      if (!grupos[nombre]) grupos[nombre] = []
-      grupos[nombre].push({ sigmaKPa, tauKPa })
+      if (!grupos[nombre]) grupos[nombre] = { puntos: [], tieneCohesivo: false }
+      grupos[nombre].puntos.push({ sigmaKPa, tauKPa })
+      if (c.capa.tipo === "cohesivo") grupos[nombre].tieneCohesivo = true
     }
     return grupos
   }, [capasValidas])
@@ -421,12 +444,12 @@ export default function CorreccionSPT() {
     setEtaB(1.00); setEtaS(1.00)
     setCnSeleccionado("seedIdriss")
     setCapas([
-      { id: "ex1", nombre: "Relleno heterogéneo", espesor: "1.5", N: "8", sigma: "0.3" },
-      { id: "ex2", nombre: "Limo arenoso", espesor: "3", N: "10", sigma: "0.8" },
-      { id: "ex3", nombre: "Limo arenoso", espesor: "3", N: "18", sigma: "1.5" },
-      { id: "ex4", nombre: "Limo arenoso", espesor: "3", N: "24", sigma: "2.1" },
-      { id: "ex5", nombre: "Arena con gravas", espesor: "2.5", N: "30", sigma: "2.7" },
-      { id: "ex6", nombre: "Arena con gravas", espesor: "2.5", N: "42", sigma: "3.4" },
+      { id: "ex1", nombre: "Relleno heterogéneo", espesor: "1.5", N: "8", sigma: "0.3", tipo: "intermedio" },
+      { id: "ex2", nombre: "Limo arenoso", espesor: "3", N: "10", sigma: "0.8", tipo: "intermedio" },
+      { id: "ex3", nombre: "Limo arenoso", espesor: "3", N: "18", sigma: "1.5", tipo: "intermedio" },
+      { id: "ex4", nombre: "Limo arenoso", espesor: "3", N: "24", sigma: "2.1", tipo: "intermedio" },
+      { id: "ex5", nombre: "Arena con gravas", espesor: "2.5", N: "30", sigma: "2.7", tipo: "granular" },
+      { id: "ex6", nombre: "Arena con gravas", espesor: "2.5", N: "42", sigma: "3.4", tipo: "granular" },
     ])
     setContadorId(6)
   }
@@ -509,14 +532,15 @@ export default function CorreccionSPT() {
               </p>
 
               <div className="overflow-x-auto">
-                <table className="w-full text-sm min-w-[640px]">
+                <table className="w-full text-sm min-w-[760px]">
                   <thead>
                     <tr className="border-b border-gray-200">
                       <Th>Nombre capa</Th>
                       <Th>Espesor ({unidadLongitud})</Th>
                       <Th>N (golpes/pie)</Th>
                       <Th>σ'ᵥ ({unidadEsfuerzo})</Th>
-                      <Th>&nbsp;</Th>
+                      <Th>Tipo de suelo</Th>
+                      <Th> </Th>
                     </tr>
                   </thead>
                   <tbody>
@@ -526,6 +550,10 @@ export default function CorreccionSPT() {
                         <Td><CampoNum value={c.espesor} onChange={v => actualizarCapa(c.id, "espesor", v)} placeholder="ej: 3" /></Td>
                         <Td><CampoNum value={c.N} onChange={v => actualizarCapa(c.id, "N", v)} placeholder="ej: 15" /></Td>
                         <Td><CampoNum value={c.sigma} onChange={v => actualizarCapa(c.id, "sigma", v)} placeholder="ej: 1.2" /></Td>
+                        <Td>
+                          <Selector value={c.tipo} onChange={v => actualizarCapa(c.id, "tipo", v)}
+                            opciones={TIPO_SUELO_OPCIONES} />
+                        </Td>
                         <Td>
                           <button onClick={() => quitarCapa(c.id)}
                             className="text-xs text-red-500 border border-red-200 rounded-md px-2 py-1 hover:bg-red-50 transition-colors">
@@ -551,12 +579,15 @@ export default function CorreccionSPT() {
                   RESULTADOS — CORRECCIÓN POR ENERGÍA Y SOBRECARGA POR CAPA
                 </div>
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm min-w-[900px]">
+                  <table className="w-full text-sm min-w-[1080px]">
                     <thead>
                       <tr className="border-b border-gray-200">
                         <Th>Capa</Th>
                         <Th>Prof. media</Th>
                         <Th>N</Th>
+                        <Th>η<sub>H</sub></Th>
+                        <Th>η<sub>B</sub></Th>
+                        <Th>η<sub>S</sub></Th>
                         <Th>η<sub>R</sub></Th>
                         <Th>N<sub>60</sub></Th>
                         <Th>N<sub>45</sub></Th>
@@ -575,6 +606,9 @@ export default function CorreccionSPT() {
                           <Td>{c.capa.nombre.trim() || "Sin nombre"}</Td>
                           <Td>{fmt(c.profundidadMediaM / factorLongitud(unidadLongitud), 2)} {unidadLongitud}</Td>
                           <Td>{fmt(parseFloat(c.capa.N), 0)}</Td>
+                          <Td>{fmt(c.etaH, 0)}%</Td>
+                          <Td>{fmt(c.etaB, 2)}</Td>
+                          <Td>{fmt(c.etaS, 2)}</Td>
                           <Td>{fmt(c.etaR, 2)}</Td>
                           <Td>{fmt(c.N60)}</Td>
                           <Td>{fmt(c.N45)}</Td>
@@ -654,17 +688,31 @@ export default function CorreccionSPT() {
                   (forzando c' ≥ 0), igual que la Tabla 1 y las Figuras 8a-8d de González (1999).
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  {Object.entries(gruposPorNombre).map(([nombre, puntos]) => {
-                    const reg = regresion(puntos)
+                  {Object.entries(gruposPorNombre).map(([nombre, grupo]) => {
+                    const reg = regresion(grupo.puntos)
                     if (!reg) return null
+                    const advertencia = grupo.tieneCohesivo && grupo.puntos.length < 2
                     return (
                       <div key={nombre} className="border border-gray-200 rounded-lg p-3">
-                        <GraficoTauSigma nombre={nombre} puntos={puntos} reg={reg} />
+                        <GraficoTauSigma nombre={nombre} puntos={grupo.puntos} reg={reg} />
                         <div className="grid grid-cols-3 gap-2 mt-3">
                           <Metric labelHtml="c'" valor={fmt(reg.cPrima, 2)} sufijo="kPa" color="amber" />
                           <Metric labelHtml="φ'" valor={fmt(reg.phiPrima, 1)} sufijo="°" color="green" />
-                          <Metric labelHtml="n puntos" valor={String(puntos.length)} />
+                          <Metric labelHtml="n puntos" valor={String(grupo.puntos.length)} />
                         </div>
+                        {advertencia && (
+                          <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5 mt-2 leading-snug">
+                            ⚠ c' forzado a 0 por falta de datos (solo 1 punto) — no representativo para
+                            un material marcado como cohesivo. Agregá más profundidades de este material
+                            o apoyate en C<sub>u</sub> (Hara) del detalle por capa.
+                          </p>
+                        )}
+                        {grupo.tieneCohesivo && !advertencia && (
+                          <p className="text-[11px] text-gray-400 mt-2 leading-snug">
+                            Material cohesivo — contrastá c' de la regresión con C<sub>u</sub> (Hara) del
+                            detalle por capa antes de usarlo en diseño.
+                          </p>
+                        )}
                       </div>
                     )
                   })}
