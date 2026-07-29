@@ -526,7 +526,7 @@ export default function CorreccionSPT() {
                 </div>
               </div>
               <p className="text-xs text-gray-400 mb-4">
-                Escribí las filas directamente o subí un Excel con las mismas columnas de la plantilla:
+                Escribe las filas directamente o subí un Excel con las mismas columnas de la plantilla:
                 Nombre Capa, Espesor, N (golpes/pie) y σ'ᵥ. Los espesores se acumulan desde la superficie
                 para estimar la profundidad media de cada capa (usada en η<sub>R</sub>).
               </p>
@@ -709,7 +709,7 @@ export default function CorreccionSPT() {
                         )}
                         {grupo.tieneCohesivo && !advertencia && (
                           <p className="text-[11px] text-gray-400 mt-2 leading-snug">
-                            Material cohesivo — contrastá c' de la regresión con C<sub>u</sub> (Hara) del
+                            Material cohesivo — contrasta c' de la regresión con C<sub>u</sub> (Hara) del
                             detalle por capa antes de usarlo en diseño.
                           </p>
                         )}
