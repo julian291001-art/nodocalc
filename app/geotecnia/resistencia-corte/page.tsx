@@ -50,7 +50,7 @@ const convLongitud = crearConversor("Longitud")
 const convMasa = crearConversor("Masa")
 const convFuerza = crearConversor("Fuerza")
 const convEsfuerzo = crearConversor("Presión / Esfuerzo")
-const GRAVEDAD = 9.80665 // m/s²
+const GRAVEDAD = 9.81 // m/s²
 
 const PALETA_MUESTRAS = ["#2563eb", "#16a34a", "#dc2626", "#9333ea", "#ea580c", "#0891b2", "#ca8a04", "#db2777"]
 
@@ -670,34 +670,65 @@ function nuevaMuestra(): Muestra {
   }
 }
 
-async function parsearExcelEnsayo(file: File): Promise<FilaEnsayo[]> {
+interface BloqueMuestra {
+  nombre: string
+  masaDetectada: number | null
+  unidadMasaDetectada: string | null
+  datos: FilaEnsayo[]
+}
+
+async function parsearExcelEnsayo(file: File): Promise<BloqueMuestra[]> {
   const buf = await file.arrayBuffer()
   const wb = XLSX.read(buf, { type: "array" })
   const ws = wb.Sheets[wb.SheetNames[0]]
   const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null })
 
-  const idxHeader = rows.findIndex(
-    (r) => Array.isArray(r) && typeof r[0] === "string" && r[0].toLowerCase().includes("def horizontal")
+  // Fila de encabezados de columna: la que tenga alguna celda "...horizontal..."
+  const idxEncabezados = rows.findIndex(
+    (r) =>
+      Array.isArray(r) &&
+      r.some((c) => typeof c === "string" && c.toLowerCase().includes("horizontal"))
   )
-  if (idxHeader === -1) return []
+  if (idxEncabezados === -1) return []
 
-  const datos: FilaEnsayo[] = []
-  for (let i = idxHeader + 1; i < rows.length; i++) {
-    const r = rows[i]
-    if (!r || r.every((c) => c === null || c === "")) continue
-    const defH = parseFloat(r[0])
-    if (!isFinite(defH)) continue
-    const defN = parseFloat(r[1])
-    const fuerza = parseFloat(r[2])
-    const esfuerzo = parseFloat(r[3])
-    datos.push({
-      defHorizontal: defH,
-      defNormalPct: isFinite(defN) ? defN : 0,
-      fuerza: isFinite(fuerza) ? fuerza : 0,
-      esfuerzoMedido: isFinite(esfuerzo) ? esfuerzo : 0,
-    })
-  }
-  return datos
+  const filaEncabezados = rows[idxEncabezados]
+  const filaNombres = idxEncabezados > 0 ? rows[idxEncabezados - 1] : []
+
+  // Cada columna que contenga "horizontal" marca el inicio de un bloque de 4 columnas
+  // (Def horizontal, Def normal, Fuerza, Esfuerzo cortante) para una muestra.
+  const inicios: number[] = []
+  filaEncabezados.forEach((c, i) => {
+    if (typeof c === "string" && c.toLowerCase().includes("horizontal")) inicios.push(i)
+  })
+  if (inicios.length === 0) return []
+
+  return inicios.map((colInicio, bi) => {
+    const datos: FilaEnsayo[] = []
+    for (let i = idxEncabezados + 1; i < rows.length; i++) {
+      const r = rows[i]
+      if (!r) continue
+      const defH = parseFloat(r[colInicio])
+      if (!isFinite(defH)) continue
+      const defN = parseFloat(r[colInicio + 1])
+      const fuerza = parseFloat(r[colInicio + 2])
+      const esfuerzo = parseFloat(r[colInicio + 3])
+      datos.push({
+        defHorizontal: defH,
+        defNormalPct: isFinite(defN) ? defN : 0,
+        fuerza: isFinite(fuerza) ? fuerza : 0,
+        esfuerzoMedido: isFinite(esfuerzo) ? esfuerzo : 0,
+      })
+    }
+    const crudo = (filaNombres?.[colInicio] as string) || ""
+    const matchMasa = crudo.match(/([\d.]+)\s*(kg|g|ton|lb)/i)
+    const nombre = crudo.replace(/\s*\(.*\)\s*/, "").trim() || `M${bi + 1}`
+    return {
+      nombre,
+      masaDetectada: matchMasa ? parseFloat(matchMasa[1]) : null,
+      unidadMasaDetectada: matchMasa ? matchMasa[2].toLowerCase() : null,
+      datos,
+    }
+  })
 }
 
 interface FilaCalculada extends FilaEnsayo {
@@ -713,29 +744,40 @@ function calcularMuestra(m: Muestra) {
   const peso = masaBase * GRAVEDAD // N
   const P = peso * (m.usaBrazo ? m.relacionBrazo || 1 : 1) // N normal aplicado
 
-  const filas: FilaCalculada[] = m.datos.map((f) => {
-    const deltaBase = convLongitud.aBase(f.defHorizontal, m.unidadLongitud) // m
-    let Ac: number
+  // Ac se calcula UNA sola vez por muestra, con la deformación horizontal en el
+  // punto de FUERZA MÁXIMA (pico) — no con la deformación máxima/última del ensayo,
+  // que suele continuar registrando bastante más allá de la falla hasta el tramo
+  // residual. Esa misma Ac se aplica luego a todas las filas de la curva
+  // (metodología validada contra datos reales de laboratorio).
+  let filaPicoRaw: FilaEnsayo | null = null
+  for (const f of m.datos) if (!filaPicoRaw || f.fuerza > filaPicoRaw.fuerza) filaPicoRaw = f
+  const deformacionEnPico = filaPicoRaw ? filaPicoRaw.defHorizontal : 0
+  const deltaPicoBase = convLongitud.aBase(deformacionEnPico, m.unidadLongitud)
+
+  let Ac = A0
+  if (filaPicoRaw) {
     if (m.forma === "circular") {
-      const ratio = Math.min(Math.max(deltaBase / dimBase, -0.999), 0.999)
+      const ratio = Math.min(Math.max(deltaPicoBase / dimBase, -0.999), 0.999)
       const theta = Math.acos(ratio)
       Ac = (dimBase * dimBase / 2) * (theta - ratio * Math.sin(theta))
     } else {
-      Ac = Math.max(dimBase * (dimBase - deltaBase), A0 * 0.001)
+      Ac = Math.max(dimBase * (dimBase - deltaPicoBase), A0 * 0.001)
     }
+  }
+
+  const sigmaCorr = Ac > 0 ? P / Ac : 0 // Pa, constante para toda la muestra
+
+  const filas: FilaCalculada[] = m.datos.map((f) => {
     const fuerzaBase = convFuerza.aBase(f.fuerza, m.unidadFuerza) // N
-    const sigmaCorr = Ac > 0 ? P / Ac : 0
     const tauCorr = Ac > 0 ? fuerzaBase / Ac : 0
     return { ...f, Ac, sigmaCorr, tauCorr }
   })
-
-  const deformacionMaxima = filas.reduce((max, f) => Math.max(max, f.defHorizontal), 0)
 
   let pico: FilaCalculada | null = null
   for (const f of filas) if (!pico || f.tauCorr > pico.tauCorr) pico = f
   const residual: FilaCalculada | null = filas.length ? filas[filas.length - 1] : null
 
-  return { A0, P, filas, deformacionMaxima, pico, residual }
+  return { A0, Ac, P, sigmaCorr, filas, deformacionEnPico, pico, residual }
 }
 
 function TabCorteDirecto() {
@@ -752,8 +794,37 @@ function TabCorteDirecto() {
     setMuestras((prev) => prev.map((m) => (m.id === id ? { ...m, ...cambios } : m)))
   }
   async function cargarExcel(id: string, file: File) {
-    const datos = await parsearExcelEnsayo(file)
-    actualizarMuestra(id, { datos, archivoNombre: file.name })
+    const bloques = await parsearExcelEnsayo(file)
+    if (bloques.length === 0) return
+
+    if (bloques.length === 1) {
+      actualizarMuestra(id, { datos: bloques[0].datos, archivoNombre: file.name })
+      return
+    }
+
+    // El archivo trae varias muestras en bloques de columnas (formato de laboratorio):
+    // la primera llena la tarjeta actual, las demás se agregan como tarjetas nuevas.
+    setMuestras((prev) => {
+      const idx = prev.findIndex((m) => m.id === id)
+      if (idx === -1) return prev
+      const resultado = [...prev]
+      bloques.forEach((b, bi) => {
+        const cambios: Partial<Muestra> = {
+          nombre: b.nombre,
+          datos: b.datos,
+          archivoNombre: file.name,
+          ...(b.masaDetectada
+            ? { masa: b.masaDetectada, unidadMasa: b.unidadMasaDetectada === "kg" ? "kg" : b.unidadMasaDetectada || "kg" }
+            : {}),
+        }
+        if (bi === 0) {
+          resultado[idx] = { ...resultado[idx], ...cambios }
+        } else {
+          resultado.splice(idx + bi, 0, { ...nuevaMuestra(), ...cambios })
+        }
+      })
+      return resultado
+    })
   }
 
   const resultados = useMemo(
@@ -941,14 +1012,21 @@ function TabCorteDirecto() {
 
             {m.datos.length > 0 && (
               <>
-                <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
                   <MetricTile label="Área inicial A₀" value={fmt(r.calc.A0 * 1e6, 1)} unit="mm²" color="gray" />
                   <MetricTile label="Fuerza normal P" value={fmt(r.calc.P, 1)} unit="N" color="gray" />
                   <MetricTile
-                    label="Deformación máxima"
-                    value={fmt(r.calc.deformacionMaxima, 2)}
+                    label="Deformación en el pico (define Ac)"
+                    value={fmt(r.calc.deformacionEnPico, 2)}
                     unit={m.unidadLongitud}
                     color="amber"
+                  />
+                  <MetricTile label="Área corregida Ac" value={fmt(r.calc.Ac * 1e6, 1)} unit="mm²" color="amber" />
+                  <MetricTile
+                    label="σ' corregido"
+                    value={fmt(convEsfuerzo.aMostrar(r.calc.sigmaCorr, unidadResultados))}
+                    unit={unidadResultados}
+                    color="green"
                   />
                   <MetricTile
                     label="τ pico"
@@ -964,9 +1042,7 @@ function TabCorteDirecto() {
                       <tr>
                         <th className="px-3 py-2">Def horiz. ({m.unidadLongitud})</th>
                         <th className="px-3 py-2">Def normal (%)</th>
-                        <th className="px-3 py-2">Ac (mm²)</th>
-                        <th className="px-3 py-2">σ' corr. ({unidadResultados})</th>
-                        <th className="px-3 py-2">τ corr. ({unidadResultados})</th>
+                        <th className="px-3 py-2">τ corregido ({unidadResultados})</th>
                         <th className="px-3 py-2">τ medido ({m.unidadEsfuerzoMedido})</th>
                       </tr>
                     </thead>
@@ -975,8 +1051,6 @@ function TabCorteDirecto() {
                         <tr key={i} className="border-t border-gray-100 text-gray-700">
                           <td className="px-3 py-1.5">{fmt(f.defHorizontal, 2)}</td>
                           <td className="px-3 py-1.5">{fmt(f.defNormalPct, 2)}</td>
-                          <td className="px-3 py-1.5">{fmt(f.Ac * 1e6, 1)}</td>
-                          <td className="px-3 py-1.5">{fmt(convEsfuerzo.aMostrar(f.sigmaCorr, unidadResultados))}</td>
                           <td className="px-3 py-1.5">{fmt(convEsfuerzo.aMostrar(f.tauCorr, unidadResultados))}</td>
                           <td className="px-3 py-1.5 text-gray-400">{fmt(f.esfuerzoMedido, 2)}</td>
                         </tr>
@@ -1012,9 +1086,8 @@ function TabCorteDirecto() {
               <thead className="text-gray-500">
                 <tr>
                   <th className="px-3 py-2">Muestra</th>
-                  <th className="px-3 py-2">σ' pico ({unidadResultados})</th>
+                  <th className="px-3 py-2">σ' corregido ({unidadResultados})</th>
                   <th className="px-3 py-2">τ pico ({unidadResultados})</th>
-                  <th className="px-3 py-2">σ' residual ({unidadResultados})</th>
                   <th className="px-3 py-2">τ residual ({unidadResultados})</th>
                 </tr>
               </thead>
@@ -1022,14 +1095,9 @@ function TabCorteDirecto() {
                 {conDatos.map((r) => (
                   <tr key={r.muestra.id} className="border-t border-gray-100 text-gray-700">
                     <td className="px-3 py-1.5 font-medium">{r.muestra.nombre}</td>
-                    <td className="px-3 py-1.5">
-                      {r.calc.pico ? fmt(convEsfuerzo.aMostrar(r.calc.pico.sigmaCorr, unidadResultados)) : "—"}
-                    </td>
+                    <td className="px-3 py-1.5">{fmt(convEsfuerzo.aMostrar(r.calc.sigmaCorr, unidadResultados))}</td>
                     <td className="px-3 py-1.5">
                       {r.calc.pico ? fmt(convEsfuerzo.aMostrar(r.calc.pico.tauCorr, unidadResultados)) : "—"}
-                    </td>
-                    <td className="px-3 py-1.5">
-                      {r.calc.residual ? fmt(convEsfuerzo.aMostrar(r.calc.residual.sigmaCorr, unidadResultados)) : "—"}
                     </td>
                     <td className="px-3 py-1.5">
                       {r.calc.residual ? fmt(convEsfuerzo.aMostrar(r.calc.residual.tauCorr, unidadResultados)) : "—"}
