@@ -677,6 +677,223 @@ interface BloqueMuestra {
   datos: FilaEnsayo[]
 }
 
+const EJEMPLO_CORTE_DIRECTO: { nombre: string; diametroMm: number; masaKg: number; datos: FilaEnsayo[] }[] = [
+  {
+    nombre: "M1",
+    diametroMm: 50.75,
+    masaKg: 2,
+    datos: [
+      { defHorizontal: 0, defNormalPct: 0, fuerza: 0, esfuerzoMedido: 0 },
+      { defHorizontal: 0.4, defNormalPct: -0.024, fuerza: 113.7, esfuerzoMedido: 56.208 },
+      { defHorizontal: 0.8, defNormalPct: -0.022, fuerza: 144.7, esfuerzoMedido: 71.533 },
+      { defHorizontal: 1.2, defNormalPct: 0.005, fuerza: 162.2, esfuerzoMedido: 80.184 },
+      { defHorizontal: 1.6, defNormalPct: 0.048, fuerza: 171.1, esfuerzoMedido: 84.584 },
+      { defHorizontal: 2, defNormalPct: 0.092, fuerza: 173.4, esfuerzoMedido: 85.721 },
+      { defHorizontal: 2.4, defNormalPct: 0.136, fuerza: 181.3, esfuerzoMedido: 89.626 },
+      { defHorizontal: 2.8, defNormalPct: 0.172, fuerza: 184.1, esfuerzoMedido: 91.011 },
+      { defHorizontal: 3.2, defNormalPct: 0.2, fuerza: 184.8, esfuerzoMedido: 91.357 },
+      { defHorizontal: 3.25, defNormalPct: 0.204, fuerza: 185.2, esfuerzoMedido: 91.554 },
+      { defHorizontal: 3.6, defNormalPct: 0.222, fuerza: 177.7, esfuerzoMedido: 87.847 },
+      { defHorizontal: 4, defNormalPct: 0.227, fuerza: 176.6, esfuerzoMedido: 87.303 },
+      { defHorizontal: 4.4, defNormalPct: 0.245, fuerza: 177.3, esfuerzoMedido: 87.649 },
+      { defHorizontal: 4.8, defNormalPct: 0.249, fuerza: 174, esfuerzoMedido: 86.018 },
+      { defHorizontal: 5.2, defNormalPct: 0.249, fuerza: 171.1, esfuerzoMedido: 84.584 },
+      { defHorizontal: 5.6, defNormalPct: 0.249, fuerza: 171.1, esfuerzoMedido: 84.584 },
+      { defHorizontal: 6, defNormalPct: 0.249, fuerza: 171.1, esfuerzoMedido: 84.584 },
+      { defHorizontal: 6.4, defNormalPct: 0.249, fuerza: 171.1, esfuerzoMedido: 84.584 },
+      { defHorizontal: 6.8, defNormalPct: 0.249, fuerza: 171.1, esfuerzoMedido: 84.584 },
+      { defHorizontal: 7.2, defNormalPct: 0.249, fuerza: 171.1, esfuerzoMedido: 84.584 },
+      { defHorizontal: 7.6, defNormalPct: 0.249, fuerza: 171.1, esfuerzoMedido: 84.584 },
+      { defHorizontal: 8, defNormalPct: 0.249, fuerza: 171.1, esfuerzoMedido: 84.584 },
+      { defHorizontal: 8.4, defNormalPct: 0.249, fuerza: 171.1, esfuerzoMedido: 84.584 },
+      { defHorizontal: 8.8, defNormalPct: 0.249, fuerza: 171.1, esfuerzoMedido: 84.584 },
+      { defHorizontal: 9.2, defNormalPct: 0.249, fuerza: 171.1, esfuerzoMedido: 84.584 },
+      { defHorizontal: 9.6, defNormalPct: 0.249, fuerza: 171.1, esfuerzoMedido: 84.584 },
+      { defHorizontal: 10, defNormalPct: 0.249, fuerza: 171.1, esfuerzoMedido: 84.584 },
+      { defHorizontal: 10.4, defNormalPct: 0.249, fuerza: 171.1, esfuerzoMedido: 84.584 },
+      { defHorizontal: 10.8, defNormalPct: 0.249, fuerza: 171.1, esfuerzoMedido: 84.584 },
+      { defHorizontal: 11.2, defNormalPct: 0.249, fuerza: 171.1, esfuerzoMedido: 84.584 },
+      { defHorizontal: 11.6, defNormalPct: 0.249, fuerza: 171.1, esfuerzoMedido: 84.584 },
+      { defHorizontal: 12.0, defNormalPct: 0.249, fuerza: 171.1, esfuerzoMedido: 84.584 },
+      { defHorizontal: 12.4, defNormalPct: 0.249, fuerza: 171.1, esfuerzoMedido: 84.584 },
+      { defHorizontal: 12.8, defNormalPct: 0.249, fuerza: 171.1, esfuerzoMedido: 84.584 },
+      { defHorizontal: 13.2, defNormalPct: 0.249, fuerza: 171.1, esfuerzoMedido: 84.584 },
+      { defHorizontal: 13.6, defNormalPct: 0.249, fuerza: 171.1, esfuerzoMedido: 84.584 },
+      { defHorizontal: 14.0, defNormalPct: 0.249, fuerza: 171.1, esfuerzoMedido: 84.584 },
+      { defHorizontal: 14.4, defNormalPct: 0.249, fuerza: 171.1, esfuerzoMedido: 84.584 },
+      { defHorizontal: 14.8, defNormalPct: 0.249, fuerza: 171.1, esfuerzoMedido: 84.584 },
+      { defHorizontal: 15.2, defNormalPct: 0.249, fuerza: 171.1, esfuerzoMedido: 84.584 },
+      { defHorizontal: 15.6, defNormalPct: 0.249, fuerza: 171.1, esfuerzoMedido: 84.584 },
+      { defHorizontal: 16.0, defNormalPct: 0.249, fuerza: 171.1, esfuerzoMedido: 84.584 },
+      { defHorizontal: 16.4, defNormalPct: 0.249, fuerza: 171.1, esfuerzoMedido: 84.584 },
+      { defHorizontal: 16.8, defNormalPct: 0.249, fuerza: 171.1, esfuerzoMedido: 84.584 },
+      { defHorizontal: 17.2, defNormalPct: 0.249, fuerza: 171.1, esfuerzoMedido: 84.584 },
+      { defHorizontal: 17.6, defNormalPct: 0.249, fuerza: 171.1, esfuerzoMedido: 84.584 },
+      { defHorizontal: 18.0, defNormalPct: 0.249, fuerza: 171.1, esfuerzoMedido: 84.584 },
+      { defHorizontal: 18.4, defNormalPct: 0.249, fuerza: 171.1, esfuerzoMedido: 84.584 },
+      { defHorizontal: 18.8, defNormalPct: 0.249, fuerza: 171.1, esfuerzoMedido: 84.584 },
+      { defHorizontal: 19.2, defNormalPct: 0.249, fuerza: 171.1, esfuerzoMedido: 84.584 },
+      { defHorizontal: 19.6, defNormalPct: 0.249, fuerza: 171.1, esfuerzoMedido: 84.584 },
+      { defHorizontal: 20.0, defNormalPct: 0.249, fuerza: 171.1, esfuerzoMedido: 84.584 },
+    ],
+  },
+  {
+    nombre: "M2",
+    diametroMm: 50.65,
+    masaKg: 4,
+    datos: [
+      { defHorizontal: 0, defNormalPct: 0, fuerza: 0, esfuerzoMedido: 0 },
+      { defHorizontal: 0.4, defNormalPct: -0.046, fuerza: 176.4, esfuerzoMedido: 87.549 },
+      { defHorizontal: 0.8, defNormalPct: -0.059, fuerza: 242.6, esfuerzoMedido: 120.404 },
+      { defHorizontal: 1.2, defNormalPct: -0.059, fuerza: 285.6, esfuerzoMedido: 141.746 },
+      { defHorizontal: 1.6, defNormalPct: -0.058, fuerza: 316.9, esfuerzoMedido: 157.28 },
+      { defHorizontal: 2, defNormalPct: -0.045, fuerza: 337.2, esfuerzoMedido: 167.355 },
+      { defHorizontal: 2.4, defNormalPct: -0.001, fuerza: 337.7, esfuerzoMedido: 167.603 },
+      { defHorizontal: 2.6, defNormalPct: 0.02, fuerza: 341.1, esfuerzoMedido: 169.291 },
+      { defHorizontal: 2.8, defNormalPct: 0.042, fuerza: 331.8, esfuerzoMedido: 164.675 },
+      { defHorizontal: 3.2, defNormalPct: 0.075, fuerza: 333.2, esfuerzoMedido: 165.37 },
+      { defHorizontal: 3.6, defNormalPct: 0.111, fuerza: 326, esfuerzoMedido: 161.797 },
+      { defHorizontal: 4, defNormalPct: 0.138, fuerza: 329.4, esfuerzoMedido: 163.484 },
+      { defHorizontal: 4.4, defNormalPct: 0.153, fuerza: 321, esfuerzoMedido: 159.315 },
+      { defHorizontal: 4.8, defNormalPct: 0.166, fuerza: 309.3, esfuerzoMedido: 153.508 },
+      { defHorizontal: 5.2, defNormalPct: 0.169, fuerza: 297.9, esfuerzoMedido: 147.85 },
+      { defHorizontal: 5.6, defNormalPct: 0.169, fuerza: 297.9, esfuerzoMedido: 147.85 },
+      { defHorizontal: 6, defNormalPct: 0.169, fuerza: 297.9, esfuerzoMedido: 147.85 },
+      { defHorizontal: 6.4, defNormalPct: 0.169, fuerza: 297.9, esfuerzoMedido: 147.85 },
+      { defHorizontal: 6.8, defNormalPct: 0.169, fuerza: 297.9, esfuerzoMedido: 147.85 },
+      { defHorizontal: 7.2, defNormalPct: 0.169, fuerza: 297.9, esfuerzoMedido: 147.85 },
+      { defHorizontal: 7.6, defNormalPct: 0.169, fuerza: 297.9, esfuerzoMedido: 147.85 },
+      { defHorizontal: 8, defNormalPct: 0.169, fuerza: 297.9, esfuerzoMedido: 147.85 },
+      { defHorizontal: 8.4, defNormalPct: 0.169, fuerza: 297.9, esfuerzoMedido: 147.85 },
+      { defHorizontal: 8.8, defNormalPct: 0.169, fuerza: 297.9, esfuerzoMedido: 147.85 },
+      { defHorizontal: 9.2, defNormalPct: 0.169, fuerza: 297.9, esfuerzoMedido: 147.85 },
+      { defHorizontal: 9.6, defNormalPct: 0.169, fuerza: 297.9, esfuerzoMedido: 147.85 },
+      { defHorizontal: 10, defNormalPct: 0.169, fuerza: 297.9, esfuerzoMedido: 147.85 },
+      { defHorizontal: 10.4, defNormalPct: 0.169, fuerza: 297.9, esfuerzoMedido: 147.85 },
+      { defHorizontal: 10.8, defNormalPct: 0.169, fuerza: 297.9, esfuerzoMedido: 147.85 },
+      { defHorizontal: 11.2, defNormalPct: 0.169, fuerza: 297.9, esfuerzoMedido: 147.85 },
+      { defHorizontal: 11.6, defNormalPct: 0.169, fuerza: 297.9, esfuerzoMedido: 147.85 },
+      { defHorizontal: 12.0, defNormalPct: 0.169, fuerza: 297.9, esfuerzoMedido: 147.85 },
+      { defHorizontal: 12.4, defNormalPct: 0.169, fuerza: 297.9, esfuerzoMedido: 147.85 },
+      { defHorizontal: 12.8, defNormalPct: 0.169, fuerza: 297.9, esfuerzoMedido: 147.85 },
+      { defHorizontal: 13.2, defNormalPct: 0.169, fuerza: 297.9, esfuerzoMedido: 147.85 },
+      { defHorizontal: 13.6, defNormalPct: 0.169, fuerza: 297.9, esfuerzoMedido: 147.85 },
+      { defHorizontal: 14.0, defNormalPct: 0.169, fuerza: 297.9, esfuerzoMedido: 147.85 },
+      { defHorizontal: 14.4, defNormalPct: 0.169, fuerza: 297.9, esfuerzoMedido: 147.85 },
+      { defHorizontal: 14.8, defNormalPct: 0.169, fuerza: 297.9, esfuerzoMedido: 147.85 },
+      { defHorizontal: 15.2, defNormalPct: 0.169, fuerza: 297.9, esfuerzoMedido: 147.85 },
+      { defHorizontal: 15.6, defNormalPct: 0.169, fuerza: 297.9, esfuerzoMedido: 147.85 },
+      { defHorizontal: 16.0, defNormalPct: 0.169, fuerza: 297.9, esfuerzoMedido: 147.85 },
+      { defHorizontal: 16.4, defNormalPct: 0.169, fuerza: 297.9, esfuerzoMedido: 147.85 },
+      { defHorizontal: 16.8, defNormalPct: 0.169, fuerza: 297.9, esfuerzoMedido: 147.85 },
+      { defHorizontal: 17.2, defNormalPct: 0.169, fuerza: 297.9, esfuerzoMedido: 147.85 },
+      { defHorizontal: 17.6, defNormalPct: 0.169, fuerza: 297.9, esfuerzoMedido: 147.85 },
+      { defHorizontal: 18.0, defNormalPct: 0.169, fuerza: 297.9, esfuerzoMedido: 147.85 },
+      { defHorizontal: 18.4, defNormalPct: 0.169, fuerza: 297.9, esfuerzoMedido: 147.85 },
+      { defHorizontal: 18.8, defNormalPct: 0.169, fuerza: 297.9, esfuerzoMedido: 147.85 },
+      { defHorizontal: 19.2, defNormalPct: 0.169, fuerza: 297.9, esfuerzoMedido: 147.85 },
+      { defHorizontal: 19.6, defNormalPct: 0.169, fuerza: 297.9, esfuerzoMedido: 147.85 },
+      { defHorizontal: 20.0, defNormalPct: 0.169, fuerza: 297.9, esfuerzoMedido: 147.85 },
+    ],
+  },
+  {
+    nombre: "M3",
+    diametroMm: 50.55,
+    masaKg: 8,
+    datos: [
+      { defHorizontal: 0, defNormalPct: 0, fuerza: 0, esfuerzoMedido: 0 },
+      { defHorizontal: 0.4, defNormalPct: -0.023, fuerza: 298, esfuerzoMedido: 148.486 },
+      { defHorizontal: 0.8, defNormalPct: -0.05, fuerza: 431, esfuerzoMedido: 214.756 },
+      { defHorizontal: 1.2, defNormalPct: -0.06, fuerza: 534.1, esfuerzoMedido: 266.128 },
+      { defHorizontal: 1.6, defNormalPct: -0.06, fuerza: 600, esfuerzoMedido: 298.964 },
+      { defHorizontal: 2, defNormalPct: -0.06, fuerza: 641.7, esfuerzoMedido: 319.742 },
+      { defHorizontal: 2.2, defNormalPct: -0.051, fuerza: 655, esfuerzoMedido: 326.369 },
+      { defHorizontal: 2.4, defNormalPct: -0.048, fuerza: 648.7, esfuerzoMedido: 323.23 },
+      { defHorizontal: 2.8, defNormalPct: -0.041, fuerza: 646.5, esfuerzoMedido: 322.134 },
+      { defHorizontal: 3.2, defNormalPct: -0.033, fuerza: 635.1, esfuerzoMedido: 316.454 },
+      { defHorizontal: 3.6, defNormalPct: -0.027, fuerza: 620, esfuerzoMedido: 308.93 },
+      { defHorizontal: 4, defNormalPct: -0.025, fuerza: 599.7, esfuerzoMedido: 298.815 },
+      { defHorizontal: 4.4, defNormalPct: -0.025, fuerza: 596.9, esfuerzoMedido: 297.42 },
+      { defHorizontal: 4.8, defNormalPct: -0.025, fuerza: 622.4, esfuerzoMedido: 310.126 },
+      { defHorizontal: 5.2, defNormalPct: -0.025, fuerza: 621.9, esfuerzoMedido: 309.877 },
+      { defHorizontal: 5.6, defNormalPct: -0.025, fuerza: 621.9, esfuerzoMedido: 309.877 },
+      { defHorizontal: 6, defNormalPct: -0.025, fuerza: 621.9, esfuerzoMedido: 309.877 },
+      { defHorizontal: 6.4, defNormalPct: -0.025, fuerza: 621.9, esfuerzoMedido: 309.877 },
+      { defHorizontal: 6.8, defNormalPct: -0.025, fuerza: 621.9, esfuerzoMedido: 309.877 },
+      { defHorizontal: 7.2, defNormalPct: -0.025, fuerza: 621.9, esfuerzoMedido: 309.877 },
+      { defHorizontal: 7.6, defNormalPct: -0.025, fuerza: 621.9, esfuerzoMedido: 309.877 },
+      { defHorizontal: 8, defNormalPct: -0.025, fuerza: 621.9, esfuerzoMedido: 309.877 },
+      { defHorizontal: 8.4, defNormalPct: -0.025, fuerza: 621.9, esfuerzoMedido: 309.877 },
+      { defHorizontal: 8.8, defNormalPct: -0.025, fuerza: 621.9, esfuerzoMedido: 309.877 },
+      { defHorizontal: 9.2, defNormalPct: -0.025, fuerza: 621.9, esfuerzoMedido: 309.877 },
+      { defHorizontal: 9.6, defNormalPct: -0.025, fuerza: 621.9, esfuerzoMedido: 309.877 },
+      { defHorizontal: 10, defNormalPct: -0.025, fuerza: 621.9, esfuerzoMedido: 309.877 },
+      { defHorizontal: 10.4, defNormalPct: -0.025, fuerza: 621.9, esfuerzoMedido: 309.877 },
+      { defHorizontal: 10.8, defNormalPct: -0.025, fuerza: 621.9, esfuerzoMedido: 309.877 },
+      { defHorizontal: 11.2, defNormalPct: -0.025, fuerza: 621.9, esfuerzoMedido: 309.877 },
+      { defHorizontal: 11.6, defNormalPct: -0.025, fuerza: 621.9, esfuerzoMedido: 309.877 },
+      { defHorizontal: 12.0, defNormalPct: -0.025, fuerza: 621.9, esfuerzoMedido: 309.877 },
+      { defHorizontal: 12.4, defNormalPct: -0.025, fuerza: 621.9, esfuerzoMedido: 309.877 },
+      { defHorizontal: 12.8, defNormalPct: -0.025, fuerza: 621.9, esfuerzoMedido: 309.877 },
+      { defHorizontal: 13.2, defNormalPct: -0.025, fuerza: 621.9, esfuerzoMedido: 309.877 },
+      { defHorizontal: 13.6, defNormalPct: -0.025, fuerza: 621.9, esfuerzoMedido: 309.877 },
+      { defHorizontal: 14.0, defNormalPct: -0.025, fuerza: 621.9, esfuerzoMedido: 309.877 },
+      { defHorizontal: 14.4, defNormalPct: -0.025, fuerza: 621.9, esfuerzoMedido: 309.877 },
+      { defHorizontal: 14.8, defNormalPct: -0.025, fuerza: 621.9, esfuerzoMedido: 309.877 },
+      { defHorizontal: 15.2, defNormalPct: -0.025, fuerza: 621.9, esfuerzoMedido: 309.877 },
+      { defHorizontal: 15.6, defNormalPct: -0.025, fuerza: 621.9, esfuerzoMedido: 309.877 },
+      { defHorizontal: 16.0, defNormalPct: -0.025, fuerza: 621.9, esfuerzoMedido: 309.877 },
+      { defHorizontal: 16.4, defNormalPct: -0.025, fuerza: 621.9, esfuerzoMedido: 309.877 },
+      { defHorizontal: 16.8, defNormalPct: -0.025, fuerza: 621.9, esfuerzoMedido: 309.877 },
+      { defHorizontal: 17.2, defNormalPct: -0.025, fuerza: 621.9, esfuerzoMedido: 309.877 },
+      { defHorizontal: 17.6, defNormalPct: -0.025, fuerza: 621.9, esfuerzoMedido: 309.877 },
+      { defHorizontal: 18.0, defNormalPct: -0.025, fuerza: 621.9, esfuerzoMedido: 309.877 },
+      { defHorizontal: 18.4, defNormalPct: -0.025, fuerza: 621.9, esfuerzoMedido: 309.877 },
+      { defHorizontal: 18.8, defNormalPct: -0.025, fuerza: 621.9, esfuerzoMedido: 309.877 },
+      { defHorizontal: 19.2, defNormalPct: -0.025, fuerza: 621.9, esfuerzoMedido: 309.877 },
+      { defHorizontal: 19.6, defNormalPct: -0.025, fuerza: 621.9, esfuerzoMedido: 309.877 },
+      { defHorizontal: 20.0, defNormalPct: -0.025, fuerza: 621.9, esfuerzoMedido: 309.877 },
+    ],
+  },
+]
+
+// ---------------------------------------------------------------------------
+// Plantilla y datos de ejemplo
+// ---------------------------------------------------------------------------
+function descargarPlantilla() {
+  const wb = XLSX.utils.book_new()
+  const filas: (string | number)[][] = [
+    ["Plantilla de datos - Ensayo de Corte Directo (NodoCalc)"],
+    ["Instrucciones: complete una fila por cada lectura del ensayo. No modifique los encabezados."],
+    ["Las unidades de Fuerza y Esfuerzo Cortante se definen en NodoCalc despues de cargar el archivo."],
+    [],
+    ["Def horizontal", "Def normal (%)", "Fuerza", "Esfuerzo cortante"],
+    [0.5, 0.1, 45.2, 12.6],
+  ]
+  const ws = XLSX.utils.aoa_to_sheet(filas)
+  ws["!cols"] = [{ wch: 16 }, { wch: 16 }, { wch: 14 }, { wch: 18 }]
+  XLSX.utils.book_append_sheet(wb, ws, "Corte Directo")
+  XLSX.writeFile(wb, "plantilla_corte_directo.xlsx")
+}
+
+function crearMuestrasDeEjemplo(): Muestra[] {
+  return EJEMPLO_CORTE_DIRECTO.map((e) => ({
+    ...nuevaMuestra(),
+    nombre: e.nombre,
+    forma: "circular" as Forma,
+    dimension: e.diametroMm,
+    unidadLongitud: "mm",
+    masa: e.masaKg,
+    unidadMasa: "kg",
+    usaBrazo: true,
+    relacionBrazo: 10,
+    unidadFuerza: "N",
+    unidadEsfuerzoMedido: "kPa",
+    archivoNombre: "ejemplo_corte_directo.xlsx",
+    datos: e.datos,
+  }))
+}
+
 async function parsearExcelEnsayo(file: File): Promise<BloqueMuestra[]> {
   const buf = await file.arrayBuffer()
   const wb = XLSX.read(buf, { type: "array" })
@@ -793,6 +1010,9 @@ function TabCorteDirecto() {
   function actualizarMuestra(id: string, cambios: Partial<Muestra>) {
     setMuestras((prev) => prev.map((m) => (m.id === id ? { ...m, ...cambios } : m)))
   }
+  function cargarEjemplo() {
+    setMuestras(crearMuestrasDeEjemplo())
+  }
   async function cargarExcel(id: string, file: File) {
     const bloques = await parsearExcelEnsayo(file)
     if (bloques.length === 0) return
@@ -854,6 +1074,27 @@ function TabCorteDirecto() {
 
   return (
     <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white p-4 shadow-sm border border-gray-100">
+        <p className="text-xs text-gray-500">
+          Descarga la plantilla para saber qué columnas debe traer tu Excel, o carga un ejemplo con datos reales de
+          laboratorio para ver el módulo en funcionamiento.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={descargarPlantilla}
+            className="rounded-lg border border-gray-300 px-4 py-2 text-xs font-medium text-gray-700 hover:border-blue-400 hover:text-blue-600"
+          >
+            Descargar plantilla de Excel
+          </button>
+          <button
+            onClick={cargarEjemplo}
+            className="rounded-lg bg-blue-50 px-4 py-2 text-xs font-medium text-blue-700 hover:bg-blue-100"
+          >
+            Cargar ejemplo (3 muestras)
+          </button>
+        </div>
+      </div>
+
       {resultados.map((r) => {
         const m = r.muestra
         return (
