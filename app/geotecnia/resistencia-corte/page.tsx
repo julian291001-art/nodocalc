@@ -532,7 +532,7 @@ function ChartXY({
   width?: number
   height?: number
 }) {
-  const [hover, setHover] = useState<{ x: number; y: number; px: number; py: number } | null>(null)
+  const [hoverX, setHoverX] = useState<number | null>(null)
 
   const ML = 64,
     MB = 40,
@@ -558,7 +558,6 @@ function ChartXY({
   const toX = (x: number) => ML + ((x - xMin) / (xMax - xMin || 1)) * plotW
   const toY = (y: number) => height - MB - ((y - yMin) / (yMax - yMin || 1)) * plotH
   const fromX = (px: number) => xMin + ((px - ML) / plotW) * (xMax - xMin)
-  const fromY = (py: number) => yMin + ((height - MB - py) / plotH) * (yMax - yMin)
 
   const NTICKS = 5
   const xTicks = Array.from({ length: NTICKS + 1 }, (_, i) => xMin + ((xMax - xMin) * i) / NTICKS)
@@ -569,12 +568,37 @@ function ChartXY({
     if (!svg) return
     const rect = svg.getBoundingClientRect()
     const px = ((e.clientX - rect.left) / rect.width) * width
-    const py = ((e.clientY - rect.top) / rect.height) * height
-    setHover({ x: fromX(px), y: fromY(py), px, py })
+    setHoverX(fromX(px))
   }
 
+  // Para cada serie, el punto real de la curva más cercano (en X) al cursor —
+  // no la posición libre del mouse.
+  const coincidencias =
+    hoverX === null
+      ? []
+      : series
+          .filter((s) => s.points.length > 0)
+          .map((s) => {
+            let mejor = s.points[0]
+            let mejorDist = Math.abs(mejor.x - hoverX)
+            for (const p of s.points) {
+              const d = Math.abs(p.x - hoverX)
+              if (d < mejorDist) {
+                mejorDist = d
+                mejor = p
+              }
+            }
+            return { color: s.color, label: s.label, punto: mejor }
+          })
+
+  const tooltipX = coincidencias.length ? toX(coincidencias[0].punto.x) : 0
+  const tooltipAncho = 130
+  const tooltipAlto = 16 + coincidencias.length * 14
+  const tooltipPosX = Math.min(Math.max(tooltipX + 10, ML), width - MR - tooltipAncho)
+  const tooltipPosY = MT + 6
+
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="w-full" onMouseLeave={() => setHover(null)}>
+    <svg viewBox={`0 0 ${width} ${height}`} className="w-full" onMouseLeave={() => setHoverX(null)}>
       {yTicks.map((t, i) => (
         <g key={`y-${i}`}>
           <line x1={ML} y1={toY(t)} x2={width - MR} y2={toY(t)} stroke="#f3f4f6" strokeWidth={1} />
@@ -650,27 +674,45 @@ function ChartXY({
         style={{ cursor: "crosshair" }}
       />
 
-      {hover && (
+      {coincidencias.length > 0 && (
         <g pointerEvents="none">
-          <line x1={hover.px} y1={MT} x2={hover.px} y2={height - MB} stroke="#9ca3af" strokeWidth={1} strokeDasharray="3 3" />
-          <line x1={ML} y1={hover.py} x2={width - MR} y2={hover.py} stroke="#9ca3af" strokeWidth={1} strokeDasharray="3 3" />
+          <line
+            x1={toX(coincidencias[0].punto.x)}
+            y1={MT}
+            x2={toX(coincidencias[0].punto.x)}
+            y2={height - MB}
+            stroke="#9ca3af"
+            strokeWidth={1}
+            strokeDasharray="3 3"
+          />
+
+          {coincidencias.map((c, i) => (
+            <circle
+              key={i}
+              cx={toX(c.punto.x)}
+              cy={toY(c.punto.y)}
+              r={4.5}
+              fill={c.color}
+              stroke="#fff"
+              strokeWidth={1.5}
+            />
+          ))}
+
           <rect
-            x={Math.min(hover.px + 8, width - 120)}
-            y={Math.max(hover.py - 24, MT)}
-            width={116}
-            height={20}
+            x={tooltipPosX}
+            y={tooltipPosY}
+            width={tooltipAncho}
+            height={tooltipAlto}
             rx={4}
             fill="#111827"
-            opacity={0.85}
+            opacity={0.9}
           />
-          <text
-            x={Math.min(hover.px + 8, width - 120) + 6}
-            y={Math.max(hover.py - 24, MT) + 14}
-            fontSize="8.5"
-            fill="#fff"
-          >
-            x: {fmt(hover.x, 2)}  y: {fmt(hover.y, 2)}
-          </text>
+          {coincidencias.map((c, i) => (
+            <text key={i} x={tooltipPosX + 8} y={tooltipPosY + 14 + i * 14} fontSize="8.5" fill="#fff">
+              <tspan fill={c.color}>● </tspan>
+              {c.label}: {fmt(c.punto.x, 2)}, {fmt(c.punto.y, 2)}
+            </text>
+          ))}
         </g>
       )}
     </svg>
