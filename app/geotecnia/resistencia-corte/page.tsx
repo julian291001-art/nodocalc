@@ -522,8 +522,8 @@ function ChartXY({
   regressionLines = [],
   xLabel,
   yLabel,
-  width = 380,
-  height = 260,
+  width = 700,
+  height = 300,
 }: {
   series: { label: string; color: string; points: { x: number; y: number }[]; mode?: "line" | "scatter" }[]
   regressionLines?: { color: string; pendiente: number; intercepto: number }[]
@@ -532,8 +532,10 @@ function ChartXY({
   width?: number
   height?: number
 }) {
-  const ML = 58,
-    MB = 34,
+  const [hover, setHover] = useState<{ x: number; y: number; px: number; py: number } | null>(null)
+
+  const ML = 64,
+    MB = 40,
     MT = 15,
     MR = 15
   const plotW = width - ML - MR
@@ -543,7 +545,7 @@ function ChartXY({
   const allX = allPoints.map((p) => p.x)
   const allY = allPoints.map((p) => p.y)
 
-  const xMax = (allX.length ? Math.max(...allX, 0) : 1) * 1.15 || 1
+  const xMax = (allX.length ? Math.max(...allX, 0) : 1) * 1.1 || 1
   const xMin = Math.min(0, ...(allX.length ? allX : [0]))
 
   const yCandidates = allY.length ? [...allY] : [0, 1]
@@ -555,15 +557,55 @@ function ChartXY({
 
   const toX = (x: number) => ML + ((x - xMin) / (xMax - xMin || 1)) * plotW
   const toY = (y: number) => height - MB - ((y - yMin) / (yMax - yMin || 1)) * plotH
+  const fromX = (px: number) => xMin + ((px - ML) / plotW) * (xMax - xMin)
+  const fromY = (py: number) => yMin + ((height - MB - py) / plotH) * (yMax - yMin)
+
+  const NTICKS = 5
+  const xTicks = Array.from({ length: NTICKS + 1 }, (_, i) => xMin + ((xMax - xMin) * i) / NTICKS)
+  const yTicks = Array.from({ length: NTICKS + 1 }, (_, i) => yMin + ((yMax - yMin) * i) / NTICKS)
+
+  function handleMove(e: React.MouseEvent<SVGRectElement>) {
+    const svg = e.currentTarget.ownerSVGElement
+    if (!svg) return
+    const rect = svg.getBoundingClientRect()
+    const px = ((e.clientX - rect.left) / rect.width) * width
+    const py = ((e.clientY - rect.top) / rect.height) * height
+    setHover({ x: fromX(px), y: fromY(py), px, py })
+  }
 
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="w-full">
+    <svg viewBox={`0 0 ${width} ${height}`} className="w-full" onMouseLeave={() => setHover(null)}>
+      {yTicks.map((t, i) => (
+        <g key={`y-${i}`}>
+          <line x1={ML} y1={toY(t)} x2={width - MR} y2={toY(t)} stroke="#f3f4f6" strokeWidth={1} />
+          <text x={ML - 8} y={toY(t) + 3} textAnchor="end" fontSize="8" fill="#9ca3af">
+            {fmt(t, Math.abs(t) < 10 ? 2 : 0)}
+          </text>
+        </g>
+      ))}
+      {xTicks.map((t, i) => (
+        <g key={`x-${i}`}>
+          <line x1={toX(t)} y1={MT} x2={toX(t)} y2={height - MB} stroke="#f3f4f6" strokeWidth={1} />
+          <text x={toX(t)} y={height - MB + 14} textAnchor="middle" fontSize="8" fill="#9ca3af">
+            {fmt(t, Math.abs(t) < 10 ? 2 : 0)}
+          </text>
+        </g>
+      ))}
+
       <line x1={ML} y1={height - MB} x2={width - MR} y2={height - MB} stroke="#9ca3af" strokeWidth={1} />
       <line x1={ML} y1={height - MB} x2={ML} y2={MT} stroke="#9ca3af" strokeWidth={1} />
+
       <text x={ML + plotW / 2} y={height - 6} textAnchor="middle" fontSize="9" fill="#6b7280">
         {xLabel}
       </text>
-      <text x={14} y={MT + 4} fontSize="9" fill="#6b7280">
+      <text
+        x={16}
+        y={MT + plotH / 2}
+        textAnchor="middle"
+        fontSize="9"
+        fill="#6b7280"
+        transform={`rotate(-90, 16, ${MT + plotH / 2})`}
+      >
         {yLabel}
       </text>
 
@@ -584,15 +626,7 @@ function ChartXY({
         s.mode === "scatter" ? (
           <g key={si}>
             {s.points.map((p, pi) => (
-              <circle
-                key={pi}
-                cx={toX(p.x)}
-                cy={toY(p.y)}
-                r={4}
-                fill={s.color}
-                stroke="#fff"
-                strokeWidth={1}
-              />
+              <circle key={pi} cx={toX(p.x)} cy={toY(p.y)} r={4} fill={s.color} stroke="#fff" strokeWidth={1} />
             ))}
           </g>
         ) : (
@@ -604,6 +638,40 @@ function ChartXY({
             strokeWidth={1.75}
           />
         )
+      )}
+
+      <rect
+        x={ML}
+        y={MT}
+        width={plotW}
+        height={plotH}
+        fill="transparent"
+        onMouseMove={handleMove}
+        style={{ cursor: "crosshair" }}
+      />
+
+      {hover && (
+        <g pointerEvents="none">
+          <line x1={hover.px} y1={MT} x2={hover.px} y2={height - MB} stroke="#9ca3af" strokeWidth={1} strokeDasharray="3 3" />
+          <line x1={ML} y1={hover.py} x2={width - MR} y2={hover.py} stroke="#9ca3af" strokeWidth={1} strokeDasharray="3 3" />
+          <rect
+            x={Math.min(hover.px + 8, width - 120)}
+            y={Math.max(hover.py - 24, MT)}
+            width={116}
+            height={20}
+            rx={4}
+            fill="#111827"
+            opacity={0.85}
+          />
+          <text
+            x={Math.min(hover.px + 8, width - 120) + 6}
+            y={Math.max(hover.py - 24, MT) + 14}
+            fontSize="8.5"
+            fill="#fff"
+          >
+            x: {fmt(hover.x, 2)}  y: {fmt(hover.y, 2)}
+          </text>
+        </g>
       )}
     </svg>
   )
@@ -1349,18 +1417,25 @@ function TabCorteDirecto() {
             </table>
           </div>
 
-          <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <MetricTile label="c' pico" value={fmt(regPico.intercepto)} unit={unidadResultados} color="blue" />
-            <MetricTile label="tan(φ') pico" value={fmt(regPico.pendiente, 4)} color="blue" />
-            <MetricTile label="φ' pico" value={fmt(phiPico, 2)} unit="°" color="blue" />
-            <MetricTile label="R² pico" value={fmt(regPico.r2, 3)} color="gray" />
-            <MetricTile label="c' residual" value={fmt(regResidual.intercepto)} unit={unidadResultados} color="green" />
-            <MetricTile label="tan(φ') residual" value={fmt(regResidual.pendiente, 4)} color="green" />
-            <MetricTile label="φ' residual" value={fmt(phiResidual, 2)} unit="°" color="green" />
-            <MetricTile label="R² residual" value={fmt(regResidual.r2, 3)} color="gray" />
-          </div>
+          <div className="mt-6 space-y-8">
+            <div>
+              <h4 className="mb-2 text-center text-xs font-semibold text-gray-600">Def. horizontal vs τ corregido</h4>
+              <ChartXY
+                xLabel="Def. horizontal"
+                yLabel={`τ (${unidadResultados})`}
+                series={conDatos.map((r) => ({
+                  label: r.muestra.nombre,
+                  color: r.color,
+                  mode: "line" as const,
+                  points: r.calc.filas.map((f) => ({
+                    x: f.defHorizontal,
+                    y: convEsfuerzo.aMostrar(f.tauCorr, unidadResultados),
+                  })),
+                }))}
+              />
+              <Leyenda items={conDatos.map((r) => ({ color: r.color, label: r.muestra.nombre }))} />
+            </div>
 
-          <div className="mt-6 grid gap-6 lg:grid-cols-2">
             <div>
               <h4 className="mb-2 text-center text-xs font-semibold text-gray-600">Envolvente de Coulomb</h4>
               <ChartXY
@@ -1384,27 +1459,10 @@ function TabCorteDirecto() {
             </div>
 
             <div>
-              <h4 className="mb-2 text-center text-xs font-semibold text-gray-600">Def. horizontal vs τ corregido</h4>
+              <h4 className="mb-2 text-center text-xs font-semibold text-gray-600">
+                Def. horizontal vs Def. normal (%) — dilatancia
+              </h4>
               <ChartXY
-                xLabel="Def. horizontal"
-                yLabel={`τ (${unidadResultados})`}
-                series={conDatos.map((r) => ({
-                  label: r.muestra.nombre,
-                  color: r.color,
-                  mode: "line" as const,
-                  points: r.calc.filas.map((f) => ({
-                    x: f.defHorizontal,
-                    y: convEsfuerzo.aMostrar(f.tauCorr, unidadResultados),
-                  })),
-                }))}
-              />
-              <Leyenda items={conDatos.map((r) => ({ color: r.color, label: r.muestra.nombre }))} />
-            </div>
-
-            <div className="lg:col-span-2">
-              <h4 className="mb-2 text-center text-xs font-semibold text-gray-600">Def. horizontal vs Def. normal (%) — dilatancia</h4>
-              <ChartXY
-                width={780}
                 xLabel="Def. horizontal"
                 yLabel="Def. normal (%)"
                 series={conDatos.map((r) => ({
