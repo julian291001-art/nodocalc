@@ -1064,38 +1064,42 @@ interface FilaCalculada extends FilaEnsayo {
   tauCorr: number // Pa
 }
 
-function calcularMuestra(m: Muestra) {
+type MetodoCorreccion = "porLectura" | "picoFijo" | "sinCorreccion"
+
+// Calcula el área corregida (traslape circular o rectángulo cuadrado) para un
+// desplazamiento horizontal dado.
+function calcularAreaCorregida(forma: Forma, dimBase: number, deltaBase: number, A0: number): number {
+  if (forma === "circular") {
+    const ratio = Math.min(Math.max(deltaBase / dimBase, -0.999), 0.999)
+    const theta = Math.acos(ratio)
+    return (dimBase * dimBase / 2) * (theta - ratio * Math.sin(theta))
+  }
+  return Math.max(dimBase * (dimBase - deltaBase), A0 * 0.001)
+}
+
+function calcularMuestra(m: Muestra, metodo: MetodoCorreccion) {
   const dimBase = convLongitud.aBase(m.dimension, m.unidadLongitud) // m
   const A0 = m.forma === "circular" ? (Math.PI * dimBase * dimBase) / 4 : dimBase * dimBase // m²
   const masaBase = convMasa.aBase(m.masa, m.unidadMasa) // kg
   const peso = masaBase * GRAVEDAD // N
   const P = peso * (m.usaBrazo ? m.relacionBrazo || 1 : 1) // N normal aplicado
 
-  // Ac se calcula UNA sola vez por muestra, con la deformación horizontal en el
-  // punto de FUERZA MÁXIMA (pico) — no con la deformación máxima/última del ensayo,
-  // que suele continuar registrando bastante más allá de la falla hasta el tramo
-  // residual. Esa misma Ac se aplica luego a todas las filas de la curva
-  // (metodología validada contra datos reales de laboratorio).
+  // Deformación en el punto de fuerza máxima (pico) — la usa el método "picoFijo"
   let filaPicoRaw: FilaEnsayo | null = null
   for (const f of m.datos) if (!filaPicoRaw || f.fuerza > filaPicoRaw.fuerza) filaPicoRaw = f
   const deformacionEnPico = filaPicoRaw ? filaPicoRaw.defHorizontal : 0
   const deltaPicoBase = convLongitud.aBase(deformacionEnPico, m.unidadLongitud)
-
-  let Ac = A0
-  if (filaPicoRaw) {
-    if (m.forma === "circular") {
-      const ratio = Math.min(Math.max(deltaPicoBase / dimBase, -0.999), 0.999)
-      const theta = Math.acos(ratio)
-      Ac = (dimBase * dimBase / 2) * (theta - ratio * Math.sin(theta))
-    } else {
-      Ac = Math.max(dimBase * (dimBase - deltaPicoBase), A0 * 0.001)
-    }
-  }
-
-  const sigmaCorr = Ac > 0 ? P / Ac : 0 // Pa, constante para toda la muestra
+  const AcPicoFijo = calcularAreaCorregida(m.forma, dimBase, deltaPicoBase, A0)
 
   const filas: FilaCalculada[] = m.datos.map((f) => {
+    const deltaBase = convLongitud.aBase(f.defHorizontal, m.unidadLongitud)
+    let Ac: number
+    if (metodo === "sinCorreccion") Ac = A0
+    else if (metodo === "picoFijo") Ac = AcPicoFijo
+    else Ac = calcularAreaCorregida(m.forma, dimBase, deltaBase, A0) // porLectura
+
     const fuerzaBase = convFuerza.aBase(f.fuerza, m.unidadFuerza) // N
+    const sigmaCorr = Ac > 0 ? P / Ac : 0
     const tauCorr = Ac > 0 ? fuerzaBase / Ac : 0
     return { ...f, Ac, sigmaCorr, tauCorr }
   })
@@ -1104,12 +1108,13 @@ function calcularMuestra(m: Muestra) {
   for (const f of filas) if (!pico || f.tauCorr > pico.tauCorr) pico = f
   const residual: FilaCalculada | null = filas.length ? filas[filas.length - 1] : null
 
-  return { A0, Ac, P, sigmaCorr, filas, deformacionEnPico, pico, residual }
+  return { A0, P, filas, deformacionEnPico, pico, residual }
 }
 
 function TabCorteDirecto() {
   const [muestras, setMuestras] = useState<Muestra[]>([nuevaMuestra()])
   const [unidadResultados, setUnidadResultados] = useState("kPa")
+  const [metodoCorreccion, setMetodoCorreccion] = useState<MetodoCorreccion>("picoFijo")
 
   function agregarMuestra() {
     setMuestras((prev) => [...prev, nuevaMuestra()])
@@ -1158,8 +1163,13 @@ function TabCorteDirecto() {
   }
 
   const resultados = useMemo(
-    () => muestras.map((m, i) => ({ muestra: m, color: PALETA_MUESTRAS[i % PALETA_MUESTRAS.length], calc: calcularMuestra(m) })),
-    [muestras]
+    () =>
+      muestras.map((m, i) => ({
+        muestra: m,
+        color: PALETA_MUESTRAS[i % PALETA_MUESTRAS.length],
+        calc: calcularMuestra(m, metodoCorreccion),
+      })),
+    [muestras, metodoCorreccion]
   )
 
   const conDatos = resultados.filter((r) => r.calc.filas.length > 0)
@@ -1189,7 +1199,17 @@ function TabCorteDirecto() {
           Descarga la plantilla para saber qué columnas debe traer tu Excel, o carga un ejemplo con datos reales de
           laboratorio para ver el módulo en funcionamiento.
         </p>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="text-xs font-medium text-gray-600">Método de corrección de área</label>
+          <select
+            value={metodoCorreccion}
+            onChange={(e) => setMetodoCorreccion(e.target.value as MetodoCorreccion)}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-xs text-gray-700"
+          >
+            <option value="porLectura">Por lectura (recomendado, ASTM/IS 2720)</option>
+            <option value="picoFijo">Fija en el pico</option>
+            <option value="sinCorreccion">Sin corrección (área inicial)</option>
+          </select>
           <button
             onClick={descargarPlantilla}
             className="rounded-lg border border-gray-300 px-4 py-2 text-xs font-medium text-gray-700 hover:border-blue-400 hover:text-blue-600"
@@ -1367,15 +1387,20 @@ function TabCorteDirecto() {
                   <MetricTile label="Área inicial A₀" value={fmt(r.calc.A0 * 1e6, 1)} unit="mm²" color="gray" />
                   <MetricTile label="Fuerza normal P" value={fmt(r.calc.P, 1)} unit="N" color="gray" />
                   <MetricTile
-                    label="Deformación en el pico (define Ac)"
+                    label="Deformación en el pico"
                     value={fmt(r.calc.deformacionEnPico, 2)}
                     unit={m.unidadLongitud}
                     color="amber"
                   />
-                  <MetricTile label="Área corregida Ac" value={fmt(r.calc.Ac * 1e6, 1)} unit="mm²" color="amber" />
                   <MetricTile
-                    label="σ' corregido"
-                    value={fmt(convEsfuerzo.aMostrar(r.calc.sigmaCorr, unidadResultados))}
+                    label="Área corregida Ac (en el pico)"
+                    value={r.calc.pico ? fmt(r.calc.pico.Ac * 1e6, 1) : "—"}
+                    unit="mm²"
+                    color="amber"
+                  />
+                  <MetricTile
+                    label="σ' corregido (en el pico)"
+                    value={r.calc.pico ? fmt(convEsfuerzo.aMostrar(r.calc.pico.sigmaCorr, unidadResultados)) : "—"}
                     unit={unidadResultados}
                     color="green"
                   />
@@ -1437,8 +1462,9 @@ function TabCorteDirecto() {
               <thead className="text-gray-500">
                 <tr>
                   <th className="px-3 py-2">Muestra</th>
-                  <th className="px-3 py-2">σ' corregido ({unidadResultados})</th>
+                  <th className="px-3 py-2">σ' pico ({unidadResultados})</th>
                   <th className="px-3 py-2">τ pico ({unidadResultados})</th>
+                  <th className="px-3 py-2">σ' residual ({unidadResultados})</th>
                   <th className="px-3 py-2">τ residual ({unidadResultados})</th>
                 </tr>
               </thead>
@@ -1446,9 +1472,14 @@ function TabCorteDirecto() {
                 {conDatos.map((r) => (
                   <tr key={r.muestra.id} className="border-t border-gray-100 text-gray-700">
                     <td className="px-3 py-1.5 font-medium">{r.muestra.nombre}</td>
-                    <td className="px-3 py-1.5">{fmt(convEsfuerzo.aMostrar(r.calc.sigmaCorr, unidadResultados))}</td>
+                    <td className="px-3 py-1.5">
+                      {r.calc.pico ? fmt(convEsfuerzo.aMostrar(r.calc.pico.sigmaCorr, unidadResultados)) : "—"}
+                    </td>
                     <td className="px-3 py-1.5">
                       {r.calc.pico ? fmt(convEsfuerzo.aMostrar(r.calc.pico.tauCorr, unidadResultados)) : "—"}
+                    </td>
+                    <td className="px-3 py-1.5">
+                      {r.calc.residual ? fmt(convEsfuerzo.aMostrar(r.calc.residual.sigmaCorr, unidadResultados)) : "—"}
                     </td>
                     <td className="px-3 py-1.5">
                       {r.calc.residual ? fmt(convEsfuerzo.aMostrar(r.calc.residual.tauCorr, unidadResultados)) : "—"}
@@ -1457,6 +1488,17 @@ function TabCorteDirecto() {
                 ))}
               </tbody>
             </table>
+          </div>
+
+          <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <MetricTile label="c' pico" value={fmt(regPico.intercepto)} unit={unidadResultados} color="blue" />
+            <MetricTile label="tan(φ') pico" value={fmt(regPico.pendiente, 4)} color="blue" />
+            <MetricTile label="φ' pico" value={fmt(phiPico, 2)} unit="°" color="blue" />
+            <MetricTile label="R² pico" value={fmt(regPico.r2, 3)} color="gray" />
+            <MetricTile label="c' residual" value={fmt(regResidual.intercepto)} unit={unidadResultados} color="green" />
+            <MetricTile label="tan(φ') residual" value={fmt(regResidual.pendiente, 4)} color="green" />
+            <MetricTile label="φ' residual" value={fmt(phiResidual, 2)} unit="°" color="green" />
+            <MetricTile label="R² residual" value={fmt(regResidual.r2, 3)} color="gray" />
           </div>
 
           <div className="mt-6 space-y-8">
