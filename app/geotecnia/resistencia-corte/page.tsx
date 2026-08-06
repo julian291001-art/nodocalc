@@ -475,7 +475,7 @@ function ChartXY({
 
   const yCandidates = allY.length ? [...allY] : [0, 1]
   regressionLines.forEach((r) => {
-    yCandidates.push(r.pendiente * xMin + r.intercepto, r.pendiente * xMax + r.intercepto)
+    yCandidates.push(r.pendiente * xMin + r.intercepto)
   })
   const yMax = Math.max(...yCandidates, 0) * 1.15 || 1
   const yMin = Math.min(0, ...yCandidates)
