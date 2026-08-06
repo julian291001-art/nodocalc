@@ -422,7 +422,13 @@ function TabCirculoMohr() {
 
       <div className="rounded-2xl bg-white p-6 shadow-sm border border-gray-100">
         <h3 className="mb-4 text-sm font-semibold text-gray-700">Diagrama σ' - τ</h3>
-        <ChartXY xLabel={`σ' (${unidad})`} yLabel={`τ (${unidad})`} series={seriesCirculo} regressionLines={regressionLinesCirculo} />
+        <ChartXY
+          xLabel={`σ' (${unidad})`}
+          yLabel={`τ (${unidad})`}
+          series={seriesCirculo}
+          regressionLines={regressionLinesCirculo}
+          escalaIgual
+        />
         <p className="mt-2 text-center text-xs text-gray-500">
           Azul: círculo de Mohr · Rojo: envolvente de falla · Naranja: plano evaluado
         </p>
@@ -441,6 +447,7 @@ function ChartXY({
   yLabel,
   width = 700,
   height = 300,
+  escalaIgual = false,
 }: {
   series: { label: string; color: string; points: { x: number; y: number }[]; mode?: "line" | "scatter" }[]
   regressionLines?: { color: string; pendiente: number; intercepto: number }[]
@@ -448,6 +455,7 @@ function ChartXY({
   yLabel: string
   width?: number
   height?: number
+  escalaIgual?: boolean
 }) {
   const [hoverX, setHoverX] = useState<number | null>(null)
 
@@ -472,9 +480,22 @@ function ChartXY({
   const yMax = Math.max(...yCandidates, 0) * 1.15 || 1
   const yMin = Math.min(0, ...yCandidates)
 
-  const toX = (x: number) => ML + ((x - xMin) / (xMax - xMin || 1)) * plotW
-  const toY = (y: number) => height - MB - ((y - yMin) / (yMax - yMin || 1)) * plotH
-  const fromX = (px: number) => xMin + ((px - ML) / plotW) * (xMax - xMin)
+  // Escala independiente por defecto; escala uniforme (misma px/unidad en X e Y)
+  // cuando escalaIgual=true, necesaria para que un círculo no se vea como elipse.
+  const scaleXBase = plotW / (xMax - xMin || 1)
+  const scaleYBase = plotH / (yMax - yMin || 1)
+  const scaleUniforme = Math.min(scaleXBase, scaleYBase)
+  const scaleX = escalaIgual ? scaleUniforme : scaleXBase
+  const scaleY = escalaIgual ? scaleUniforme : scaleYBase
+
+  const usedW = (xMax - xMin) * scaleX
+  const usedH = (yMax - yMin) * scaleY
+  const offsetLeft = ML + (escalaIgual ? (plotW - usedW) / 2 : 0)
+  const offsetBottom = height - MB - (escalaIgual ? (plotH - usedH) / 2 : 0)
+
+  const toX = (x: number) => offsetLeft + (x - xMin) * scaleX
+  const toY = (y: number) => offsetBottom - (y - yMin) * scaleY
+  const fromX = (px: number) => xMin + (px - offsetLeft) / scaleX
 
   const NTICKS = 5
   const xTicks = Array.from({ length: NTICKS + 1 }, (_, i) => xMin + ((xMax - xMin) * i) / NTICKS)
@@ -533,8 +554,9 @@ function ChartXY({
         </g>
       ))}
 
-      <line x1={ML} y1={height - MB} x2={width - MR} y2={height - MB} stroke="#9ca3af" strokeWidth={1} />
-      <line x1={ML} y1={height - MB} x2={ML} y2={MT} stroke="#9ca3af" strokeWidth={1} />
+      <rect x={ML} y={MT} width={plotW} height={plotH} fill="none" stroke="#e5e7eb" strokeWidth={1} />
+      <line x1={ML} y1={toY(0)} x2={width - MR} y2={toY(0)} stroke="#9ca3af" strokeWidth={1.25} />
+      <line x1={toX(0)} y1={MT} x2={toX(0)} y2={height - MB} stroke="#9ca3af" strokeWidth={1.25} />
 
       <text x={ML + plotW / 2} y={height - 6} textAnchor="middle" fontSize="9" fill="#6b7280">
         {xLabel}
