@@ -1615,7 +1615,14 @@ function calcularEnvolventeKf(puntos: { p: number; q: number }[]) {
   const reg = regresionLineal(puntos.map((pt) => ({ x: pt.p, y: pt.q })))
   const phi = Math.asin(Math.max(-1, Math.min(1, reg.pendiente)))
   const c = reg.intercepto / Math.cos(phi)
-  return { pendiente: reg.pendiente, intercepto: reg.intercepto, r2: reg.r2, phiGrados: (phi * 180) / Math.PI, c }
+  return {
+    pendiente: reg.pendiente,
+    intercepto: reg.intercepto,
+    r2: reg.r2,
+    phiGrados: (phi * 180) / Math.PI,
+    c,
+    pendienteMC: Math.tan(phi), // pendiente de la recta de Mohr-Coulomb (tan φ), no la de la línea Kf
+  }
 }
 
 async function parsearExcelTriaxial(file: File, tipo: TipoTriaxial): Promise<FilaTriaxial[]> {
@@ -1965,6 +1972,16 @@ function TabTriaxial() {
           const interceptoMostrado = convEsfuerzo.aMostrar(kf.intercepto * 1000, unidadResultados)
           const cMostrado = convEsfuerzo.aMostrar(kf.c * 1000, unidadResultados)
 
+          const seriesCirculos = puntos.map((pt) => {
+            const pM = convEsfuerzo.aMostrar(pt.p * 1000, unidadResultados)
+            const qM = convEsfuerzo.aMostrar(pt.q * 1000, unidadResultados)
+            const puntosCirculo = Array.from({ length: 73 }, (_, i) => {
+              const t = (i / 72) * 2 * Math.PI
+              return { x: pM + qM * Math.cos(t), y: qM * Math.sin(t) }
+            })
+            return { label: pt.muestra, color: pt.color, mode: "line" as const, points: puntosCirculo }
+          })
+
           return (
             <div key={grupo.clave} className="rounded-2xl bg-white p-6 shadow-sm border border-gray-100">
               <h3 className="mb-4 text-sm font-semibold text-gray-700">{grupo.titulo}</h3>
@@ -1986,13 +2003,28 @@ function TabTriaxial() {
                 <MetricTile label="R²" value={fmt(kf.r2, 3)} color="gray" />
               </div>
 
-              <div className="mt-6">
-                <ChartXY
-                  xLabel={`p = (σ₁+σ₃)/2  (${unidadResultados})`}
-                  yLabel={`q = (σ₁−σ₃)/2  (${unidadResultados})`}
-                  series={[{ label: "Falla", color: "#2563eb", mode: "scatter", points: puntosMostrados }]}
-                  regressionLines={[{ color: "#2563eb", pendiente: pendienteMostrada, intercepto: interceptoMostrado }]}
-                />
+              <div className="mt-6 space-y-8">
+                <div>
+                  <h4 className="mb-2 text-center text-xs font-semibold text-gray-600">Línea Kf (p-q)</h4>
+                  <ChartXY
+                    xLabel={`p = (σ₁+σ₃)/2  (${unidadResultados})`}
+                    yLabel={`q = (σ₁−σ₃)/2  (${unidadResultados})`}
+                    series={[{ label: "Falla", color: "#2563eb", mode: "scatter", points: puntosMostrados }]}
+                    regressionLines={[{ color: "#2563eb", pendiente: pendienteMostrada, intercepto: interceptoMostrado }]}
+                  />
+                </div>
+
+                <div>
+                  <h4 className="mb-2 text-center text-xs font-semibold text-gray-600">Círculos de Mohr en la falla</h4>
+                  <ChartXY
+                    xLabel={`σ' (${unidadResultados})`}
+                    yLabel={`τ (${unidadResultados})`}
+                    series={seriesCirculos}
+                    regressionLines={[{ color: "#dc2626", pendiente: kf.pendienteMC, intercepto: cMostrado }]}
+                    escalaIgual
+                  />
+                  <Leyenda items={puntos.map((pt) => ({ color: pt.color, label: pt.muestra }))} />
+                </div>
               </div>
             </div>
           )
