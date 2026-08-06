@@ -1,6 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
+import type { ReactNode } from "react"
 import * as XLSX from "xlsx"
 import Sidebar from "../../components/Sidebar"
 import { conversiones } from "../../lib/conversiones"
@@ -89,14 +90,14 @@ function MetricTile({
   unit,
   color = "blue",
 }: {
-  label: string
+  label: ReactNode
   value: string
   unit?: string
   color?: Color
 }) {
   return (
     <div className={`rounded-xl border p-4 ${tileClasses[color]}`}>
-      <p className="text-xs font-medium uppercase tracking-wide opacity-80">{label}</p>
+      <p className="text-[11px] font-semibold tracking-wide opacity-80">{label}</p>
       <p className="mt-1 text-2xl font-semibold">
         {value}
         {unit ? <span className="ml-1 text-sm font-normal opacity-70">{unit}</span> : null}
@@ -170,28 +171,7 @@ function TabMohrCoulomb() {
   }, [c, phi, sigma, unidad])
 
   const tauMostrado = aMostrar(r.tauBase, unidad)
-
-  // --- gráfico envolvente ---
-  const W = 340,
-    H = 230,
-    ML = 55,
-    MB = 32,
-    MT = 15,
-    MR = 15
-  const plotW = W - ML - MR
-  const plotH = H - MB - MT
-
-  const xMaxBase = Math.max(r.sigmaBase * 1.4, r.cBase * 2, 1)
-  const yAtXMax = r.cBase + xMaxBase * Math.tan(r.phiRad)
-  const yMaxBase = Math.max(yAtXMax, r.tauBase, r.cBase) * 1.15 || 1
-
-  const toX = (s: number) => ML + (s / xMaxBase) * plotW
-  const toY = (t: number) => H - MB - (t / yMaxBase) * plotH
-
-  const envY0 = toY(r.cBase)
-  const envY1 = toY(r.cBase + xMaxBase * Math.tan(r.phiRad))
-  const px = toX(r.sigmaBase)
-  const py = toY(r.tauBase)
+  const cMostrado = aMostrar(r.cBase, unidad)
 
   return (
     <div className="grid gap-6 lg:grid-cols-2">
@@ -227,45 +207,13 @@ function TabMohrCoulomb() {
 
       <div className="rounded-2xl bg-white p-6 shadow-sm border border-gray-100">
         <h3 className="mb-4 text-sm font-semibold text-gray-700">Envolvente de falla</h3>
-        <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
-          {/* ejes */}
-          <line x1={ML} y1={H - MB} x2={W - MR} y2={H - MB} stroke="#9ca3af" strokeWidth={1} />
-          <line x1={ML} y1={H - MB} x2={ML} y2={MT} stroke="#9ca3af" strokeWidth={1} />
-          <text x={ML + plotW / 2} y={H - 6} textAnchor="middle" fontSize="9" fill="#6b7280">
-            σ' ({unidad})
-          </text>
-          <text x={ML - 8} y={MT + 4} textAnchor="end" fontSize="9" fill="#6b7280">
-            τ ({unidad})
-          </text>
-
-          {/* envolvente */}
-          <line
-            x1={toX(0)}
-            y1={envY0}
-            x2={toX(xMaxBase)}
-            y2={envY1}
-            stroke="#2563eb"
-            strokeWidth={2}
-          />
-
-          {/* guías punteadas hasta el punto */}
-          <line x1={px} y1={H - MB} x2={px} y2={py} stroke="#f59e0b" strokeWidth={1} strokeDasharray="4 3" />
-          <line x1={ML} y1={py} x2={px} y2={py} stroke="#f59e0b" strokeWidth={1} strokeDasharray="4 3" />
-
-          {/* punto (σ', τ) */}
-          <circle cx={px} cy={py} r={4.5} fill="#f59e0b" stroke="#fff" strokeWidth={1.5} />
-
-          {/* etiquetas de ejes numéricas */}
-          <text x={ML} y={H - MB + 18} textAnchor="middle" fontSize="9" fill="#6b7280">
-            0
-          </text>
-          <text x={W - MR} y={H - MB + 18} textAnchor="end" fontSize="9" fill="#6b7280">
-            {fmt(aMostrar(xMaxBase, unidad), 0)}
-          </text>
-        </svg>
-        <p className="mt-2 text-center text-xs text-gray-500">
-          Punto naranja: estado (σ', τ) evaluado
-        </p>
+        <ChartXY
+          xLabel={`σ' (${unidad})`}
+          yLabel={`τ (${unidad})`}
+          series={[{ label: "Estado evaluado", color: "#f59e0b", mode: "scatter", points: [{ x: aMostrar(r.sigmaBase, unidad), y: tauMostrado }] }]}
+          regressionLines={[{ color: "#2563eb", pendiente: Math.tan(r.phiRad), intercepto: cMostrado }]}
+        />
+        <p className="mt-2 text-center text-xs text-gray-500">Punto naranja: estado (σ', τ) evaluado</p>
       </div>
     </div>
   )
@@ -318,36 +266,36 @@ function TabCirculoMohr() {
     return { s1, s3, sigmaProm, R, distancia, thetaF, estado, cBase, phiRad, sigmaAlpha, tauAlpha }
   }, [sigma1, sigma3, unidad, incluirEnvolvente, c, phi, incluirPlano, alpha])
 
-  // --- gráfico círculo ---
-  const W = 360,
-    H = 280,
-    ML = 60,
-    MB = 34,
-    MT = 15,
-    MR = 15
-  const plotW = W - ML - MR
-  const plotH = H - MB - MT
-
-  const xMin = 0
-  const xMax = Math.max(r.s1 * 1.25, r.sigmaProm + r.R * 1.3, 1)
-  const yHalf = Math.max(r.R * 1.35, 1)
-
-  const scale = Math.min(plotW / (xMax - xMin), plotH / (2 * yHalf))
-  const originX = ML
-  const centerY = MT + plotH / 2
-
-  const toX = (s: number) => originX + (s - xMin) * scale
-  const toY = (t: number) => centerY - t * scale
-
-  const cx = toX(r.sigmaProm)
-  const cy = toY(0)
-  const rPix = r.R * scale
-
-  // envolvente: τ = c + σ tan(φ), dibujada dentro del rango visible
-  const envX0 = 0
-  const envY0Base = r.cBase
-  const envX1 = xMax
-  const envY1Base = r.cBase + xMax * Math.tan(r.phiRad)
+  // --- datos para el gráfico (ChartXY) ---
+  const sigmaPromM = aMostrar(r.sigmaProm, unidad)
+  const RM = aMostrar(r.R, unidad)
+  const circuloPuntos = Array.from({ length: 73 }, (_, i) => {
+    const t = (i / 72) * 2 * Math.PI
+    return { x: sigmaPromM + RM * Math.cos(t), y: RM * Math.sin(t) }
+  })
+  const seriesCirculo: { label: string; color: string; mode: "line" | "scatter"; points: { x: number; y: number }[] }[] = [
+    { label: "Círculo de Mohr", color: "#2563eb", mode: "line", points: circuloPuntos },
+    {
+      label: "σ'₁, σ'₃",
+      color: "#374151",
+      mode: "scatter",
+      points: [
+        { x: aMostrar(r.s1, unidad), y: 0 },
+        { x: aMostrar(r.s3, unidad), y: 0 },
+      ],
+    },
+  ]
+  if (incluirPlano && r.sigmaAlpha !== null && r.tauAlpha !== null) {
+    seriesCirculo.push({
+      label: `Plano α=${alpha}°`,
+      color: "#f59e0b",
+      mode: "scatter",
+      points: [{ x: aMostrar(r.sigmaAlpha, unidad), y: aMostrar(r.tauAlpha, unidad) }],
+    })
+  }
+  const regressionLinesCirculo = incluirEnvolvente
+    ? [{ color: "#dc2626", pendiente: Math.tan(r.phiRad), intercepto: aMostrar(r.cBase, unidad) }]
+    : []
 
   return (
     <div className="grid gap-6 lg:grid-cols-2">
@@ -409,16 +357,33 @@ function TabCirculoMohr() {
 
         <div className="mt-6 grid grid-cols-2 gap-3">
           <MetricTile
-            label="Esfuerzo promedio σ'_prom"
+            label={
+              <>
+                Esfuerzo promedio σ'<sub>prom</sub>
+              </>
+            }
             value={fmt(aMostrar(r.sigmaProm, unidad))}
             unit={unidad}
             color="gray"
           />
-          <MetricTile label="Radio / τ_max" value={fmt(aMostrar(r.R, unidad))} unit={unidad} color="blue" />
+          <MetricTile
+            label={
+              <>
+                Radio / τ<sub>max</sub>
+              </>
+            }
+            value={fmt(aMostrar(r.R, unidad))}
+            unit={unidad}
+            color="blue"
+          />
           {incluirEnvolvente && (
             <>
               <MetricTile
-                label="Plano de falla teórico θf"
+                label={
+                  <>
+                    Plano de falla teórico θ<sub>f</sub>
+                  </>
+                }
                 value={fmt(r.thetaF ?? 0, 1)}
                 unit="°"
                 color="amber"
@@ -457,55 +422,7 @@ function TabCirculoMohr() {
 
       <div className="rounded-2xl bg-white p-6 shadow-sm border border-gray-100">
         <h3 className="mb-4 text-sm font-semibold text-gray-700">Diagrama σ' - τ</h3>
-        <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
-          {/* ejes */}
-          <line x1={ML} y1={centerY} x2={W - MR} y2={centerY} stroke="#9ca3af" strokeWidth={1} />
-          <line x1={originX} y1={MT} x2={originX} y2={H - MB} stroke="#9ca3af" strokeWidth={1} />
-          <text x={W - MR} y={centerY + 16} textAnchor="end" fontSize="9" fill="#6b7280">
-            σ' ({unidad})
-          </text>
-          <text x={originX - 8} y={MT + 4} textAnchor="end" fontSize="9" fill="#6b7280">
-            τ ({unidad})
-          </text>
-
-          {/* círculo de Mohr */}
-          <circle cx={cx} cy={cy} r={rPix} fill="none" stroke="#2563eb" strokeWidth={2} />
-          <circle cx={cx} cy={cy} r={2.5} fill="#2563eb" />
-
-          {/* puntos σ1, σ3 en el eje */}
-          <circle cx={toX(r.s1)} cy={toY(0)} r={3.5} fill="#374151" />
-          <text x={toX(r.s1)} y={toY(0) + 16} textAnchor="middle" fontSize="8" fill="#374151">
-            σ'₁
-          </text>
-          <circle cx={toX(r.s3)} cy={toY(0)} r={3.5} fill="#374151" />
-          <text x={toX(r.s3)} y={toY(0) + 16} textAnchor="middle" fontSize="8" fill="#374151">
-            σ'₃
-          </text>
-
-          {/* envolvente de falla */}
-          {incluirEnvolvente && (
-            <line
-              x1={toX(envX0)}
-              y1={toY(envY0Base)}
-              x2={toX(envX1)}
-              y2={toY(envY1Base)}
-              stroke="#dc2626"
-              strokeWidth={1.75}
-            />
-          )}
-
-          {/* punto en plano arbitrario */}
-          {incluirPlano && r.sigmaAlpha !== null && r.tauAlpha !== null && (
-            <circle
-              cx={toX(r.sigmaAlpha)}
-              cy={toY(r.tauAlpha)}
-              r={4}
-              fill="#f59e0b"
-              stroke="#fff"
-              strokeWidth={1.3}
-            />
-          )}
-        </svg>
+        <ChartXY xLabel={`σ' (${unidad})`} yLabel={`τ (${unidad})`} series={seriesCirculo} regressionLines={regressionLinesCirculo} />
         <p className="mt-2 text-center text-xs text-gray-500">
           Azul: círculo de Mohr · Rojo: envolvente de falla · Naranja: plano evaluado
         </p>
