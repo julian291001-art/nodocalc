@@ -1511,6 +1511,504 @@ function TabCorteDirecto() {
 }
 
 // ---------------------------------------------------------------------------
+// PESTAÑA 4: Triaxial (UU, CU, CD)
+// ---------------------------------------------------------------------------
+type TipoTriaxial = "UU" | "CU" | "CD"
+
+interface FilaTriaxial {
+  defLectura: number // mm
+  carga: number // kgf
+  u?: number // kPa (solo CU)
+  cambioVolumen?: number // cm³ (solo CD)
+}
+
+interface MuestraTriaxial {
+  id: string
+  nombre: string
+  diametro: number // cm
+  altura: number // cm
+  masa: number // g
+  p1: number // g (tara + suelo húmedo)
+  p2: number // g (tara + suelo seco)
+  p3: number // g (tara)
+  presionCamara: number
+  unidadPresion: string
+  archivoNombre: string
+  datos: FilaTriaxial[]
+}
+
+let contadorMuestrasTriaxial = 1
+function nuevaMuestraTriaxial(): MuestraTriaxial {
+  const n = contadorMuestrasTriaxial++
+  return {
+    id: `t${n}-${Date.now()}`,
+    nombre: `M${n}`,
+    diametro: 3.65,
+    altura: 7.15,
+    masa: 110,
+    p1: 100,
+    p2: 60,
+    p3: 5,
+    presionCamara: 1,
+    unidadPresion: "kgf/cm²",
+    archivoNombre: "",
+    datos: [],
+  }
+}
+
+interface FilaTriaxialCalculada extends FilaTriaxial {
+  epsilonA: number
+  Ac: number // cm²
+  qKPa: number
+  sigma1Total: number // kPa
+  sigma3Total: number // kPa
+  sigma1Efectivo: number // kPa
+  sigma3Efectivo: number // kPa
+}
+
+function calcularMuestraTriaxial(m: MuestraTriaxial, tipo: TipoTriaxial) {
+  const A0 = (Math.PI * m.diametro * m.diametro) / 4 // cm²
+  const V0 = A0 * m.altura // cm³
+  const alturaMm = m.altura * 10
+
+  const w = ((m.p1 - m.p2) / (m.p2 - m.p3)) * 100
+  const V0m3 = V0 / 1e6
+  const masaKg = m.masa / 1000
+  const gammaH = (masaKg * GRAVEDAD) / V0m3 / 1000 // kN/m³
+  const gammaD = gammaH / (1 + w / 100)
+
+  const sigma3KPa = convEsfuerzo.aBase(m.presionCamara, m.unidadPresion) / 1000
+
+  const filas: FilaTriaxialCalculada[] = m.datos.map((f) => {
+    const epsilonA = f.defLectura / alturaMm
+    let Ac: number
+    if (tipo === "CD" && f.cambioVolumen !== undefined) {
+      const epsilonV = f.cambioVolumen / V0
+      Ac = (A0 * (1 - epsilonV)) / (1 - epsilonA)
+    } else {
+      Ac = A0 / (1 - epsilonA) // volumen constante (UU y CU no drenan durante el corte)
+    }
+    const sigmaKgfCm2 = Ac > 0 ? f.carga / Ac : 0
+    const qKPa = sigmaKgfCm2 * 98.0665
+    const sigma1Total = sigma3KPa + qKPa
+    const uKPa = tipo === "CU" ? f.u ?? 0 : 0
+    return {
+      ...f,
+      epsilonA,
+      Ac,
+      qKPa,
+      sigma1Total,
+      sigma3Total: sigma3KPa,
+      sigma1Efectivo: sigma1Total - uKPa,
+      sigma3Efectivo: sigma3KPa - uKPa,
+    }
+  })
+
+  let falla: FilaTriaxialCalculada | null = null
+  for (const f of filas) if (!falla || f.qKPa > falla.qKPa) falla = f
+
+  return { A0, V0, w, gammaH, gammaD, sigma3KPa, filas, falla }
+}
+
+// Línea Kf (p-q): sin φ = pendiente, c = intercepto / cos φ
+function calcularEnvolventeKf(puntos: { p: number; q: number }[]) {
+  const reg = regresionLineal(puntos.map((pt) => ({ x: pt.p, y: pt.q })))
+  const phi = Math.asin(Math.max(-1, Math.min(1, reg.pendiente)))
+  const c = reg.intercepto / Math.cos(phi)
+  return { pendiente: reg.pendiente, intercepto: reg.intercepto, r2: reg.r2, phiGrados: (phi * 180) / Math.PI, c }
+}
+
+async function parsearExcelTriaxial(file: File, tipo: TipoTriaxial): Promise<FilaTriaxial[]> {
+  const buf = await file.arrayBuffer()
+  const wb = XLSX.read(buf, { type: "array" })
+  const ws = wb.Sheets[wb.SheetNames[0]]
+  const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null })
+
+  const idxEnc = rows.findIndex(
+    (r) => Array.isArray(r) && r.some((c) => typeof c === "string" && c.toLowerCase().includes("lectura"))
+  )
+  if (idxEnc === -1) return []
+
+  const datos: FilaTriaxial[] = []
+  for (let i = idxEnc + 1; i < rows.length; i++) {
+    const r = rows[i]
+    if (!r) continue
+    const defLectura = parseFloat(r[0])
+    if (!isFinite(defLectura)) continue
+    const carga = parseFloat(r[1])
+    const extra = parseFloat(r[2])
+    datos.push({
+      defLectura,
+      carga: isFinite(carga) ? carga : 0,
+      u: tipo === "CU" ? (isFinite(extra) ? extra : 0) : undefined,
+      cambioVolumen: tipo === "CD" ? (isFinite(extra) ? extra : 0) : undefined,
+    })
+  }
+  return datos
+}
+
+function columnasTriaxial(tipo: TipoTriaxial): string[] {
+  if (tipo === "UU") return ["Def. lectura (mm)", "Carga (kgf)"]
+  if (tipo === "CU") return ["Def. lectura (mm)", "Carga (kgf)", "Presión de poros u (kPa)"]
+  return ["Def. lectura (mm)", "Carga (kgf)", "Cambio de volumen (cm³)"]
+}
+
+function descargarPlantillaTriaxial(tipo: TipoTriaxial) {
+  const columnas = columnasTriaxial(tipo)
+  const ejemploFila = tipo === "UU" ? [0.1, 12.4] : tipo === "CU" ? [0.1, 12.4, 8.2] : [0.1, 12.4, 0.15]
+
+  const wb = XLSX.utils.book_new()
+  const filas: (string | number)[][] = [
+    [`Plantilla de datos - Ensayo Triaxial ${tipo} (NodoCalc)`],
+    ["Instrucciones: complete una fila por cada lectura del ensayo. No modifique los encabezados."],
+    [],
+    columnas,
+    ejemploFila,
+  ]
+  const ws = XLSX.utils.aoa_to_sheet(filas)
+  ws["!cols"] = columnas.map(() => ({ wch: 22 }))
+  XLSX.utils.book_append_sheet(wb, ws, `Triaxial ${tipo}`)
+  XLSX.writeFile(wb, `plantilla_triaxial_${tipo.toLowerCase()}.xlsx`)
+}
+
+// Curva sintética (hipérbola de Kondner) — solo para el botón "Cargar ejemplo",
+// no son datos reales de laboratorio.
+function generarMuestrasEjemploTriaxial(tipo: TipoTriaxial): MuestraTriaxial[] {
+  const sigma3Valores = [0.5, 1, 2]
+  const D = 3.65
+  const H = 7.15
+  const V0 = ((Math.PI * D * D) / 4) * H
+
+  return sigma3Valores.map((sigma3, index) => {
+    const qUlt = 60 + sigma3 * 140 // kPa
+    const Ei = qUlt / 0.01
+    const nPuntos = 30
+    const datos: FilaTriaxial[] = []
+    for (let i = 1; i <= nPuntos; i++) {
+      const epsilon = (i / nPuntos) * 0.18
+      const q = epsilon / (1 / Ei + epsilon / qUlt)
+      const Ac = (Math.PI * D * D) / 4 / (1 - epsilon)
+      const carga = (q / 98.0665) * Ac
+      const defLectura = epsilon * H * 10
+
+      let u: number | undefined
+      let cambioVolumen: number | undefined
+      if (tipo === "CU") {
+        const uUlt = sigma3 * 98.0665 * 0.55
+        u = epsilon / (1 / (Ei * 0.6) + epsilon / uUlt)
+      }
+      if (tipo === "CD") {
+        cambioVolumen = V0 * (0.03 * epsilon - 0.05 * epsilon * epsilon)
+      }
+      datos.push({ defLectura, carga, u, cambioVolumen })
+    }
+    return {
+      ...nuevaMuestraTriaxial(),
+      nombre: `M${index + 1}`,
+      diametro: D,
+      altura: H,
+      masa: 110 + index * 3,
+      p1: 105 + index,
+      p2: 63 + index,
+      p3: 5.4,
+      presionCamara: sigma3,
+      unidadPresion: "kgf/cm²",
+      archivoNombre: "ejemplo_triaxial.xlsx",
+      datos,
+    }
+  })
+}
+
+function TabTriaxial() {
+  const [tipo, setTipo] = useState<TipoTriaxial>("UU")
+  const [muestras, setMuestras] = useState<MuestraTriaxial[]>([nuevaMuestraTriaxial()])
+  const [unidadResultados, setUnidadResultados] = useState("kPa")
+
+  function cambiarTipo(nuevo: TipoTriaxial) {
+    setTipo(nuevo)
+    setMuestras([nuevaMuestraTriaxial()]) // las columnas de datos cambian según el tipo
+  }
+  function agregarMuestra() {
+    setMuestras((prev) => [...prev, nuevaMuestraTriaxial()])
+  }
+  function eliminarMuestra(id: string) {
+    setMuestras((prev) => prev.filter((m) => m.id !== id))
+  }
+  function actualizarMuestra(id: string, cambios: Partial<MuestraTriaxial>) {
+    setMuestras((prev) => prev.map((m) => (m.id === id ? { ...m, ...cambios } : m)))
+  }
+  async function cargarExcel(id: string, file: File) {
+    const datos = await parsearExcelTriaxial(file, tipo)
+    actualizarMuestra(id, { datos, archivoNombre: file.name })
+  }
+  function cargarEjemplo() {
+    setMuestras(generarMuestrasEjemploTriaxial(tipo))
+  }
+
+  const resultados = useMemo(
+    () =>
+      muestras.map((m, i) => ({
+        muestra: m,
+        color: PALETA_MUESTRAS[i % PALETA_MUESTRAS.length],
+        calc: calcularMuestraTriaxial(m, tipo),
+      })),
+    [muestras, tipo]
+  )
+  const conDatos = resultados.filter((r) => r.calc.filas.length > 0 && r.calc.falla)
+
+  const gruposEnvolvente: { clave: "total" | "efectivo"; titulo: string }[] =
+    tipo === "UU"
+      ? [{ clave: "total", titulo: "Esfuerzos totales (Cu, φ ≈ 0 esperado si está saturado)" }]
+      : tipo === "CD"
+      ? [{ clave: "efectivo", titulo: "Esfuerzos efectivos (u = 0, ensayo drenado)" }]
+      : [
+          { clave: "total", titulo: "Esfuerzos totales" },
+          { clave: "efectivo", titulo: "Esfuerzos efectivos" },
+        ]
+
+  function puntosPQ(clave: "total" | "efectivo") {
+    return conDatos.map((r) => {
+      const f = r.calc.falla!
+      const s1 = clave === "total" ? f.sigma1Total : f.sigma1Efectivo
+      const s3 = clave === "total" ? f.sigma3Total : f.sigma3Efectivo
+      return { muestra: r.muestra.nombre, color: r.color, p: (s1 + s3) / 2, q: (s1 - s3) / 2 }
+    })
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white p-4 shadow-sm border border-gray-100">
+        <div className="flex items-center gap-2">
+          <label className="text-xs font-medium text-gray-600">Tipo de ensayo</label>
+          <select
+            value={tipo}
+            onChange={(e) => cambiarTipo(e.target.value as TipoTriaxial)}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700"
+          >
+            <option value="UU">UU — No consolidado, no drenado</option>
+            <option value="CU">CU — Consolidado, no drenado</option>
+            <option value="CD">CD — Consolidado, drenado</option>
+          </select>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => descargarPlantillaTriaxial(tipo)}
+            className="rounded-lg border border-gray-300 px-4 py-2 text-xs font-medium text-gray-700 hover:border-blue-400 hover:text-blue-600"
+          >
+            Descargar plantilla ({tipo})
+          </button>
+          <button
+            onClick={cargarEjemplo}
+            className="rounded-lg bg-blue-50 px-4 py-2 text-xs font-medium text-blue-700 hover:bg-blue-100"
+          >
+            Cargar ejemplo (3 muestras, sintético)
+          </button>
+        </div>
+      </div>
+      <p className="text-xs text-gray-400">
+        Cambiar el tipo de ensayo reinicia las muestras cargadas, porque las columnas de datos requeridas son distintas.
+      </p>
+
+      {resultados.map((r) => {
+        const m = r.muestra
+        return (
+          <div key={m.id} className="rounded-2xl bg-white p-6 shadow-sm border border-gray-100">
+            <div className="mb-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="h-3 w-3 rounded-full" style={{ backgroundColor: r.color }} />
+                <input
+                  value={m.nombre}
+                  onChange={(e) => actualizarMuestra(m.id, { nombre: e.target.value })}
+                  className="rounded-lg border border-gray-300 px-2 py-1 text-sm font-semibold text-gray-800"
+                />
+              </div>
+              {muestras.length > 1 && (
+                <button
+                  onClick={() => eliminarMuestra(m.id)}
+                  className="text-xs font-medium text-red-500 hover:text-red-700"
+                >
+                  Eliminar muestra
+                </button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+              <NumberInput label="Diámetro D (cm)" value={m.diametro} onChange={(v) => actualizarMuestra(m.id, { diametro: v })} />
+              <NumberInput label="Altura H (cm)" value={m.altura} onChange={(v) => actualizarMuestra(m.id, { altura: v })} />
+              <NumberInput label="Masa húmeda (g)" value={m.masa} onChange={(v) => actualizarMuestra(m.id, { masa: v })} />
+              <NumberInput label="P1: tara + suelo húmedo (g)" value={m.p1} onChange={(v) => actualizarMuestra(m.id, { p1: v })} />
+              <NumberInput label="P2: tara + suelo seco (g)" value={m.p2} onChange={(v) => actualizarMuestra(m.id, { p2: v })} />
+              <NumberInput label="P3: tara (g)" value={m.p3} onChange={(v) => actualizarMuestra(m.id, { p3: v })} />
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-end gap-4">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-gray-600">Presión de cámara σ₃</label>
+                <div className="flex gap-2">
+                  <input
+                    type="number"
+                    value={m.presionCamara}
+                    onChange={(e) => actualizarMuestra(m.id, { presionCamara: parseFloat(e.target.value) })}
+                    className="w-28 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-800"
+                  />
+                  <UnidadSelector value={m.unidadPresion} onChange={(v) => actualizarMuestra(m.id, { unidadPresion: v })} />
+                </div>
+              </div>
+
+              <label className="cursor-pointer rounded-lg border border-dashed border-gray-300 px-4 py-2 text-xs font-medium text-gray-600 hover:border-blue-400 hover:text-blue-600">
+                {m.archivoNombre ? `Archivo: ${m.archivoNombre}` : "Cargar Excel de ensayo"}
+                <input
+                  type="file"
+                  accept=".xlsx,.xls"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) cargarExcel(m.id, file)
+                  }}
+                />
+              </label>
+              {m.datos.length > 0 && <span className="text-xs text-gray-500">{m.datos.length} filas cargadas</span>}
+            </div>
+
+            {m.datos.length > 0 && (
+              <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+                <MetricTile label="Contenido de agua w" value={fmt(r.calc.w)} unit="%" color="gray" />
+                <MetricTile
+                  label={
+                    <>
+                      γ<sub>húmedo</sub>
+                    </>
+                  }
+                  value={fmt(r.calc.gammaH)}
+                  unit="kN/m³"
+                  color="gray"
+                />
+                <MetricTile
+                  label={
+                    <>
+                      γ<sub>seco</sub>
+                    </>
+                  }
+                  value={fmt(r.calc.gammaD)}
+                  unit="kN/m³"
+                  color="gray"
+                />
+                <MetricTile label="Área inicial A₀" value={fmt(r.calc.A0)} unit="cm²" color="gray" />
+                <MetricTile
+                  label={
+                    <>
+                      q<sub>max</sub> (falla)
+                    </>
+                  }
+                  value={r.calc.falla ? fmt(convEsfuerzo.aMostrar(r.calc.falla.qKPa * 1000, unidadResultados)) : "—"}
+                  unit={unidadResultados}
+                  color="blue"
+                />
+                <MetricTile
+                  label={
+                    <>
+                      ε<sub>a</sub> en la falla
+                    </>
+                  }
+                  value={r.calc.falla ? fmt(r.calc.falla.epsilonA * 100) : "—"}
+                  unit="%"
+                  color="amber"
+                />
+              </div>
+            )}
+          </div>
+        )
+      })}
+
+      <button
+        onClick={agregarMuestra}
+        className="w-full rounded-2xl border-2 border-dashed border-gray-300 py-4 text-sm font-medium text-gray-500 hover:border-blue-400 hover:text-blue-600"
+      >
+        + Agregar muestra
+      </button>
+
+      {conDatos.length > 0 && (
+        <div className="rounded-2xl bg-white p-6 shadow-sm border border-gray-100">
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-gray-700">Curva esfuerzo-deformación</h3>
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-medium text-gray-600">Unidad de resultados</label>
+              <UnidadSelector value={unidadResultados} onChange={setUnidadResultados} />
+            </div>
+          </div>
+          <ChartXY
+            xLabel="Deformación unitaria εₐ (%)"
+            yLabel={`q (${unidadResultados})`}
+            series={conDatos.map((r) => ({
+              label: r.muestra.nombre,
+              color: r.color,
+              mode: "line" as const,
+              points: r.calc.filas.map((f) => ({
+                x: f.epsilonA * 100,
+                y: convEsfuerzo.aMostrar(f.qKPa * 1000, unidadResultados),
+              })),
+            }))}
+          />
+          <Leyenda items={conDatos.map((r) => ({ color: r.color, label: r.muestra.nombre }))} />
+        </div>
+      )}
+
+      {conDatos.length >= 2 &&
+        gruposEnvolvente.map((grupo) => {
+          const puntos = puntosPQ(grupo.clave)
+          const kf = calcularEnvolventeKf(puntos.map((pt) => ({ p: pt.p, q: pt.q })))
+          const puntosMostrados = puntos.map((pt) => ({
+            x: convEsfuerzo.aMostrar(pt.p * 1000, unidadResultados),
+            y: convEsfuerzo.aMostrar(pt.q * 1000, unidadResultados),
+          }))
+          const pendienteMostrada = kf.pendiente // adimensional, no depende de la unidad
+          const interceptoMostrado = convEsfuerzo.aMostrar(kf.intercepto * 1000, unidadResultados)
+          const cMostrado = convEsfuerzo.aMostrar(kf.c * 1000, unidadResultados)
+
+          return (
+            <div key={grupo.clave} className="rounded-2xl bg-white p-6 shadow-sm border border-gray-100">
+              <h3 className="mb-4 text-sm font-semibold text-gray-700">{grupo.titulo}</h3>
+
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <MetricTile
+                  label={grupo.clave === "total" ? "c (cohesión)" : "c' (cohesión efectiva)"}
+                  value={fmt(cMostrado)}
+                  unit={unidadResultados}
+                  color="blue"
+                />
+                <MetricTile
+                  label={grupo.clave === "total" ? "φ" : "φ'"}
+                  value={fmt(kf.phiGrados, 2)}
+                  unit="°"
+                  color="blue"
+                />
+                <MetricTile label="Pendiente línea Kf" value={fmt(pendienteMostrada, 4)} color="gray" />
+                <MetricTile label="R²" value={fmt(kf.r2, 3)} color="gray" />
+              </div>
+
+              <div className="mt-6">
+                <ChartXY
+                  xLabel={`p = (σ₁+σ₃)/2  (${unidadResultados})`}
+                  yLabel={`q = (σ₁−σ₃)/2  (${unidadResultados})`}
+                  series={[{ label: "Falla", color: "#2563eb", mode: "scatter", points: puntosMostrados }]}
+                  regressionLines={[{ color: "#2563eb", pendiente: pendienteMostrada, intercepto: interceptoMostrado }]}
+                />
+              </div>
+            </div>
+          )
+        })}
+
+      {conDatos.length === 1 && (
+        <p className="text-center text-xs text-gray-400">
+          Agrega al menos una segunda muestra con datos cargados (a otra σ₃) para calcular la envolvente.
+        </p>
+      )}
+    </div>
+  )
+}
+
+
+// ---------------------------------------------------------------------------
 // Placeholder para pestañas aún no construidas
 // ---------------------------------------------------------------------------
 function TabProximamente({ titulo, descripcion }: { titulo: string; descripcion: string }) {
@@ -1566,12 +2064,7 @@ export default function ResistenciaCortePage() {
         {tab === "mc" && <TabMohrCoulomb />}
         {tab === "circulo" && <TabCirculoMohr />}
         {tab === "directo" && <TabCorteDirecto />}
-        {tab === "triaxial" && (
-          <TabProximamente
-            titulo="Ensayo Triaxial (UU, CU, CD)"
-            descripcion="Cálculo de parámetros de resistencia a partir de ensayos triaxiales no consolidado-no drenado (UU), consolidado-no drenado (CU) y consolidado-drenado (CD)."
-          />
-        )}
+        {tab === "triaxial" && <TabTriaxial />}
       </main>
     </div>
   )
