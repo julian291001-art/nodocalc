@@ -460,6 +460,89 @@ function ChartDeltaSigma({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ESQUEMA DEL PERFIL — columna de estratos con γ, NF y profundidades, en vivo
+// ─────────────────────────────────────────────────────────────────────────────
+function DiagramaEstratos({
+  estratos, nfActivo, nfDepth, unidadLong, unidadPesoU, width = 260, height = 380,
+}: {
+  estratos: EstratoResuelto[]
+  nfActivo: boolean
+  nfDepth: number | null // m base
+  unidadLong: string
+  unidadPesoU: string
+  width?: number
+  height?: number
+}) {
+  const zMax = estratos.length ? estratos[estratos.length - 1].zBottom : 0
+  if (zMax <= 0) {
+    return (
+      <div className="text-xs text-gray-400 border border-dashed border-gray-200 rounded-lg p-6 text-center">
+        Ingresa el espesor de al menos un estrato para ver el esquema.
+      </div>
+    )
+  }
+
+  const ML = 10, MT = 15, MB = 15, MR = 78
+  const colX = ML, colW = width - ML - MR
+  const plotH = height - MT - MB
+  const toY = (z: number) => MT + (z / zMax) * plotH
+
+  const paleta = ["#fde3c7", "#e3ded6", "#cfe3d9", "#d9e0f0", "#f0d9e6", "#e6ecd9"]
+
+  const breakpoints = Array.from(
+    new Set([0, ...estratos.map(e => e.zBottom), ...(nfActivo && nfDepth !== null ? [nfDepth] : [])])
+  ).filter(z => z >= 0 && z <= zMax + 1e-9).sort((a, b) => a - b)
+
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} width="100%" className="border border-gray-100 rounded-lg bg-white" style={{ maxHeight: height }}>
+      {estratos.map((e, i) => {
+        const yTop = toY(e.zTop), yBottom = toY(e.zBottom)
+        const h = yBottom - yTop
+        const nfCorta = nfActivo && nfDepth !== null && nfDepth > e.zTop && nfDepth < e.zBottom
+        const yNF = nfCorta ? toY(nfDepth!) : null
+
+        return (
+          <g key={e.id}>
+            <rect x={colX} y={yTop} width={colW} height={h} fill={paleta[i % paleta.length]} stroke="#9ca3af" strokeWidth={1} />
+            <text x={colX + 8} y={yTop + 13} fontSize="9" fill="#374151" fontWeight="600">{e.nombre}</text>
+
+            {!nfCorta ? (
+              <text x={colX + 8} y={yTop + h / 2 + 4} fontSize="8" fill="#4b5563">
+                {nfActivo && nfDepth !== null && nfDepth <= e.zTop ? "γsat" : "γ"} = {fmt(
+                  nfActivo && nfDepth !== null && nfDepth <= e.zTop ? e.gammaAbajo : e.gammaArriba, 2
+                )} {unidadPesoU}
+              </text>
+            ) : (
+              <>
+                <line x1={colX} y1={yNF!} x2={colX + colW} y2={yNF!} stroke="#2563eb" strokeWidth={1} strokeDasharray="3,2" />
+                <polygon points={`${colX + colW - 10},${yNF! - 5} ${colX + colW},${yNF!} ${colX + colW - 10},${yNF! + 5}`} fill="#2563eb" />
+                <text x={colX + 8} y={(yTop + yNF!) / 2 + 4} fontSize="8" fill="#4b5563">γ = {fmt(e.gammaArriba, 2)} {unidadPesoU}</text>
+                <text x={colX + 8} y={(yNF! + yBottom) / 2 + 4} fontSize="8" fill="#4b5563">γsat = {fmt(e.gammaAbajo, 2)} {unidadPesoU}</text>
+              </>
+            )}
+          </g>
+        )
+      })}
+
+      {/* separadores entre estratos */}
+      {estratos.slice(0, -1).map(e => (
+        <line key={`sep-${e.id}`} x1={colX} y1={toY(e.zBottom)} x2={colX + colW} y2={toY(e.zBottom)} stroke="#6b7280" strokeWidth={1.25} />
+      ))}
+      <rect x={colX} y={MT} width={colW} height={plotH} fill="none" stroke="#374151" strokeWidth={1.25} />
+
+      {/* eje de profundidad a la derecha */}
+      {breakpoints.map((t, i) => (
+        <g key={i}>
+          <line x1={colX + colW} y1={toY(t)} x2={colX + colW + 6} y2={toY(t)} stroke="#9ca3af" strokeWidth={1} />
+          <text x={colX + colW + 10} y={toY(t) + 3} fontSize="8" fill="#6b7280">{fmt(aMostrarLong(t, unidadLong), t < 1 ? 2 : 1)}</text>
+        </g>
+      ))}
+      <text x={colX + colW + 10} y={MT - 6} fontSize="8" fill="#9ca3af">z ({unidadLong})</text>
+    </svg>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // TARJETA DE ESTRATO
 // ─────────────────────────────────────────────────────────────────────────────
 function TarjetaEstrato({
@@ -960,7 +1043,7 @@ export default function EsfuerzosSuelo() {
                   )}
                 </div>
 
-                <div className="flex flex-col gap-4">
+<div className="flex flex-col gap-4">
                   {estratos.map((e, i) => {
                     const resuelto = estratosResueltos[i]
                     return (
@@ -970,6 +1053,21 @@ export default function EsfuerzosSuelo() {
                         onChange={ne => actualizarEstrato(e.id, ne)} onEliminar={() => eliminarEstrato(e.id)} />
                     )
                   })}
+                </div>
+
+                <div className="bg-white border border-gray-200 rounded-xl p-5">
+                  <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">
+                    ESQUEMA DEL PERFIL — vista previa en vivo
+                  </div>
+                  <div className="max-w-xs mx-auto">
+                    <DiagramaEstratos
+                      estratos={estratosResueltos}
+                      nfActivo={nfActivo}
+                      nfDepth={nfDepthBase}
+                      unidadLong={unidadLong}
+                      unidadPesoU={unidadPesoU}
+                    />
+                  </div>
                 </div>
 
                 <div className="flex gap-3">
@@ -1103,7 +1201,7 @@ export default function EsfuerzosSuelo() {
                 {camposCompletos && resultadoPuntual !== null && (
                   <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-6 flex items-center justify-between flex-wrap gap-3">
                     <div>
-                      <div className="text-xs text-gray-500 tracking-wider mb-1">Δσz EN z = {zCalculo} {unidadLong}</div>
+                      <div className="text-xs text-gray-500 tracking-wider mb-1">Δσz en z = {zCalculo} {unidadLong}</div>
                       <div className="text-2xl font-semibold text-blue-800">{fmt(aMostrarPresDesdeKPa(resultadoPuntual, unidadPres), 3)} {unidadPres}</div>
                     </div>
                     <span className="text-xs px-3 py-1 rounded-full bg-white text-blue-700 font-medium border border-blue-200">
