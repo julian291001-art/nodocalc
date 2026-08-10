@@ -663,7 +663,7 @@ export default function EsfuerzosSuelo() {
       if ((todaSaturada || nfCorta) && e.gammaAbajo === undefined) return `Falta γsat (bajo el NF) en "${e.nombre}".`
     }
     if (nfActivo && nfProfundidad === "") return "Ingresa la profundidad del nivel freático."
-    if (succionActiva && (!nfActivo || alturaSuccion === "")) return "Para succión mátrica, activa el NF e ingresa la altura a considerar."
+    if (succionActiva && (!nfActivo || alturaSuccion === "")) return "Para succión matricial, activa el NF e ingresa la altura a considerar."
     return null
   }, [estratosResueltos, nfDepthBase, nfActivo, nfProfundidad, succionActiva, alturaSuccion])
 
@@ -921,7 +921,7 @@ export default function EsfuerzosSuelo() {
     e3.espesor = "5"; e3.modoGamma = "directo"; e3.gammaAbajo = "20.1"
     setEstratos([e1, e2, e3])
     setNfActivo(true); setNfProfundidad("2")
-    setSuccionActiva(true); setAlturaSuccion("1")
+    setSuccionActiva(false); setAlturaSuccion("1")
   }
   function limpiarPerfil() {
     setEstratos([nuevoEstrato("Estrato 1")])
@@ -968,7 +968,7 @@ export default function EsfuerzosSuelo() {
                     )}
                   </div>
                   <div className="flex flex-col gap-2">
-                    <Toggle label="Considerar succión mátrica" checked={succionActiva} onChange={v => { setSuccionActiva(v); if (v) setNfActivo(true) }} />
+                    <Toggle label="Considerar succión matricial" checked={succionActiva} onChange={v => { setSuccionActiva(v); if (v) setNfActivo(true) }} />
                     {succionActiva && (
                       <div className="w-52">
                         <Campo label="Altura sobre el NF a considerar" value={alturaSuccion} onChange={setAlturaSuccion} sufijo={unidadLong} />
@@ -1045,7 +1045,7 @@ export default function EsfuerzosSuelo() {
                           ))}
                         </tbody>
                       </table>
-                      <p className="text-[10px] text-gray-400 mt-3">σ' = σv − u (principio de esfuerzos efectivos de Terzaghi). u negativo indica succión mátrica.</p>
+                      <p className="text-[10px] text-gray-400 mt-3">σ' = σv − u (principio de esfuerzos efectivos de Terzaghi). u negativo indica succión matricial.</p>
                     </div>
                   </>
                 )}
