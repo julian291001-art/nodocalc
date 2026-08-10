@@ -2,6 +2,7 @@
 import { useState, useMemo } from "react"
 import Sidebar from "../../components/Sidebar"
 import { conversiones } from "../../lib/conversiones"
+import { VarKey, Vars, resolverFases } from "../../lib/relacionesFases"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CONSTANTES Y UNIDADES
@@ -33,12 +34,13 @@ const fmt = (x: number | undefined, dec = 3) =>
   x !== undefined && Number.isFinite(x) ? x.toFixed(dec) : "—"
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MOTOR DE RELACIONES DE FASE (subconjunto reducido, reutilizado de Herramientas → Fases)
-// Solo variables índice y pesos unitarios: lo necesario para obtener γd y γsat por estrato.
+// RELACIONES DE FASE — subconjunto de variables usado por estrato (Gs, e, n, w, S).
+// El motor de resolución (resolverFases) se reutiliza tal cual desde
+// lib/relacionesFases.ts — el mismo que usa Herramientas → Relaciones de fase —
+// para no duplicar ni tener que validar dos veces las fórmulas geotécnicas.
+// Aquí solo se define el subconjunto de etiquetas cortas para la UI compacta de
+// cada tarjeta de estrato.
 // ─────────────────────────────────────────────────────────────────────────────
-type VarKey = "Gs" | "e" | "n" | "w" | "S" | "gamma" | "gammad" | "gammasat" | "gammap"
-type Vars = Partial<Record<VarKey, number>>
-
 const VARS_FASES: { key: VarKey; labelHtml: string; esPorcentaje: boolean }[] = [
   { key: "Gs", labelHtml: "G<sub>s</sub>", esPorcentaje: false },
   { key: "e", labelHtml: "e", esPorcentaje: false },
@@ -46,52 +48,6 @@ const VARS_FASES: { key: VarKey; labelHtml: string; esPorcentaje: boolean }[] = 
   { key: "w", labelHtml: "w (%)", esPorcentaje: true },
   { key: "S", labelHtml: "S (%)", esPorcentaje: true },
 ]
-
-function construirReglasSuelo(yw: number): { out: VarKey; inputs: VarKey[]; f: (v: Vars) => number }[] {
-  return [
-    { out: "n", inputs: ["e"], f: v => v.e! / (1 + v.e!) },
-    { out: "e", inputs: ["n"], f: v => v.n! / (1 - v.n!) },
-    { out: "e", inputs: ["S", "w", "Gs"], f: v => (v.w! * v.Gs!) / v.S! },
-    { out: "S", inputs: ["e", "w", "Gs"], f: v => (v.w! * v.Gs!) / v.e! },
-    { out: "w", inputs: ["S", "e", "Gs"], f: v => (v.S! * v.e!) / v.Gs! },
-    { out: "Gs", inputs: ["S", "e", "w"], f: v => (v.S! * v.e!) / v.w! },
-    { out: "gammad", inputs: ["Gs", "e"], f: v => (v.Gs! * yw) / (1 + v.e!) },
-    { out: "e", inputs: ["Gs", "gammad"], f: v => (v.Gs! * yw) / v.gammad! - 1 },
-    { out: "Gs", inputs: ["gammad", "e"], f: v => (v.gammad! * (1 + v.e!)) / yw },
-    { out: "gammad", inputs: ["gamma", "w"], f: v => v.gamma! / (1 + v.w!) },
-    { out: "gamma", inputs: ["gammad", "w"], f: v => v.gammad! * (1 + v.w!) },
-    { out: "w", inputs: ["gamma", "gammad"], f: v => v.gamma! / v.gammad! - 1 },
-    { out: "gammasat", inputs: ["Gs", "e"], f: v => ((v.Gs! + v.e!) * yw) / (1 + v.e!) },
-    { out: "gammasat", inputs: ["gammad", "n"], f: v => v.gammad! + v.n! * yw },
-    { out: "gammap", inputs: ["gammasat"], f: v => v.gammasat! - yw },
-    { out: "gammasat", inputs: ["gammap"], f: v => v.gammap! + yw },
-    { out: "gammap", inputs: ["Gs", "e"], f: v => ((v.Gs! - 1) * yw) / (1 + v.e!) },
-    { out: "Gs", inputs: ["gammap", "e"], f: v => (v.gammap! * (1 + v.e!)) / yw + 1 },
-    { out: "gamma", inputs: ["Gs", "S", "e"], f: v => ((v.Gs! + v.S! * v.e!) * yw) / (1 + v.e!) },
-  ]
-}
-
-function resolverFasesSuelo(conocidos: Vars, yw: number): Vars {
-  const vars: Vars = { ...conocidos }
-  const reglas = construirReglasSuelo(yw)
-  let cambio = true
-  let iter = 0
-  while (cambio && iter < 30) {
-    cambio = false
-    iter++
-    for (const reg of reglas) {
-      if (vars[reg.out] !== undefined) continue
-      if (reg.inputs.every(k => vars[k] !== undefined && Number.isFinite(vars[k]!))) {
-        const val = reg.f(vars)
-        if (Number.isFinite(val)) {
-          vars[reg.out] = val
-          cambio = true
-        }
-      }
-    }
-  }
-  return vars
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MOTOR NUMÉRICO — Boussinesq (1885) y Westergaard (1938, μ' = 0)
@@ -410,73 +366,94 @@ function ChartPerfil({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GRÁFICO Δσz vs z (carga superficial)
+// GRÁFICO Δσz vs z (carga superficial) — profundidad en eje Y (hacia abajo), igual
+// convención que ChartPerfil, para leer ambos gráficos de la misma manera.
 // ─────────────────────────────────────────────────────────────────────────────
-function ChartDeltaSigma({ puntos, width = 700, height = 320 }: { puntos: { z: number; v: number }[]; width?: number; height?: number }) {
+function ChartDeltaSigma({
+  puntos, xLabel, unidadLong, width = 700, height = 380,
+}: { puntos: { z: number; v: number }[]; xLabel: string; unidadLong: string; width?: number; height?: number }) {
   const [hoverZ, setHoverZ] = useState<number | null>(null)
-  const ML = 64, MB = 34, MT = 15, MR = 15
+  const ML = 64, MB = 30, MT = 22, MR = 20
   const plotW = width - ML - MR
   const plotH = height - MB - MT
   if (puntos.length === 0) return null
-  const zMax = Math.max(...puntos.map(p => p.z))
-  const vMax = Math.max(...puntos.map(p => p.v), 0) * 1.1 || 1
 
-  const toX = (z: number) => ML + (z / (zMax || 1)) * plotW
-  const toY = (v: number) => height - MB - (v / (vMax || 1)) * plotH
-  const fromX = (px: number) => ((px - ML) / plotW) * zMax
+  const pts = [...puntos].sort((a, b) => a.z - b.z)
+  const zMax = Math.max(...pts.map(p => p.z))
+  const vMaxRaw = Math.max(...pts.map(p => p.v), 0)
+  const vMinRaw = Math.min(...pts.map(p => p.v), 0)
+  const pad = (vMaxRaw - vMinRaw) * 0.1 || 1
+  const vMax = vMaxRaw + pad
+  const vMin = vMinRaw - pad
+
+  const toX = (v: number) => ML + ((v - vMin) / (vMax - vMin || 1)) * plotW
+  const toY = (z: number) => MT + (z / (zMax || 1)) * plotH
+  const fromY = (py: number) => ((py - MT) / plotH) * zMax
 
   function handleMove(e: React.MouseEvent<SVGRectElement>) {
     const svg = e.currentTarget.ownerSVGElement
     if (!svg) return
     const rect = svg.getBoundingClientRect()
-    const px = ((e.clientX - rect.left) / rect.width) * width
-    setHoverZ(Math.max(0, Math.min(zMax, fromX(px))))
+    const py = ((e.clientY - rect.top) / rect.height) * height
+    setHoverZ(Math.max(0, Math.min(zMax, fromY(py))))
   }
 
-  let mejor = puntos[0]
+  let valorHover = pts[0].v
   if (hoverZ !== null) {
-    let mejorDist = Math.abs(mejor.z - hoverZ)
-    for (const p of puntos) {
-      const d = Math.abs(p.z - hoverZ)
-      if (d < mejorDist) { mejorDist = d; mejor = p }
+    valorHover = pts[pts.length - 1].v
+    for (let i = 0; i < pts.length - 1; i++) {
+      if (hoverZ >= pts[i].z && hoverZ <= pts[i + 1].z) {
+        const t = (hoverZ - pts[i].z) / (pts[i + 1].z - pts[i].z || 1)
+        valorHover = pts[i].v + t * (pts[i + 1].v - pts[i].v)
+        break
+      }
     }
   }
 
   const NTICKS = 5
-  const xTicks = Array.from({ length: NTICKS + 1 }, (_, i) => (zMax * i) / NTICKS)
-  const yTicks = Array.from({ length: NTICKS + 1 }, (_, i) => (vMax * i) / NTICKS)
+  const vTicks = Array.from({ length: NTICKS + 1 }, (_, i) => vMin + ((vMax - vMin) * i) / NTICKS)
+  const zTicks = Array.from({ length: NTICKS + 1 }, (_, i) => (zMax * i) / NTICKS)
 
-  const d = puntos.map((p, i) => `${i === 0 ? "M" : "L"} ${toX(p.z)} ${toY(p.v)}`).join(" ")
+  const d = pts.map((p, i) => `${i === 0 ? "M" : "L"} ${toX(p.v)} ${toY(p.z)}`).join(" ")
+
+  const tooltipY = hoverZ !== null ? toY(hoverZ) : 0
+  const tooltipAncho = 140
+  const tooltipAlto = 30
+  const tooltipPosX = Math.min(Math.max(toX(valorHover) + 10, ML), width - MR - tooltipAncho)
+  const tooltipPosY = Math.min(Math.max(tooltipY - tooltipAlto / 2, MT), height - MB - tooltipAlto)
 
   return (
     <svg viewBox={`0 0 ${width} ${height}`} className="w-full" onMouseLeave={() => setHoverZ(null)}>
-      {yTicks.map((t, i) => (
-        <g key={`y-${i}`}>
+      {vTicks.map((t, i) => (
+        <g key={`v-${i}`}>
+          <line x1={toX(t)} y1={MT} x2={toX(t)} y2={height - MB} stroke="#f3f4f6" strokeWidth={1} />
+          <text x={toX(t)} y={MT - 8} textAnchor="middle" fontSize="8" fill="#9ca3af">{fmt(t, Math.abs(t) < 10 ? 2 : 0)}</text>
+        </g>
+      ))}
+      {zTicks.map((t, i) => (
+        <g key={`z-${i}`}>
           <line x1={ML} y1={toY(t)} x2={width - MR} y2={toY(t)} stroke="#f3f4f6" strokeWidth={1} />
           <text x={ML - 8} y={toY(t) + 3} textAnchor="end" fontSize="8" fill="#9ca3af">{fmt(t, 2)}</text>
         </g>
       ))}
-      {xTicks.map((t, i) => (
-        <g key={`x-${i}`}>
-          <line x1={toX(t)} y1={MT} x2={toX(t)} y2={height - MB} stroke="#f3f4f6" strokeWidth={1} />
-          <text x={toX(t)} y={height - MB + 14} textAnchor="middle" fontSize="8" fill="#9ca3af">{fmt(t, 2)}</text>
-        </g>
-      ))}
       <rect x={ML} y={MT} width={plotW} height={plotH} fill="none" stroke="#e5e7eb" strokeWidth={1} />
-      <text x={width / 2} y={height - 4} textAnchor="middle" fontSize="9" fill="#6b7280">Profundidad z (m)</text>
-      <text x={14} y={MT + plotH / 2} textAnchor="middle" fontSize="9" fill="#6b7280" transform={`rotate(-90 14 ${MT + plotH / 2})`}>Δσz</text>
+      <line x1={toX(0)} y1={MT} x2={toX(0)} y2={height - MB} stroke="#9ca3af" strokeWidth={1.25} />
+
+      <text x={width / 2} y={height - 4} textAnchor="middle" fontSize="9" fill="#6b7280">{xLabel}</text>
+      <text x={14} y={MT + plotH / 2} textAnchor="middle" fontSize="9" fill="#6b7280" transform={`rotate(-90 14 ${MT + plotH / 2})`}>Profundidad</text>
 
       <path d={d} fill="none" stroke="#7c3aed" strokeWidth={1.75} />
 
       {hoverZ !== null && (
         <>
-          <line x1={toX(mejor.z)} y1={MT} x2={toX(mejor.z)} y2={height - MB} stroke="#9ca3af" strokeWidth={1} strokeDasharray="3,2" />
-          <circle cx={toX(mejor.z)} cy={toY(mejor.v)} r={3.5} fill="#7c3aed" stroke="white" strokeWidth={1} />
-          <rect x={Math.min(Math.max(toX(mejor.z) + 8, ML), width - MR - 110)} y={MT + 4} width={110} height={30} rx={4} fill="white" stroke="#e5e7eb" />
-          <text x={Math.min(Math.max(toX(mejor.z) + 8, ML), width - MR - 110) + 6} y={MT + 16} fontSize="8" fill="#374151">z = {fmt(mejor.z, 2)} m</text>
-          <text x={Math.min(Math.max(toX(mejor.z) + 8, ML), width - MR - 110) + 6} y={MT + 28} fontSize="8" fill="#7c3aed" fontWeight="600">Δσz = {fmt(mejor.v, 2)}</text>
+          <line x1={ML} y1={toY(hoverZ)} x2={width - MR} y2={toY(hoverZ)} stroke="#9ca3af" strokeWidth={1} strokeDasharray="3,2" />
+          <circle cx={toX(valorHover)} cy={toY(hoverZ)} r={3.5} fill="#7c3aed" stroke="white" strokeWidth={1} />
+          <rect x={tooltipPosX} y={tooltipPosY} width={tooltipAncho} height={tooltipAlto} rx={4} fill="white" stroke="#e5e7eb" />
+          <text x={tooltipPosX + 8} y={tooltipPosY + 12} fontSize="8" fill="#374151" fontWeight="600">z = {fmt(hoverZ, 2)} {unidadLong}</text>
+          <text x={tooltipPosX + 8} y={tooltipPosY + 26} fontSize="8" fill="#7c3aed" fontWeight="600">Δσz = {fmt(valorHover, 2)}</text>
         </>
       )}
+
       <rect x={ML} y={MT} width={plotW} height={plotH} fill="transparent" onMouseMove={handleMove} />
     </svg>
   )
@@ -509,7 +486,7 @@ function TarjetaEstrato({
         if (Number.isFinite(num)) conocidos[v.key] = v.esPorcentaje ? num / 100 : num
       }
     }
-    return resolverFasesSuelo(conocidos, GAMMA_W)
+    return resolverFases(conocidos, GAMMA_W)
   }, [estrato.modoGamma, estrato.conocidos, estrato.entradas])
 
   return (
@@ -640,7 +617,7 @@ export default function EsfuerzosSuelo() {
             if (Number.isFinite(num)) conocidos[v.key] = v.esPorcentaje ? num / 100 : num
           }
         }
-        fasesResueltas = resolverFasesSuelo(conocidos, GAMMA_W)
+        fasesResueltas = resolverFases(conocidos, GAMMA_W)
         gammaArriba = fasesResueltas.gamma ?? fasesResueltas.gammad
         gammaAbajo = fasesResueltas.gammasat
       }
@@ -1126,7 +1103,7 @@ export default function EsfuerzosSuelo() {
                 {camposCompletos && resultadoPuntual !== null && (
                   <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-6 flex items-center justify-between flex-wrap gap-3">
                     <div>
-                      <div className="text-xs text-gray-500 uppercase tracking-wider mb-1">Δσz en z = {zCalculo} {unidadLong}</div>
+                      <div className="text-xs text-gray-500 tracking-wider mb-1">Δσz EN z = {zCalculo} {unidadLong}</div>
                       <div className="text-2xl font-semibold text-blue-800">{fmt(aMostrarPresDesdeKPa(resultadoPuntual, unidadPres), 3)} {unidadPres}</div>
                     </div>
                     <span className="text-xs px-3 py-1 rounded-full bg-white text-blue-700 font-medium border border-blue-200">
@@ -1138,7 +1115,7 @@ export default function EsfuerzosSuelo() {
                 {camposCompletos && perfilDeltaSigma.length > 0 && (
                   <div className="bg-white border border-gray-200 rounded-xl p-5">
                     <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">Δσz vs PROFUNDIDAD</div>
-                    <ChartDeltaSigma puntos={perfilDeltaSigma} />
+                    <ChartDeltaSigma puntos={perfilDeltaSigma} xLabel={`Δσz (${unidadPres})`} unidadLong={unidadLong} />
                   </div>
                 )}
 
