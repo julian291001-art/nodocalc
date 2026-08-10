@@ -19,7 +19,7 @@ export default function Geotecnia() {
           <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">RESISTENCIA Y ESFUERZOS</div>
           <div className="grid grid-cols-2 gap-4 mb-6">
             <a href="/geotecnia/resistencia-corte"> <SubtemaCard nombre="Resistencia al corte" desc="Criterio de Mohr-Coulomb, círculo de Mohr, ensayos de corte directo y triaxial." metodos={["Mohr-Coulomb", "Círculo de Mohr", "Corte directo (NC y SC)", "Triaxial (UU, CU, CD)"]} /> </a>
-            <SubtemaCard nombre="Esfuerzos en el suelo" desc="Esfuerzo vertical, presión de poros, esfuerzo efectivo, distribución de cargas." metodos={["Esfuerzo por estratos", "Presión de poros", "Esfuerzo efectivo", "Boussinesq", "Westergaard"]} />
+            <a href="/geotecnia/esfuerzos-suelo"> <SubtemaCard nombre="Esfuerzos en el suelo" desc="Esfuerzo vertical, presión de poros, esfuerzo efectivo, distribución de cargas." metodos={["Esfuerzo por estratos", "Presión de poros", "Esfuerzo efectivo", "Boussinesq", "Westergaard"]} /> </a>
           </div>
           <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">CONSOLIDACIÓN</div>
           <div className="grid grid-cols-2 gap-4 mb-6">
