@@ -5,8 +5,8 @@ import { conversiones } from "../../lib/conversiones"
 import { VarKey, Vars, resolverFases } from "../../lib/relacionesFases"
 import { GAMMA_W, resolverPerfilGeostatico, CapaGeostatica, PuntoGeostatico } from "../../lib/perfilGeostatico"
 import {
-  TeoriaEmpuje, EstadoEmpuje, resolverPerfilLateral, resultanteLateral,
-  profundidadGrieta, kaRankine, kaCoulomb, PuntoLateral,
+  TeoriaEmpuje, EstadoEmpuje, TipoSueloK0, resolverPerfilLateral, resultanteLateral,
+  resumenKPorCapa, profundidadGrieta, kaRankine, kaCoulomb, PuntoLateral,
 } from "../../lib/presionTierras"
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -53,6 +53,8 @@ type Capa = {
   phi: string
   c: string
   ocr: string
+  tipoSuelo: TipoSueloK0
+  ip: string
   betaPropio: boolean
   betaLocal: string
 }
@@ -66,6 +68,7 @@ function nuevaCapa(nombre: string): Capa {
     modoGamma: "directo", gammaArriba: "", gammaAbajo: "",
     conocidos: {}, entradas: {},
     phi: "", c: "0", ocr: "1",
+    tipoSuelo: "friccionante", ip: "",
     betaPropio: false, betaLocal: "0",
   }
 }
@@ -75,6 +78,7 @@ type CapaResuelta = {
   zTop: number; zBottom: number
   gammaArriba?: number; gammaAbajo?: number
   phi: number; c: number; ocr: number; betaLocal?: number
+  tipoSuelo: TipoSueloK0; ip: number
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -233,6 +237,233 @@ function ChartPresionLateral({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ESQUEMA — columna de suelo sola (pestaña "sin muro"), mismo patrón visual que
+// DiagramaEstratos de Esfuerzos en el suelo.
+// ─────────────────────────────────────────────────────────────────────────────
+function DiagramaCapasLateral({
+  capas, nfActivo, nfDepth, unidadLong, unidadPesoU, width = 260, height = 380,
+}: {
+  capas: CapaResuelta[]
+  nfActivo: boolean
+  nfDepth: number | null
+  unidadLong: string
+  unidadPesoU: string
+  width?: number
+  height?: number
+}) {
+  const zMax = capas.length ? capas[capas.length - 1].zBottom : 0
+  if (zMax <= 0) {
+    return (
+      <div className="text-xs text-gray-400 border border-dashed border-gray-200 rounded-lg p-6 text-center">
+        Ingresa el espesor de al menos una capa para ver el esquema.
+      </div>
+    )
+  }
+
+  const ML = 10, MT = 15, MB = 15, MR = 78
+  const colX = ML, colW = width - ML - MR
+  const plotH = height - MT - MB
+  const toY = (z: number) => MT + (z / zMax) * plotH
+
+  const paleta = ["#fde3c7", "#e3ded6", "#cfe3d9", "#d9e0f0", "#f0d9e6", "#e6ecd9"]
+
+  const breakpoints = Array.from(
+    new Set([0, ...capas.map(c => c.zBottom), ...(nfActivo && nfDepth !== null ? [nfDepth] : [])])
+  ).filter(z => z >= 0 && z <= zMax + 1e-9).sort((a, b) => a - b)
+
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} width="100%" className="border border-gray-100 rounded-lg bg-white" style={{ maxHeight: height }}>
+      {capas.map((c, i) => {
+        const yTop = toY(c.zTop), yBottom = toY(c.zBottom)
+        const h = yBottom - yTop
+        const nfCorta = nfActivo && nfDepth !== null && nfDepth > c.zTop && nfDepth < c.zBottom
+        const yNF = nfCorta ? toY(nfDepth!) : null
+
+        return (
+          <g key={c.id}>
+            <rect x={colX} y={yTop} width={colW} height={h} fill={paleta[i % paleta.length]} stroke="#9ca3af" strokeWidth={1} />
+            <text x={colX + 8} y={yTop + 13} fontSize="9" fill="#374151" fontWeight="600">{c.nombre}</text>
+
+            {!nfCorta ? (
+              <text x={colX + 8} y={yTop + h / 2 + 4} fontSize="8" fill="#4b5563">
+                {nfActivo && nfDepth !== null && nfDepth <= c.zTop ? "γsat" : "γ"} = {fmt(
+                  nfActivo && nfDepth !== null && nfDepth <= c.zTop ? c.gammaAbajo : c.gammaArriba, 2
+                )} {unidadPesoU}
+              </text>
+            ) : (
+              <>
+                <line x1={colX} y1={yNF!} x2={colX + colW} y2={yNF!} stroke="#2563eb" strokeWidth={1} strokeDasharray="3,2" />
+                <polygon points={`${colX + colW - 10},${yNF! - 5} ${colX + colW},${yNF!} ${colX + colW - 10},${yNF! + 5}`} fill="#2563eb" />
+                <text x={colX + 8} y={(yTop + yNF!) / 2 + 4} fontSize="8" fill="#4b5563">γ = {fmt(c.gammaArriba, 2)} {unidadPesoU}</text>
+                <text x={colX + 8} y={(yNF! + yBottom) / 2 + 4} fontSize="8" fill="#4b5563">γsat = {fmt(c.gammaAbajo, 2)} {unidadPesoU}</text>
+              </>
+            )}
+          </g>
+        )
+      })}
+
+      {capas.slice(0, -1).map(c => (
+        <line key={`sep-${c.id}`} x1={colX} y1={toY(c.zBottom)} x2={colX + colW} y2={toY(c.zBottom)} stroke="#6b7280" strokeWidth={1.25} />
+      ))}
+      <rect x={colX} y={MT} width={colW} height={plotH} fill="none" stroke="#374151" strokeWidth={1.25} />
+
+      {breakpoints.map((t, i) => (
+        <g key={i}>
+          <line x1={colX + colW} y1={toY(t)} x2={colX + colW + 6} y2={toY(t)} stroke="#9ca3af" strokeWidth={1} />
+          <text x={colX + colW + 10} y={toY(t) + 3} fontSize="8" fill="#6b7280">{fmt(aMostrarLong(t, unidadLong), t < 1 ? 2 : 1)}</text>
+        </g>
+      ))}
+      <text x={colX + colW + 10} y={MT - 6} fontSize="8" fill="#9ca3af">z ({unidadLong})</text>
+    </svg>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PRESETS DE MURO
+// ─────────────────────────────────────────────────────────────────────────────
+const PRESETS_MURO: Record<string, { nombre: string; theta: number; deltaFactor: number; teoria: TeoriaEmpuje; nota: string }> = {
+  gravedad: {
+    nombre: "Muro de gravedad",
+    theta: 10, deltaFactor: 2 / 3, teoria: "coulomb",
+    nota: "Trasdós inclinado (típico 5°–20°) con fricción muro-suelo — se recomienda Coulomb. Si δ es grande en el caso pasivo, Coulomb puede sobrestimar Kp; considera reducir δ o validar con Caquot–Kerisel.",
+  },
+  voladizo: {
+    nombre: "Voladizo en 'L' (zapata)",
+    theta: 0, deltaFactor: 0, teoria: "rankine",
+    nota: "Se analiza sobre el plano vertical virtual que pasa por el talón de la zapata (empuje suelo-suelo, δ≈0) — método de Rankine, el estándar para este caso.",
+  },
+  pantalla: {
+    nombre: "Pantalla / muro plano",
+    theta: 0, deltaFactor: 2 / 3, teoria: "coulomb",
+    nota: "Trasdós vertical de concreto en contacto con el suelo — incluye fricción muro-suelo (δ ≈ 2/3·φ). Con δ = 0, Coulomb coincide con Rankine.",
+  },
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ESQUEMA DEL MURO — silueta ilustrativa según el tipo (no a escala de diseño: no se
+// piden dimensiones de muro en este módulo, que solo entrega presión y resultante) +
+// columna de suelo detrás + flechas de presión lateral proporcionales a σh total.
+// ─────────────────────────────────────────────────────────────────────────────
+function DiagramaMuro({
+  capas, nfActivo, nfDepth, tipoMuro, thetaDeg, perfil, estado, unidadLong, width = 340, height = 380,
+}: {
+  capas: CapaResuelta[]
+  nfActivo: boolean
+  nfDepth: number | null
+  tipoMuro: keyof typeof PRESETS_MURO
+  thetaDeg: number
+  perfil: PuntoLateral[]
+  estado: EstadoEmpuje
+  unidadLong: string
+  width?: number
+  height?: number
+}) {
+  const zMax = capas.length ? capas[capas.length - 1].zBottom : 0
+  if (zMax <= 0) {
+    return (
+      <div className="text-xs text-gray-400 border border-dashed border-gray-200 rounded-lg p-6 text-center">
+        Ingresa el espesor de al menos una capa para ver el esquema.
+      </div>
+    )
+  }
+
+  const MT = 15, MB = 15
+  const wallW = 46
+  const soilX = 10 + wallW + 46
+  const soilW = Math.max(60, width - soilX - 70)
+  const plotH = height - MT - MB
+  const toY = (z: number) => MT + (z / zMax) * plotH
+  const yBase = toY(zMax), yTope = toY(0)
+
+  const paleta = ["#fde3c7", "#e3ded6", "#cfe3d9", "#d9e0f0", "#f0d9e6", "#e6ecd9"]
+
+  // silueta del muro (ilustrativa)
+  const thetaRad = ((thetaDeg || 0) * Math.PI) / 180
+  const desplazTope = Math.tan(thetaRad) * (yBase - yTope) * 0.35
+  let wallPath = ""
+  let xInterfaz = soilX - 6
+  if (tipoMuro === "gravedad") {
+    const xBaseIzq = 10, xBaseDer = 10 + wallW + 14
+    const xTopeDer = 10 + wallW * 0.55 + desplazTope
+    wallPath = `M ${xBaseIzq} ${yBase} L ${xBaseDer} ${yBase} L ${xTopeDer} ${yTope} L ${10 + wallW * 0.15} ${yTope} Z`
+    xInterfaz = xBaseDer
+  } else if (tipoMuro === "voladizo") {
+    const xStemIzq = 10 + wallW * 0.35, xStemDer = xStemIzq + 12
+    const xZapataIzq = 10, xZapataDer = 10 + wallW + 20
+    const yZapataTop = yBase - (yBase - yTope) * 0.08
+    wallPath = `M ${xZapataIzq} ${yBase} L ${xZapataDer} ${yBase} L ${xZapataDer} ${yZapataTop} L ${xStemDer} ${yZapataTop} L ${xStemDer} ${yTope} L ${xStemIzq} ${yTope} L ${xStemIzq} ${yZapataTop} L ${xZapataIzq} ${yZapataTop} Z`
+    xInterfaz = xZapataDer // plano vertical virtual, por el talón
+  } else {
+    const xIzq = 10 + wallW * 0.3, xDer = xIzq + 12
+    wallPath = `M ${xIzq} ${yBase} L ${xDer} ${yBase} L ${xDer} ${yTope} L ${xIzq} ${yTope} Z`
+    xInterfaz = xDer
+  }
+
+  const maxSigma = Math.max(1e-6, ...perfil.map(p => Math.abs(p.sigmaHTotal)))
+  const flechaMax = 30
+  const colorPresion = estado === "pasivo" ? "#b91c1c" : estado === "reposo" ? "#6d28d9" : "#1d4ed8"
+
+  const breakpoints = Array.from(
+    new Set([0, ...capas.map(c => c.zBottom), ...(nfActivo && nfDepth !== null ? [nfDepth] : [])])
+  ).filter(z => z >= 0 && z <= zMax + 1e-9).sort((a, b) => a - b)
+
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} width="100%" className="border border-gray-100 rounded-lg bg-white" style={{ maxHeight: height }}>
+      <path d={wallPath} fill="#d1d5db" stroke="#4b5563" strokeWidth={1.25} />
+      <text x={10} y={yTope - 5} fontSize="8" fill="#6b7280">{PRESETS_MURO[tipoMuro].nombre}</text>
+
+      {capas.map((c, i) => {
+        const yT = toY(c.zTop), yB = toY(c.zBottom)
+        const nfCorta = nfActivo && nfDepth !== null && nfDepth > c.zTop && nfDepth < c.zBottom
+        const yNF = nfCorta ? toY(nfDepth!) : null
+        return (
+          <g key={c.id}>
+            <rect x={soilX} y={yT} width={soilW} height={yB - yT} fill={paleta[i % paleta.length]} stroke="#9ca3af" strokeWidth={1} />
+            <text x={soilX + 6} y={yT + 12} fontSize="8" fill="#374151" fontWeight="600">{c.nombre}</text>
+            {nfCorta && (
+              <>
+                <line x1={soilX} y1={yNF!} x2={soilX + soilW} y2={yNF!} stroke="#2563eb" strokeWidth={1} strokeDasharray="3,2" />
+                <polygon points={`${soilX + soilW - 10},${yNF! - 5} ${soilX + soilW},${yNF!} ${soilX + soilW - 10},${yNF! + 5}`} fill="#2563eb" />
+              </>
+            )}
+          </g>
+        )
+      })}
+      {capas.slice(0, -1).map(c => (
+        <line key={`sep-${c.id}`} x1={soilX} y1={toY(c.zBottom)} x2={soilX + soilW} y2={toY(c.zBottom)} stroke="#6b7280" strokeWidth={1} />
+      ))}
+      <rect x={soilX} y={yTope} width={soilW} height={yBase - yTope} fill="none" stroke="#374151" strokeWidth={1.25} />
+
+      {/* flechas de presión lateral (proporcionales a σh total), del suelo hacia el muro */}
+      {perfil.filter((_, i) => i % 2 === 0).map((p, i) => {
+        const y = toY(p.z)
+        const largo = Math.max(2, (Math.abs(p.sigmaHTotal) / maxSigma) * flechaMax)
+        const xIni = xInterfaz + 20
+        const xFin = xIni - largo
+        return (
+          <g key={i}>
+            <line x1={xIni} y1={y} x2={xFin} y2={y} stroke={colorPresion} strokeWidth={1.25} />
+            <polygon points={`${xFin},${y} ${xFin + 4},${y - 2.5} ${xFin + 4},${y + 2.5}`} fill={colorPresion} />
+          </g>
+        )
+      })}
+      <text x={xInterfaz + 20 - flechaMax / 2} y={yBase + 12} fontSize="7" fill={colorPresion} textAnchor="middle">
+        presión {estado}
+      </text>
+
+      {breakpoints.map((t, i) => (
+        <g key={i}>
+          <line x1={soilX + soilW} y1={toY(t)} x2={soilX + soilW + 6} y2={toY(t)} stroke="#9ca3af" strokeWidth={1} />
+          <text x={soilX + soilW + 10} y={toY(t) + 3} fontSize="8" fill="#6b7280">{fmt(aMostrarLong(t, unidadLong), t < 1 ? 2 : 1)}</text>
+        </g>
+      ))}
+      <text x={soilX + soilW + 10} y={MT - 6} fontSize="8" fill="#9ca3af">z ({unidadLong})</text>
+      <p />
+    </svg>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // TARJETA DE CAPA
 // ─────────────────────────────────────────────────────────────────────────────
 function TarjetaCapa({
@@ -313,15 +544,14 @@ function TarjetaCapa({
             ))}
           </div>
           <span className="text-[11px] px-2 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-700">
-            γsat = {fasesResueltas?.gammasat !== undefined ? fmt(aMostrarPresDesdeKPa(0, unidadPesoU) === 0 ? fasesResueltas.gammasat : fasesResueltas.gammasat, 2) + " " + unidadPesoU : "—"}
+            γsat = {fasesResueltas?.gammasat !== undefined ? fmt(fasesResueltas.gammasat, 2) + " " + unidadPesoU : "—"}
           </span>
         </div>
       )}
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-3 border-t border-gray-100">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-3 border-t border-gray-100 mb-3">
         <Campo label="φ' (ángulo de fricción)" value={capa.phi} onChange={v => set({ phi: v })} sufijo="°" />
         <Campo label="c' (cohesión)" value={capa.c} onChange={v => set({ c: v })} sufijo={unidadPres} placeholder="0 = friccionante" />
-        <Campo label="OCR" value={capa.ocr} onChange={v => set({ ocr: v })} placeholder="1 = normalmente consolidado" />
         <div>
           <Toggle label="β propio (talud)" checked={capa.betaPropio} onChange={v => set({ betaPropio: v })} />
           {capa.betaPropio ? (
@@ -331,29 +561,79 @@ function TarjetaCapa({
           )}
         </div>
       </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-3 border-t border-gray-100 bg-gray-50 -mx-5 -mb-5 px-5 pb-5 rounded-b-xl">
+        <div className="col-span-2 sm:col-span-4 text-[11px] text-gray-400 font-medium tracking-wide">SOLO PARA K0 (presión en reposo)</div>
+        <div>
+          <Selector label="Tipo de suelo" value={capa.tipoSuelo === "friccionante" ? "Friccionante (arena)" : "Cohesivo (arcilla)"}
+            onChange={v => set({ tipoSuelo: v.startsWith("Friccionante") ? "friccionante" : "cohesivo" })}
+            opciones={["Friccionante (arena)", "Cohesivo (arcilla)"]} />
+        </div>
+        {capa.tipoSuelo === "cohesivo" && (
+          <>
+            <Campo label="IP (índice de plasticidad)" value={capa.ip} onChange={v => set({ ip: v })} sufijo="%" />
+            <Campo label="OCR" value={capa.ocr} onChange={v => set({ ocr: v })} placeholder="1 = NC" />
+          </>
+        )}
+      </div>
+      {capa.tipoSuelo === "cohesivo" && (
+        <p className="text-[10px] text-gray-400 mt-2 leading-relaxed">
+          K0,NC = 0.19 + 0.233·log₁₀(IP) (Alpan, 1967). Si OCR &gt; 1 (sobreconsolidada): K0 = K0,NC·√OCR.
+        </p>
+      )}
+      {capa.tipoSuelo === "friccionante" && (
+        <p className="text-[10px] text-gray-400 mt-2 leading-relaxed">
+          K0 = 1 − sin(φ') (Jaky). El OCR no se aplica para suelos friccionantes en este módulo.
+        </p>
+      )}
     </div>
   )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PRESETS DE MURO
+// TARJETA DE RESULTADOS — coeficientes K por capa
 // ─────────────────────────────────────────────────────────────────────────────
-const PRESETS_MURO: Record<string, { nombre: string; theta: number; deltaFactor: number; teoria: TeoriaEmpuje; nota: string }> = {
-  gravedad: {
-    nombre: "Muro de gravedad",
-    theta: 10, deltaFactor: 2 / 3, teoria: "coulomb",
-    nota: "Trasdós inclinado (típico 5°–20°) con fricción muro-suelo — se recomienda Coulomb. Si δ es grande en el caso pasivo, Coulomb puede sobrestimar Kp; considera reducir δ o validar con Caquot–Kerisel.",
-  },
-  voladizo: {
-    nombre: "Voladizo en 'L' (zapata)",
-    theta: 0, deltaFactor: 0, teoria: "rankine",
-    nota: "Se analiza sobre el plano vertical virtual que pasa por el talón de la zapata (empuje suelo-suelo, δ≈0) — método de Rankine, el estándar para este caso.",
-  },
-  pantalla: {
-    nombre: "Pantalla / muro plano",
-    theta: 0, deltaFactor: 2 / 3, teoria: "coulomb",
-    nota: "Trasdós vertical de concreto en contacto con el suelo — incluye fricción muro-suelo (δ ≈ 2/3·φ). Con δ = 0, Coulomb coincide con Rankine.",
-  },
+function TarjetaK({
+  capasResueltas, Ks, estado,
+}: { capasResueltas: CapaResuelta[]; Ks: number[]; estado: EstadoEmpuje }) {
+  const avisoIP = estado === "reposo" && capasResueltas.some(c => c.tipoSuelo === "cohesivo" && !(c.ip > 0))
+  const etiquetaK = estado === "activo" ? "Ka" : estado === "pasivo" ? "Kp" : "K0"
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl p-5">
+      <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">COEFICIENTES DE EMPUJE ({etiquetaK}) POR CAPA</div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-gray-400 border-b border-gray-100">
+              <th className="text-left py-1.5 font-medium">Capa</th>
+              <th className="text-right py-1.5 font-medium">φ' (°)</th>
+              <th className="text-right py-1.5 font-medium">Tipo (K0)</th>
+              <th className="text-right py-1.5 font-medium">IP (%)</th>
+              <th className="text-right py-1.5 font-medium">OCR</th>
+              <th className="text-right py-1.5 font-medium">{etiquetaK}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {capasResueltas.map((c, i) => (
+              <tr key={c.id} className="border-b border-gray-50">
+                <td className="py-1.5">{c.nombre}</td>
+                <td className="text-right py-1.5">{fmt(c.phi, 1)}</td>
+                <td className="text-right py-1.5 text-gray-500">{c.tipoSuelo === "friccionante" ? "Friccionante" : "Cohesivo"}</td>
+                <td className="text-right py-1.5 text-gray-500">{c.tipoSuelo === "cohesivo" ? fmt(c.ip, 0) : "—"}</td>
+                <td className="text-right py-1.5 text-gray-500">{c.tipoSuelo === "cohesivo" ? fmt(c.ocr, 2) : "—"}</td>
+                <td className="text-right py-1.5 text-blue-700 font-semibold">{fmt(Ks[i], 3)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {avisoIP && (
+        <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-3">
+          Falta IP en al menos una capa cohesiva — el K0 mostrado usa IP = 1% por defecto y no es representativo. Ingresa el IP real.
+        </p>
+      )}
+    </div>
+  )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -404,6 +684,8 @@ export default function PresionTierras() {
         phi: parseFloat(c.phi) || 0,
         c: aBasePresAKPa(parseFloat(c.c) || 0, unidadPres),
         ocr: parseFloat(c.ocr) || 1,
+        tipoSuelo: c.tipoSuelo,
+        ip: parseFloat(c.ip) || 0,
         betaLocal: c.betaPropio ? (parseFloat(c.betaLocal) || 0) : undefined,
       }
     })
@@ -436,8 +718,10 @@ export default function PresionTierras() {
   function cargarEjemplo() {
     const c1 = nuevaCapa("Arena limosa")
     c1.espesor = "4"; c1.gammaArriba = "18"; c1.gammaAbajo = "20"; c1.phi = "30"; c1.c = "0"
-    const c2 = nuevaCapa("Arcilla firme (φ≈0)")
-    c2.espesor = "3"; c2.gammaArriba = "17"; c2.gammaAbajo = "18.5"; c2.phi = "0"; c2.c = "35"; c2.ocr = "2"
+    c1.tipoSuelo = "friccionante"
+    const c2 = nuevaCapa("Arcilla firme (NC)")
+    c2.espesor = "3"; c2.gammaArriba = "17"; c2.gammaAbajo = "18.5"; c2.phi = "0"; c2.c = "35"
+    c2.tipoSuelo = "cohesivo"; c2.ip = "25"; c2.ocr = "1"
     setCapas([c1, c2])
     setNfActivo(true); setNfProfundidad("2")
   }
@@ -451,7 +735,11 @@ export default function PresionTierras() {
   const [beta1, setBeta1] = useState("0")
   const [delta1, setDelta1] = useState("0")
 
-  const capasLat1 = capasResueltas.map(c => ({ zTop: c.zTop, zBottom: c.zBottom, phi: c.phi, c: c.c, ocr: c.ocr, betaLocal: c.betaLocal }))
+  const capasLat1 = capasResueltas.map(c => ({
+    zTop: c.zTop, zBottom: c.zBottom, phi: c.phi, c: c.c, ocr: c.ocr,
+    betaLocal: c.betaLocal, tipoSuelo: c.tipoSuelo, ip: c.ip,
+  }))
+
   const perfilLateral1: PuntoLateral[] = useMemo(() => {
     if (errorPerfil || perfilGeostatico.length === 0) return []
     return resolverPerfilLateral(perfilGeostatico, capasLat1, teoria1, estado1, parseFloat(beta1) || 0, parseFloat(delta1) || 0, 0)
@@ -459,6 +747,12 @@ export default function PresionTierras() {
   }, [perfilGeostatico, capasResueltas, teoria1, estado1, beta1, delta1, errorPerfil])
 
   const resultante1 = useMemo(() => resultanteLateral(perfilLateral1), [perfilLateral1])
+
+  const Ks1 = useMemo(() => {
+    if (errorPerfil) return []
+    return resumenKPorCapa(capasLat1, teoria1, estado1, parseFloat(beta1) || 0, parseFloat(delta1) || 0, 0)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [capasResueltas, teoria1, estado1, beta1, delta1, errorPerfil])
 
   const grietaInfo1 = useMemo(() => {
     if (estado1 !== "activo" || capasResueltas.length === 0) return null
@@ -492,10 +786,17 @@ export default function PresionTierras() {
   }, [perfilGeostatico, capasResueltas, teoria2, estado2, beta2, delta2, theta2, errorPerfil])
 
   const resultante2 = useMemo(() => resultanteLateral(perfilLateral2), [perfilLateral2])
+
+  const Ks2 = useMemo(() => {
+    if (errorPerfil) return []
+    return resumenKPorCapa(capasLat1, teoria2, estado2, parseFloat(beta2) || 0, parseFloat(delta2) || 0, parseFloat(theta2) || 0)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [capasResueltas, teoria2, estado2, beta2, delta2, theta2, errorPerfil])
+
   const deltaRad2 = (parseFloat(delta2) || 0) * Math.PI / 180
   const Eh2 = resultante2.E * Math.cos(deltaRad2)
   const Ev2 = resultante2.E * Math.sin(deltaRad2)
-  const alturaAplicacion2 = zMax - resultante2.zApp // desde la base del muro
+  const alturaAplicacion2 = zMax - resultante2.zApp
 
   const seriesFactory = (perfil: PuntoLateral[]) => [
     { label: "σ'v (vertical efectivo)", color: "#9ca3af", puntos: perfil.map(p => ({ z: aMostrarLong(p.z, unidadLong), v: aMostrarPresDesdeKPa(p.sigmaEf, unidadPres) })), dash: true },
@@ -582,21 +883,29 @@ export default function PresionTierras() {
                   </p>
                 )}
 
-                <div className="bg-white border border-gray-200 rounded-xl p-5">
-                  <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">PRESIÓN LATERAL vs PROFUNDIDAD</div>
-                  <ChartPresionLateral series={seriesFactory(perfilLateral1)} zMax={aMostrarLong(zMax, unidadLong)} xLabel={`Presión (${unidadPres})`} />
-                  <div className="flex gap-4 mt-2 text-[11px] flex-wrap">
-                    <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-gray-400 inline-block" /> σ'v</span>
-                    <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-blue-700 inline-block" /> σ'h efectivo</span>
-                    <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-green-600 inline-block" /> u</span>
-                    <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-red-600 inline-block" /> σh total</span>
+                <TarjetaK capasResueltas={capasResueltas} Ks={Ks1} estado={estado1} />
+
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+                  <div className="lg:col-span-2 bg-white border border-gray-200 rounded-xl p-5">
+                    <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">PRESIÓN LATERAL vs PROFUNDIDAD</div>
+                    <ChartPresionLateral series={seriesFactory(perfilLateral1)} zMax={aMostrarLong(zMax, unidadLong)} xLabel={`Presión (${unidadPres})`} />
+                    <div className="flex gap-4 mt-2 text-[11px] flex-wrap">
+                      <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-gray-400 inline-block" /> σ'v</span>
+                      <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-blue-700 inline-block" /> σ'h efectivo</span>
+                      <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-green-600 inline-block" /> u</span>
+                      <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-red-600 inline-block" /> σh total</span>
+                    </div>
+                  </div>
+                  <div className="bg-white border border-gray-200 rounded-xl p-5">
+                    <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">ESQUEMA DEL PERFIL</div>
+                    <DiagramaCapasLateral capas={capasResueltas} nfActivo={nfActivo} nfDepth={nfDepthBase} unidadLong={unidadLong} unidadPesoU={unidadPesoU} />
                   </div>
                 </div>
 
                 <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-6 flex items-center justify-between flex-wrap gap-3">
                   <div>
                     <div className="text-xs text-gray-500 tracking-wider mb-1">Resultante ({estado1 === "activo" ? "Ea" : estado1 === "pasivo" ? "Ep" : "E0"})</div>
-                    <div className="text-2xl font-semibold text-blue-800">{fmt(aBaseLong(1, unidadLong) ? (resultante1.E * factorDe(CAT_FUERZA, unidadFuerza)) / factorDe(CAT_LONG, unidadLong) : 0, 2)} {unidadFuerza}/{unidadLong}</div>
+                    <div className="text-2xl font-semibold text-blue-800">{fmt((resultante1.E * factorDe(CAT_FUERZA, unidadFuerza)) / factorDe(CAT_LONG, unidadLong), 2)} {unidadFuerza}/{unidadLong}</div>
                     <div className="text-xs text-gray-500 mt-1">Punto de aplicación: {fmt(aMostrarLong(zMax - resultante1.zApp, unidadLong), 2)} {unidadLong} sobre la base</div>
                   </div>
                 </div>
@@ -638,14 +947,27 @@ export default function PresionTierras() {
                   </div>
                 </div>
 
-                <div className="bg-white border border-gray-200 rounded-xl p-5">
-                  <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">PRESIÓN LATERAL SOBRE EL MURO vs PROFUNDIDAD</div>
-                  <ChartPresionLateral series={seriesFactory(perfilLateral2)} zMax={aMostrarLong(zMax, unidadLong)} xLabel={`Presión (${unidadPres})`} />
-                  <div className="flex gap-4 mt-2 text-[11px] flex-wrap">
-                    <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-gray-400 inline-block" /> σ'v</span>
-                    <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-blue-700 inline-block" /> σ'h efectivo</span>
-                    <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-green-600 inline-block" /> u</span>
-                    <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-red-600 inline-block" /> σh total</span>
+                <TarjetaK capasResueltas={capasResueltas} Ks={Ks2} estado={estado2} />
+
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+                  <div className="lg:col-span-2 bg-white border border-gray-200 rounded-xl p-5">
+                    <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">PRESIÓN LATERAL SOBRE EL MURO vs PROFUNDIDAD</div>
+                    <ChartPresionLateral series={seriesFactory(perfilLateral2)} zMax={aMostrarLong(zMax, unidadLong)} xLabel={`Presión (${unidadPres})`} />
+                    <div className="flex gap-4 mt-2 text-[11px] flex-wrap">
+                      <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-gray-400 inline-block" /> σ'v</span>
+                      <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-blue-700 inline-block" /> σ'h efectivo</span>
+                      <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-green-600 inline-block" /> u</span>
+                      <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-red-600 inline-block" /> σh total</span>
+                    </div>
+                  </div>
+                  <div className="bg-white border border-gray-200 rounded-xl p-5">
+                    <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">ESQUEMA MURO + SUELO</div>
+                    <DiagramaMuro capas={capasResueltas} nfActivo={nfActivo} nfDepth={nfDepthBase}
+                      tipoMuro={tipoMuro} thetaDeg={parseFloat(theta2) || 0} perfil={perfilLateral2}
+                      estado={estado2} unidadLong={unidadLong} />
+                    <p className="text-[10px] text-gray-400 mt-2 leading-relaxed">
+                      Esquema ilustrativo — no representa dimensiones reales de diseño del muro (este módulo no pide geometría de muro, solo entrega presión y resultante).
+                    </p>
                   </div>
                 </div>
 
@@ -677,10 +999,10 @@ export default function PresionTierras() {
 
                 <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 text-xs text-gray-500 leading-relaxed">
                   <span className="font-semibold text-gray-600">Alcance de esta pestaña:</span>{" "}
-                  se entrega el diagrama de presión lateral y la fuerza resultante (con su descomposición y punto de
-                  aplicación) sobre el trasdós/plano virtual del muro. No incluye chequeos de estabilidad (volcamiento,
-                  deslizamiento, capacidad portante, excentricidad) — eso puede agregarse como un módulo de verificación
-                  posterior que reciba esta misma resultante como dato de entrada.
+                  se entrega el diagrama de presión lateral, la fuerza resultante (con su descomposición y punto de
+                  aplicación) y un esquema ilustrativo del muro sobre el trasdós/plano virtual. No incluye chequeos de
+                  estabilidad (volcamiento, deslizamiento, capacidad portante, excentricidad) — eso puede agregarse
+                  como un módulo de verificación posterior que reciba esta misma resultante como dato de entrada.
                 </div>
               </div>
             )}
