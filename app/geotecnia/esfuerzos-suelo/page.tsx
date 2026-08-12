@@ -3,6 +3,7 @@ import { useState, useMemo } from "react"
 import Sidebar from "../../components/Sidebar"
 import { conversiones } from "../../lib/conversiones"
 import { VarKey, Vars, resolverFases } from "../../lib/relacionesFases"
+import { resolverPerfilGeostatico } from "../../lib/perfilGeostatico"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CONSTANTES Y UNIDADES
@@ -727,142 +728,24 @@ export default function EsfuerzosSuelo() {
     return null
   }, [estratosResueltos, nfDepthBase, nfActivo, nfProfundidad, succionActiva, alturaSuccion])
 
+  // Motor de σv/u/σ' compartido con lib/perfilGeostatico.ts (mismo usado en
+  // Presión lateral de tierras) — se le pasa solo la forma simple que necesita
+  // (zTop/zBottom/gammaArriba/gammaAbajo); la conversión desde Estrato (directo/fases)
+  // sigue viviendo aquí porque es específica de este formulario.
   const perfil: PuntoPerfil[] = useMemo(() => {
     if (errorPerfil || estratosResueltos.length === 0) return []
-
-    const breakpoints = new Set<number>([0, zMaxPerfil])
-
-    for (const e of estratosResueltos) {
-      breakpoints.add(e.zTop)
-      breakpoints.add(e.zBottom)
-    }
-
-    if (nfDepthBase !== null && nfDepthBase >= 0 && nfDepthBase <= zMaxPerfil) {
-      breakpoints.add(nfDepthBase)
-    }
-
-    // Límite superior de la zona de succión
-    const zTopeSuccion =
-      succionActiva && nfDepthBase !== null
-        ? nfDepthBase - alturaSuccionBase
-        : null
-
-    if (
-      zTopeSuccion !== null &&
-      zTopeSuccion >= 0 &&
-      zTopeSuccion <= zMaxPerfil
-    ) {
-      breakpoints.add(zTopeSuccion)
-    }
-
-    const zs = [...breakpoints]
-      .filter(z => z >= 0 && z <= zMaxPerfil + 1e-9)
-      .sort((a, b) => a - b)
-
-    const gammaEn = (zMid: number): number => {
-      const capa =
-        estratosResueltos.find(
-          e => zMid >= e.zTop - 1e-9 && zMid <= e.zBottom + 1e-9
-        ) ??
-        estratosResueltos[estratosResueltos.length - 1]
-
-      if (nfDepthBase === null) {
-        return capa.gammaArriba ?? 0
-      }
-
-      return zMid <= nfDepthBase
-        ? (capa.gammaArriba ?? 0)
-        : (capa.gammaAbajo ?? 0)
-    }
-
-    const uEn = (zVal: number): number => {
-      if (nfDepthBase === null) return 0
-
-      // Debajo del nivel freático
-      if (zVal > nfDepthBase) {
-        return GAMMA_W * (zVal - nfDepthBase)
-      }
-
-      // Exactamente en el nivel freático
-      if (Math.abs(zVal - nfDepthBase) < 1e-9) {
-        return 0
-      }
-
-      // Por encima del nivel freático
-      const alturaSobreNF = nfDepthBase - zVal
-
-      // Zona con succión
-      if (
-        succionActiva &&
-        alturaSobreNF > 0 &&
-        alturaSobreNF <= alturaSuccionBase + 1e-9
-      ) {
-        return -GAMMA_W * alturaSobreNF
-      }
-
-      // Zona seca sin succión
-      return 0
-    }
-
-    let sigmaV = 0
-    const puntos: PuntoPerfil[] = []
-
-    for (let i = 0; i < zs.length; i++) {
-      if (i > 0) {
-        const zA = zs[i - 1]
-        const zB = zs[i]
-
-        sigmaV += gammaEn((zA + zB) / 2) * (zB - zA)
-      }
-
-      const zVal = zs[i]
-
-      // En el límite superior de la succión
-      if (
-        zTopeSuccion !== null &&
-        Math.abs(zVal - zTopeSuccion) < 1e-9 &&
-        alturaSuccionBase > 0
-      ) {
-        // Punto superior: suelo seco, u = 0
-        puntos.push({
-          z: zVal,
-          sigmaV,
-          u: 0,
-          sigmaEf: sigmaV
-        })
-
-        // Punto inferior: comienza la succión
-        const uSuccion = -GAMMA_W * alturaSuccionBase
-
-        puntos.push({
-          z: zVal,
-          sigmaV,
-          u: uSuccion,
-          sigmaEf: sigmaV - uSuccion
-        })
-
-        continue
-      }
-
-      const u = uEn(zVal)
-
-      puntos.push({
-        z: zVal,
-        sigmaV,
-        u,
-        sigmaEf: sigmaV - u
-      })
-    }
-
-    return puntos
-  }, [
-    estratosResueltos,
-    nfDepthBase,
-    succionActiva,
-    alturaSuccionBase,
-    zMaxPerfil,
-    errorPerfil
-  ])
+    return resolverPerfilGeostatico(
+      estratosResueltos.map(e => ({
+        zTop: e.zTop,
+        zBottom: e.zBottom,
+        gammaArriba: e.gammaArriba,
+        gammaAbajo: e.gammaAbajo,
+      })),
+      nfDepthBase,
+      succionActiva,
+      alturaSuccionBase
+    )
+  }, [estratosResueltos, nfDepthBase, succionActiva, alturaSuccionBase, errorPerfil])
 
   // ── PESTAÑA 2: cargas superficiales ──
   const [teoria, setTeoria] = useState<Teoria>("boussinesq")
