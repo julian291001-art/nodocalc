@@ -27,7 +27,7 @@ export default function Geotecnia() {
           </div>
           <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">PRESIÓN LATERAL Y MUROS</div>
           <div className="grid grid-cols-2 gap-4 mb-6">
-            <SubtemaCard nombre="Presión lateral de tierras" desc="Rankine y Coulomb para presión activa, pasiva y en reposo." metodos={["Rankine activo y pasivo", "Coulomb activo y pasivo", "Presión en reposo (K0)", "Muros de contención", "Muros en suelo blando"]} />
+            <a href="/geotecnia/presion-tierras"> <SubtemaCard nombre="Presión lateral de tierras" desc="Rankine y Coulomb para presión activa, pasiva y en reposo." metodos={["Rankine activo y pasivo", "Coulomb activo y pasivo", "Presión en reposo (K0)", "Muros de contención", "Muros en suelo blando"]} /> </a>
           </div>
           <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">CIMENTACIONES</div>
           <div className="grid grid-cols-2 gap-4 mb-6">
