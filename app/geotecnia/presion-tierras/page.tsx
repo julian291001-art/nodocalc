@@ -33,7 +33,7 @@ const aBasePresAKPa = (v: number, u: string) => (v * factorDe(CAT_PRES, u)) / 10
 // porque "por metro" se vuelve un número más grande al pasar a una unidad de longitud más
 // pequeña) y dividir por el factor de fuerza (kN → unidad, análogo a aMostrarLong).
 const aMostrarFuerzaPorLong = (eBaseKNporM: number, unidadFuerza: string, unidadLong: string) =>
-  (eBaseKNporM * factorDe(CAT_LONG, unidadLong)) / factorDe(CAT_FUERZA, unidadFuerza)
+  (eBaseKNporM * factorDe(CAT_LONG, unidadLong))
 
 const fmt = (x: number | undefined, dec = 3) =>
   x !== undefined && Number.isFinite(x) ? x.toFixed(dec) : "—"
