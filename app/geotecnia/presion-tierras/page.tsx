@@ -38,6 +38,15 @@ const aMostrarFuerzaPorLong = (eBaseKNporM: number, unidadFuerza: string, unidad
 const fmt = (x: number | undefined, dec = 3) =>
   x !== undefined && Number.isFinite(x) ? x.toFixed(dec) : "—"
 
+// Combina varias resultantes parciales (p. ej. una por capa) en una sola, ponderando el
+// punto de aplicación por la fuerza de cada parte — así "Resultante del suelo" queda como
+// un único número/ubicación en vez de desglosarse capa por capa.
+function combinarResultantes(partes: { E: number; zApp: number }[]): { E: number; zApp: number } {
+  let E = 0, M = 0
+  for (const p of partes) { E += p.E; M += p.E * p.zApp }
+  return { E, zApp: E > 0 ? M / E : 0 }
+}
+
 const VARS_FASES: { key: VarKey; labelHtml: string; esPorcentaje: boolean }[] = [
   { key: "Gs", labelHtml: "G<sub>s</sub>", esPorcentaje: false },
   { key: "e", labelHtml: "e", esPorcentaje: false },
@@ -61,6 +70,7 @@ type Capa = {
   phi: string
   c: string
   ocr: string
+  esSC: boolean // arcilla sobreconsolidada — habilita el campo OCR (ver TarjetaCapa)
   betaPropio: boolean
   betaLocal: string
 }
@@ -73,7 +83,7 @@ function nuevaCapa(nombre: string): Capa {
     nombre, espesor: "",
     modoGamma: "directo", gammaArriba: "", gammaAbajo: "",
     conocidos: {}, entradas: {},
-    phi: "", c: "0", ocr: "1",
+    phi: "", c: "0", ocr: "1", esSC: false,
     betaPropio: false, betaLocal: "0",
   }
 }
@@ -89,16 +99,16 @@ type CapaResuelta = {
 // UI AUXILIAR
 // ─────────────────────────────────────────────────────────────────────────────
 function Campo({
-  label, value, onChange, sufijo, placeholder,
-}: { label: string; value: string; onChange: (v: string) => void; sufijo?: string; placeholder?: string }) {
+  label, value, onChange, sufijo, placeholder, deshabilitado,
+}: { label: string; value: string; onChange: (v: string) => void; sufijo?: string; placeholder?: string; deshabilitado?: boolean }) {
   return (
     <div>
       <div className="text-xs text-gray-500 mb-1">{label}</div>
       <div className="relative">
-        <input type="number" step="any" value={value} placeholder={placeholder}
+        <input type="number" step="any" value={value} placeholder={placeholder} disabled={deshabilitado}
           onChange={e => onChange(e.target.value)}
           className="w-full border border-blue-300 bg-white rounded-lg px-3 py-2 text-sm
-            focus:outline-none focus:border-blue-500 pr-14" />
+            focus:outline-none focus:border-blue-500 pr-14 disabled:bg-gray-50 disabled:text-gray-400" />
         {sufijo && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">{sufijo}</span>}
       </div>
     </div>
@@ -153,9 +163,6 @@ function AvisoValidez({ validez }: { validez: Validez }) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TABLA DE PUNTOS DEL PERFIL
-// (nuevo — muestra explícitamente el par de puntos "desde arriba" / "desde abajo" en
-// cada frontera entre capas, para poder verificar el cálculo contra un ejercicio de
-// referencia punto por punto.)
 // ─────────────────────────────────────────────────────────────────────────────
 function TablaPuntosPerfil({
   perfil, capasResueltas, unidadLong, unidadPres, estado,
@@ -325,7 +332,7 @@ function ChartPresionLateral({
 // ESQUEMA — columna de suelo sola (pestaña "sin muro")
 // ─────────────────────────────────────────────────────────────────────────────
 function DiagramaCapasLateral({
-  capas, nfActivo, nfDepth, unidadLong, unidadPesoU, width = 260, height = 380,
+  capas, nfActivo, nfDepth, unidadLong, unidadPesoU, width = 900, height = 260,
 }: {
   capas: CapaResuelta[]
   nfActivo: boolean
@@ -667,56 +674,20 @@ function DiagramaMuroYPresiones({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TARJETA DE RESULTANTES DESGLOSADAS
+// TARJETA DE RESULTANTE SIMPLE — reemplaza la tabla desglosada por capa: solo 2 de estas
+// se muestran ("Resultante del suelo" combinando todas las capas, y "Resultante del
+// agua"), con el mismo estilo que la tarjeta azul de "Resultante (Ea)" general.
 // ─────────────────────────────────────────────────────────────────────────────
-function TarjetaResultantes({
-  desglose, unidadFuerza, unidadLong, estado,
-}: { desglose: ReturnType<typeof resultantesDesglosadas>; unidadFuerza: string; unidadLong: string; estado: EstadoEmpuje }) {
-  const etiqueta = estado === "activo" ? "Ea" : estado === "pasivo" ? "Ep" : "E0"
+function TarjetaResultanteSimple({
+  titulo, E, zApp, zMax, unidadFuerza, unidadLong,
+}: { titulo: string; E: number; zApp: number; zMax: number; unidadFuerza: string; unidadLong: string }) {
   return (
-    <div className="bg-white border border-gray-200 rounded-xl p-5">
-      <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">RESULTANTES POR CAPA Y POR AGUA</div>
-      <table className="w-full text-xs">
-        <thead>
-          <tr className="text-gray-400 border-b border-gray-100">
-            <th className="text-left py-1.5 font-medium">Componente</th>
-            <th className="text-right py-1.5 font-medium">Fuerza</th>
-            <th className="text-right py-1.5 font-medium">Punto de aplicación (sobre la base)</th>
-          </tr>
-        </thead>
-        <tbody>
-          {desglose.porCapa.map((r, i) => (
-            <tr key={r.id} className="border-b border-gray-50">
-              <td className="py-1.5 flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-sm inline-block" style={{ background: PALETA_PRESION[i % PALETA_PRESION.length] }} />
-                {r.nombre} (efectivo)
-              </td>
-              <td className="text-right py-1.5">{fmt(aMostrarFuerzaPorLong(r.E, unidadFuerza, unidadLong), 2)} {unidadFuerza}/{unidadLong}</td>
-              <td className="text-right py-1.5 text-gray-500">{r.E > 0 ? `${fmt(aMostrarLong(r.zApp, unidadLong), 2)} ${unidadLong}` : "—"}</td>
-            </tr>
-          ))}
-          {desglose.agua.E > 0 && (
-            <tr className="border-b border-gray-50">
-              <td className="py-1.5 flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-sm inline-block" style={{ background: COLOR_AGUA }} />
-                Agua (presión de poros)
-              </td>
-              <td className="text-right py-1.5">{fmt(aMostrarFuerzaPorLong(desglose.agua.E, unidadFuerza, unidadLong), 2)} {unidadFuerza}/{unidadLong}</td>
-              <td className="text-right py-1.5 text-gray-500">{fmt(aMostrarLong(desglose.agua.zApp, unidadLong), 2)} {unidadLong}</td>
-            </tr>
-          )}
-          <tr className="font-semibold text-blue-800">
-            <td className="py-2">Total ({etiqueta})</td>
-            <td className="text-right py-2">{fmt(aMostrarFuerzaPorLong(desglose.total.E, unidadFuerza, unidadLong), 2)} {unidadFuerza}/{unidadLong}</td>
-            <td className="text-right py-2">{desglose.total.E > 0 ? `${fmt(aMostrarLong(desglose.total.zApp, unidadLong), 2)} ${unidadLong}` : "—"}</td>
-          </tr>
-        </tbody>
-      </table>
-      <p className="text-[10px] text-gray-400 mt-2">
-        El total se calcula integrando directamente la presión total (efectiva + agua) sobre todo el perfil — no es la
-        simple suma de las filas de arriba cuando hay grieta de tracción coincidiendo con zona bajo el nivel freático
-        (caso poco común).
-      </p>
+    <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-6">
+      <div className="text-xs text-gray-500 tracking-wider mb-1">{titulo}</div>
+      <div className="text-2xl font-semibold text-blue-800">{fmt(aMostrarFuerzaPorLong(E, unidadFuerza, unidadLong), 2)} {unidadFuerza}/{unidadLong}</div>
+      <div className="text-xs text-gray-500 mt-1">
+        {E > 0 ? `Punto de aplicación: ${fmt(aMostrarLong(zMax - zApp, unidadLong), 2)} ${unidadLong} sobre la base` : "—"}
+      </div>
     </div>
   )
 }
@@ -810,7 +781,14 @@ function TarjetaCapa({
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-3 border-t border-gray-100">
         <Campo label="φ' (ángulo de fricción)" value={capa.phi} onChange={v => set({ phi: v })} sufijo="°" />
         <Campo label="c' (cohesión)" value={capa.c} onChange={v => set({ c: v })} sufijo={unidadPres} placeholder="0 = friccionante" />
-        <Campo label="OCR" value={capa.ocr} onChange={v => set({ ocr: v })} placeholder="1 = NC" />
+        <div>
+          <Toggle label="¿Es arcilla sobreconsolidada (SC)?" checked={capa.esSC} onChange={v => set({ esSC: v, ocr: v ? capa.ocr : "1" })} />
+          {capa.esSC ? (
+            <div className="mt-1"><Campo label="OCR" value={capa.ocr} onChange={v => set({ ocr: v })} placeholder="> 1" /></div>
+          ) : (
+            <div className="text-xs text-gray-400 mt-2">OCR = 1 (normalmente consolidado)</div>
+          )}
+        </div>
         <div>
           <Toggle label="β propio (talud)" checked={capa.betaPropio} onChange={v => set({ betaPropio: v })} />
           {capa.betaPropio ? (
@@ -821,7 +799,9 @@ function TarjetaCapa({
         </div>
       </div>
       <p className="text-[10px] text-gray-400 mt-2 leading-relaxed">
-        K0 (reposo) = (1 − sen φ') · OCR<sup>sen φ'</sup> (Jaky / Mayne &amp; Kulhawy, 1982) — usa el mismo φ' y OCR de esta capa, sin distinción por tipo de suelo.
+        K0 (reposo) = (1 − sen φ') · OCR<sup>sen φ'</sup> (Jaky / Mayne &amp; Kulhawy, 1982). El OCR solo se activa si
+        marcas la capa como arcilla sobreconsolidada (SC) — en cualquier otro caso se usa OCR = 1, y el estado
+        activo/pasivo nunca usa el OCR (solo aplica al cálculo en reposo).
       </p>
     </div>
   )
@@ -910,7 +890,10 @@ export default function PresionTierras() {
         id: c.id, nombre: c.nombre, zTop, zBottom, gammaArriba, gammaAbajo,
         phi: parseFloat(c.phi) || 0,
         c: aBasePresAKPa(parseFloat(c.c) || 0, unidadPres),
-        ocr: parseFloat(c.ocr) || 1,
+        // el OCR solo se toma en cuenta si la capa está marcada como arcilla SC — en
+        // cualquier otro caso queda fijo en 1 (normalmente consolidado), sin importar lo
+        // que haya escrito antes en el campo (que además queda oculto/deshabilitado).
+        ocr: c.esSC ? (parseFloat(c.ocr) || 1) : 1,
         betaLocal: c.betaPropio ? (parseFloat(c.betaLocal) || 0) : undefined,
       }
     })
@@ -944,7 +927,7 @@ export default function PresionTierras() {
     const c1 = nuevaCapa("Arena limosa")
     c1.espesor = "4"; c1.gammaArriba = "18"; c1.gammaAbajo = "20"; c1.phi = "30"; c1.c = "0"
     const c2 = nuevaCapa("Arcilla firme (NC)")
-    c2.espesor = "3"; c2.gammaArriba = "17"; c2.gammaAbajo = "18.5"; c2.phi = "22"; c2.c = "35"; c2.ocr = "1"
+    c2.espesor = "3"; c2.gammaArriba = "17"; c2.gammaAbajo = "18.5"; c2.phi = "22"; c2.c = "35"
     setCapas([c1, c2])
     setNfActivo(true); setNfProfundidad("2")
   }
@@ -986,6 +969,7 @@ export default function PresionTierras() {
     () => resultantesDesglosadas(perfilLateral1, capasResueltas.map(c => ({ id: c.id, nombre: c.nombre, zTop: c.zTop, zBottom: c.zBottom }))),
     [perfilLateral1, capasResueltas]
   )
+  const resultanteSuelo1 = useMemo(() => combinarResultantes(desglose1.porCapa), [desglose1])
 
   const Ks1 = useMemo(() => {
     if (errorPerfil) return []
@@ -1044,6 +1028,7 @@ export default function PresionTierras() {
     () => resultantesDesglosadas(perfilLateral2, capasResueltas.map(c => ({ id: c.id, nombre: c.nombre, zTop: c.zTop, zBottom: c.zBottom }))),
     [perfilLateral2, capasResueltas]
   )
+  const resultanteSuelo2 = useMemo(() => combinarResultantes(desglose2.porCapa), [desglose2])
 
   const Ks2 = useMemo(() => {
     if (errorPerfil) return []
@@ -1147,26 +1132,34 @@ export default function PresionTierras() {
                   <>
                     <TarjetaK capasResueltas={capasResueltas} Ks={Ks1} estado={estado1} />
 
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-                      <div className="lg:col-span-2 bg-white border border-gray-200 rounded-xl p-5">
-                        <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">PRESIÓN LATERAL vs PROFUNDIDAD</div>
-                        <ChartPresionLateral series={seriesFactory(perfilLateral1)} zMax={aMostrarLong(zMax, unidadLong)} xLabel={`Presión (${unidadPres})`} />
-                        <div className="flex gap-4 mt-2 text-[11px] flex-wrap">
-                          <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-gray-400 inline-block" /> σ'v</span>
-                          <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-blue-700 inline-block" /> σ'h efectivo</span>
-                          <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-green-600 inline-block" /> u</span>
-                          <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-red-600 inline-block" /> σh total</span>
-                        </div>
-                      </div>
-                      <div className="bg-white border border-gray-200 rounded-xl p-5">
-                        <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">ESQUEMA DEL PERFIL</div>
-                        <DiagramaCapasLateral capas={capasResueltas} nfActivo={nfActivo} nfDepth={nfDepthBase} unidadLong={unidadLong} unidadPesoU={unidadPesoU} />
+                    {/* Esquema y gráfico en filas propias, a ancho completo (antes iban en la misma
+                        fila a 1/3 de ancho y se veían muy pequeños). */}
+                    <div className="bg-white border border-gray-200 rounded-xl p-5">
+                      <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">ESQUEMA DEL PERFIL</div>
+                      <DiagramaCapasLateral capas={capasResueltas} nfActivo={nfActivo} nfDepth={nfDepthBase} unidadLong={unidadLong} unidadPesoU={unidadPesoU} />
+                    </div>
+
+                    <div className="bg-white border border-gray-200 rounded-xl p-5">
+                      <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">PRESIÓN LATERAL vs PROFUNDIDAD</div>
+                      <ChartPresionLateral series={seriesFactory(perfilLateral1)} zMax={aMostrarLong(zMax, unidadLong)} xLabel={`Presión (${unidadPres})`} />
+                      <div className="flex gap-4 mt-2 text-[11px] flex-wrap">
+                        <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-gray-400 inline-block" /> σ'v</span>
+                        <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-blue-700 inline-block" /> σ'h efectivo</span>
+                        <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-green-600 inline-block" /> u</span>
+                        <span className="flex items-center gap-1.5"><span className="w-3 h-0.5 bg-red-600 inline-block" /> σh total</span>
                       </div>
                     </div>
 
                     <TablaPuntosPerfil perfil={perfilLateral1} capasResueltas={capasResueltas} unidadLong={unidadLong} unidadPres={unidadPres} estado={estado1} />
 
-                    <TarjetaResultantes desglose={desglose1} unidadFuerza={unidadFuerza} unidadLong={unidadLong} estado={estado1} />
+                    {/* Solo 2 tarjetas de resultante — suelo combinado (sin desglosar por capa) y
+                        agua — con el mismo estilo que la tarjeta general de abajo. */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                      <TarjetaResultanteSimple titulo="Resultante del suelo" E={resultanteSuelo1.E} zApp={resultanteSuelo1.zApp}
+                        zMax={zMax} unidadFuerza={unidadFuerza} unidadLong={unidadLong} />
+                      <TarjetaResultanteSimple titulo="Resultante del agua" E={desglose1.agua.E} zApp={desglose1.agua.zApp}
+                        zMax={zMax} unidadFuerza={unidadFuerza} unidadLong={unidadLong} />
+                    </div>
 
                     <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-6 flex items-center justify-between flex-wrap gap-3">
                       <div>
@@ -1277,7 +1270,13 @@ export default function PresionTierras() {
 
                     <TablaPuntosPerfil perfil={perfilLateral2} capasResueltas={capasResueltas} unidadLong={unidadLong} unidadPres={unidadPres} estado={estado2} />
 
-                    <TarjetaResultantes desglose={desglose2} unidadFuerza={unidadFuerza} unidadLong={unidadLong} estado={estado2} />
+                    {/* Solo 2 tarjetas de resultante — suelo combinado (sin desglosar por capa) y agua */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                      <TarjetaResultanteSimple titulo="Resultante del suelo" E={resultanteSuelo2.E} zApp={resultanteSuelo2.zApp}
+                        zMax={zMax} unidadFuerza={unidadFuerza} unidadLong={unidadLong} />
+                      <TarjetaResultanteSimple titulo="Resultante del agua" E={desglose2.agua.E} zApp={desglose2.agua.zApp}
+                        zMax={zMax} unidadFuerza={unidadFuerza} unidadLong={unidadLong} />
+                    </div>
 
                     <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-6 flex flex-col gap-3">
                       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -1307,11 +1306,11 @@ export default function PresionTierras() {
 
                     <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 text-xs text-gray-500 leading-relaxed">
                       <span className="font-semibold text-gray-600">Alcance de esta pestaña:</span>{" "}
-                      se entrega el diagrama de presión lateral, el desglose por capa y por agua, la fuerza resultante
-                      (con su descomposición y punto de aplicación) y un esquema a escala del muro sobre el trasdós/plano
-                      virtual. No incluye chequeos de estabilidad (volcamiento, deslizamiento, capacidad portante,
-                      excentricidad) — eso puede agregarse como un módulo de verificación posterior que reciba esta misma
-                      resultante como dato de entrada.
+                      se entrega el diagrama de presión lateral, la resultante del suelo, la del agua, la fuerza
+                      resultante total (con su descomposición y punto de aplicación) y un esquema a escala del muro
+                      sobre el trasdós/plano virtual. No incluye chequeos de estabilidad (volcamiento, deslizamiento,
+                      capacidad portante, excentricidad) — eso puede agregarse como un módulo de verificación
+                      posterior que reciba esta misma resultante como dato de entrada.
                     </div>
                   </>
                 )}
