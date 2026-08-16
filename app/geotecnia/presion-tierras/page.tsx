@@ -71,8 +71,7 @@ type Capa = {
   c: string
   ocr: string
   esSC: boolean // arcilla sobreconsolidada — habilita el campo OCR (ver TarjetaCapa)
-  betaPropio: boolean
-  betaLocal: string
+  betaLocal: string // β (talud) de esta capa — única fuente de β, ya no hay un β global
 }
 
 let contadorId = 0
@@ -84,7 +83,7 @@ function nuevaCapa(nombre: string): Capa {
     modoGamma: "directo", gammaArriba: "", gammaAbajo: "",
     conocidos: {}, entradas: {},
     phi: "", c: "0", ocr: "1", esSC: false,
-    betaPropio: false, betaLocal: "0",
+    betaLocal: "0",
   }
 }
 
@@ -92,7 +91,7 @@ type CapaResuelta = {
   id: string; nombre: string
   zTop: number; zBottom: number
   gammaArriba?: number; gammaAbajo?: number
-  phi: number; c: number; ocr: number; betaLocal?: number
+  phi: number; c: number; ocr: number; betaLocal: number
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -446,7 +445,7 @@ const PALETA_PRESION = ["#f59e0b", "#6b7280", "#0d9488", "#7c3aed", "#db2777", "
 const COLOR_AGUA = "#2563eb"
 
 function DiagramaMuroYPresiones({
-  capas, nfActivo, nfDepth, tipoMuro, teoria, thetaDeg, betaDeg, perfil, desglose, resultanteSuelo, estado, unidadLong, unidadFuerza,
+  capas, nfActivo, nfDepth, tipoMuro, teoria, thetaDeg, deltaDeg, perfil, desglose, resultanteSuelo, estado, unidadLong, unidadFuerza,
   dimsVoladizo, dimsGravedad, dimsPantalla,
 }: {
   capas: CapaResuelta[]
@@ -455,7 +454,7 @@ function DiagramaMuroYPresiones({
   tipoMuro: keyof typeof PRESETS_MURO
   teoria: TeoriaEmpuje
   thetaDeg: number
-  betaDeg: number
+  deltaDeg: number
   perfil: PuntoLateral[]
   desglose: ReturnType<typeof resultantesDesglosadas>
   resultanteSuelo: { E: number; zApp: number }
@@ -484,7 +483,8 @@ function DiagramaMuroYPresiones({
   const espesorPantallaPlana = aBaseLong(parseFloat(dimsPantalla.espesor) || 0.3, unidadLong)
 
   const thetaRad = (thetaDeg || 0) * Math.PI / 180
-  const betaRad = (betaDeg || 0) * Math.PI / 180
+  const betaTopeDeg = capas[0]?.betaLocal ?? 0 // solo la capa superior (expuesta) define la pendiente visible del relleno
+  const betaRad = betaTopeDeg * Math.PI / 180
   const desplazTotal = zMax * Math.tan(thetaRad)
 
   let anchoMuro: number, xInterfaz: number
@@ -506,7 +506,7 @@ function DiagramaMuroYPresiones({
   const height = plotH + MT + MB
 
   const anchoSueloPx = 230
-  const anchoCunaBeta = Math.abs(betaDeg) > 0.1 ? Math.min(90, plotH * Math.tan(Math.abs(betaRad)) * 0.6) : 0
+  const anchoCunaBeta = Math.abs(betaTopeDeg) > 0.1 ? Math.min(90, plotH * Math.tan(Math.abs(betaRad)) * 0.6) : 0
   const ML = 14
   const widthPx = ML + anchoMuro * escala + anchoSueloPx + anchoCunaBeta + 40
   const MR = widthPx - ML - anchoMuro * escala - anchoSueloPx - anchoCunaBeta
@@ -540,12 +540,18 @@ function DiagramaMuroYPresiones({
 
   const xInterfazTopePx = xInterfazPx - desplazTotal * escala
 
-  // x del trasdós real interpolada linealmente entre el tope (z=0) y la base (z=zMax) —
-  // antes solo la esquina superior de la primera capa usaba el punto inclinado y todo lo
-  // demás quedaba pegado a xInterfazPx (la x de la base), por lo que el relleno se
-  // despegaba del muro en cuanto θ>0. Con esto, cualquier profundidad usa la x que
-  // realmente le corresponde sobre la línea recta del trasdós.
+  // x del trasdós real interpolada linealmente entre el tope (z=0) y la base (z=zMax)
   const xInterfazEn = (z: number) => xInterfazTopePx + (z / zMax) * (xInterfazPx - xInterfazTopePx)
+
+  // xIzqRelleno: borde IZQUIERDO del polígono de suelo (solo para el dibujo del relleno,
+  // no para el diagrama de presiones). En el voladizo el suelo no debe "empezar" en el
+  // plano virtual (borde del talón) — eso deja un hueco vacío justo encima del talón,
+  // porque el talón está enterrado bajo el suelo, no al lado. El relleno debe llegar hasta
+  // el respaldo de la pantalla (xStemDerPx) en todo el alto, y el muro (dibujado después,
+  // encima) tapa la parte que le corresponde a la zapata. En gravedad/pantalla el trasdós
+  // real SÍ es el borde de contacto físico, así que ahí no cambia nada.
+  const xStemDerPx = tipoMuro === "voladizo" ? toXm(longitudPunta + espesorPantalla) : null
+  const xIzqRelleno = (z: number) => tipoMuro === "voladizo" ? xStemDerPx! : xInterfazEn(z)
 
   // Punto de anclaje del diagrama de presiones y de las flechas de resultante: Rankine se
   // analiza siempre sobre un plano vertical (independiente de la inclinación real del
@@ -553,6 +559,16 @@ function DiagramaMuroYPresiones({
   // considera la fricción muro-suelo sobre el trasdós real, así que se ancla siguiendo la
   // inclinación del muro.
   const xAncla = (z: number) => teoria === "coulomb" ? xInterfazEn(z) : xInterfazPx
+
+  // Dirección en la que se dibujan los trapecios de presión y las flechas de resultante.
+  // Con Coulomb, Pa/Pp actúa a un ángulo δ respecto a la NORMAL del trasdós, y esa normal
+  // está inclinada θ respecto a la horizontal — por eso el diagrama y las flechas se
+  // dibujan perpendiculares al muro (ángulo θ) y luego se rotan δ más (mismo ángulo
+  // θ+δ que se usa para Eh2/Ev2 en la página). Con Rankine siempre horizontal (δ=0 no
+  // se modela). y positivo = hacia abajo (SVG), igual convención que Ev positivo=hacia
+  // abajo usada en el resto de la página.
+  const anguloDibujoRad = teoria === "coulomb" ? (thetaDeg + deltaDeg) * Math.PI / 180 : 0
+  const dirX = Math.cos(anguloDibujoRad), dirY = Math.sin(anguloDibujoRad)
 
   const runBeta = anchoSueloPx + anchoCunaBeta
   const xFinSuelo = xInterfazTopePx + runBeta
@@ -564,22 +580,33 @@ function DiagramaMuroYPresiones({
   // Trapecio de presión efectiva de UNA capa — filtra por capaId, no por rango de z, para
   // no mezclar en la misma frontera el punto "desde arriba" de una capa con el "desde
   // abajo" de la siguiente (esa ambigüedad era la causa de las resultantes subestimadas).
+  // El borde exterior se desplaza a lo largo de (dirX,dirY) en vez de solo horizontal, para
+  // que quede perpendicular al muro (y rotado δ más) cuando es Coulomb.
   function pathPresionCapa(capaId: string) {
     const sub = perfil.filter(p => p.capaId === capaId).map(p => ({ z: p.z, v: p.sigmaHEf })).sort((a, b) => a.z - b.z)
     if (sub.length < 2) return null
-    const puntosArriba = sub.map(p => `${xAncla(p.z) + Math.max(0, p.v) * escalaPresion},${toY(p.z)}`)
+    const puntosArriba = sub.map(p => {
+      const mag = Math.max(0, p.v) * escalaPresion
+      return `${xAncla(p.z) + mag * dirX},${toY(p.z) + mag * dirY}`
+    })
     const puntosAbajo = [...sub].reverse().map(p => `${xAncla(p.z)},${toY(p.z)}`)
     return `M ${puntosArriba.join(" L ")} L ${puntosAbajo.join(" L ")} Z`
   }
 
   // Trapecio de presión de poros — u(z) es continua entre capas (no depende de φ'/c'),
-  // así que basta un único valor por z (se colapsan los duplicados de cada frontera).
+  // así que basta un único valor por z (se colapsan los duplicados de cada frontera). El
+  // agua siempre empuja perpendicular a su superficie de contacto, así que también sigue
+  // (dirX,dirY) igual que el resto del diagrama (por simplicidad — el agua no tiene
+  // fricción con el muro, pero visualmente conviene que quede paralela al resto).
   function pathPresionAgua() {
     const vistos = new Map<number, number>()
     for (const p of perfil) if (!vistos.has(p.z)) vistos.set(p.z, p.u)
     const sub = Array.from(vistos.entries()).map(([z, v]) => ({ z, v })).sort((a, b) => a.z - b.z)
     if (sub.length < 2) return null
-    const puntosArriba = sub.map(p => `${xAncla(p.z) + Math.max(0, p.v) * escalaPresion},${toY(p.z)}`)
+    const puntosArriba = sub.map(p => {
+      const mag = Math.max(0, p.v) * escalaPresion
+      return `${xAncla(p.z) + mag * dirX},${toY(p.z) + mag * dirY}`
+    })
     const puntosAbajo = [...sub].reverse().map(p => `${xAncla(p.z)},${toY(p.z)}`)
     return `M ${puntosArriba.join(" L ")} L ${puntosAbajo.join(" L ")} Z`
   }
@@ -615,8 +642,8 @@ function DiagramaMuroYPresiones({
         {capas.slice(0, -1).map(c => (
           <line key={`sep-${c.id}`} x1={xInterfazEn(c.zBottom)} y1={toY(c.zBottom)} x2={xFinSuelo} y2={toY(c.zBottom)} stroke="#6b7280" strokeWidth={1} />
         ))}
-        {Math.abs(betaDeg) > 0.1 && (
-          <text x={(xInterfazTopePx + xFinSuelo) / 2} y={Math.min(yFinSueloTope, yTope) - 6} fontSize="9" fill="#6b7280" textAnchor="middle">β = {fmt(betaDeg, 1)}°</text>
+        {Math.abs(betaTopeDeg) > 0.1 && (
+          <text x={(xInterfazTopePx + xFinSuelo) / 2} y={Math.min(yFinSueloTope, yTope) - 6} fontSize="9" fill="#6b7280" textAnchor="middle">β = {fmt(betaTopeDeg, 1)}°</text>
         )}
 
         {/* muro (encima del relleno para que no se vea el suelo "adentro" del muro) */}
@@ -683,9 +710,7 @@ function DiagramaMuroYPresiones({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TARJETA DE RESULTANTE SIMPLE — reemplaza la tabla desglosada por capa: solo 2 de estas
-// se muestran ("Resultante del suelo" combinando todas las capas, y "Resultante del
-// agua"), con el mismo estilo que la tarjeta azul de "Resultante (Ea)" general.
+// TARJETA DE RESULTANTE SIMPLE
 // ─────────────────────────────────────────────────────────────────────────────
 function TarjetaResultanteSimple({
   titulo, E, zApp, zMax, unidadFuerza, unidadLong,
@@ -705,11 +730,11 @@ function TarjetaResultanteSimple({
 // TARJETA DE CAPA
 // ─────────────────────────────────────────────────────────────────────────────
 function TarjetaCapa({
-  capa, index, unidadLong, unidadPesoU, unidadPres, zTop, zBottom, betaGlobal,
+  capa, index, unidadLong, unidadPesoU, unidadPres, zTop, zBottom,
   onChange, onEliminar,
 }: {
   capa: Capa; index: number; unidadLong: string; unidadPesoU: string; unidadPres: string
-  zTop: number; zBottom: number; betaGlobal: string
+  zTop: number; zBottom: number
   onChange: (c: Capa) => void; onEliminar: () => void
 }) {
   const set = (patch: Partial<Capa>) => onChange({ ...capa, ...patch })
@@ -798,19 +823,13 @@ function TarjetaCapa({
             <div className="text-xs text-gray-400 mt-2">OCR = 1 (normalmente consolidado)</div>
           )}
         </div>
-        <div>
-          <Toggle label="β propio (talud)" checked={capa.betaPropio} onChange={v => set({ betaPropio: v })} />
-          {capa.betaPropio ? (
-            <div className="mt-1"><Campo label="" value={capa.betaLocal} onChange={v => set({ betaLocal: v })} sufijo="°" /></div>
-          ) : (
-            <div className="text-xs text-gray-400 mt-2">Usa el β global ({betaGlobal || "0"}°)</div>
-          )}
-        </div>
+        <Campo label="β (talud de esta capa)" value={capa.betaLocal} onChange={v => set({ betaLocal: v })} sufijo="°" placeholder="0" />
       </div>
       <p className="text-[10px] text-gray-400 mt-2 leading-relaxed">
         K0 (reposo) = (1 − sen φ') · OCR<sup>sen φ'</sup> (Jaky / Mayne &amp; Kulhawy, 1982). El OCR solo se activa si
         marcas la capa como arcilla sobreconsolidada (SC) — en cualquier otro caso se usa OCR = 1, y el estado
-        activo/pasivo nunca usa el OCR (solo aplica al cálculo en reposo).
+        activo/pasivo nunca usa el OCR (solo aplica al cálculo en reposo). El β de cada capa es independiente — ya
+        no hay un β de talud global.
       </p>
     </div>
   )
@@ -832,6 +851,7 @@ function TarjetaK({
             <tr className="text-gray-400 border-b border-gray-100">
               <th className="text-left py-1.5 font-medium">Capa</th>
               <th className="text-right py-1.5 font-medium">φ' (°)</th>
+              <th className="text-right py-1.5 font-medium">β (°)</th>
               {estado === "reposo" && <th className="text-right py-1.5 font-medium">OCR</th>}
               <th className="text-right py-1.5 font-medium">{etiquetaK}</th>
             </tr>
@@ -841,6 +861,7 @@ function TarjetaK({
               <tr key={c.id} className="border-b border-gray-50">
                 <td className="py-1.5">{c.nombre}</td>
                 <td className="text-right py-1.5">{fmt(c.phi, 1)}</td>
+                <td className="text-right py-1.5 text-gray-500">{fmt(c.betaLocal, 1)}</td>
                 {estado === "reposo" && <td className="text-right py-1.5 text-gray-500">{fmt(c.ocr, 2)}</td>}
                 <td className="text-right py-1.5 text-blue-700 font-semibold">{fmt(Ks[i], 3)}</td>
               </tr>
@@ -899,11 +920,8 @@ export default function PresionTierras() {
         id: c.id, nombre: c.nombre, zTop, zBottom, gammaArriba, gammaAbajo,
         phi: parseFloat(c.phi) || 0,
         c: aBasePresAKPa(parseFloat(c.c) || 0, unidadPres),
-        // el OCR solo se toma en cuenta si la capa está marcada como arcilla SC — en
-        // cualquier otro caso queda fijo en 1 (normalmente consolidado), sin importar lo
-        // que haya escrito antes en el campo (que además queda oculto/deshabilitado).
         ocr: c.esSC ? (parseFloat(c.ocr) || 1) : 1,
-        betaLocal: c.betaPropio ? (parseFloat(c.betaLocal) || 0) : undefined,
+        betaLocal: parseFloat(c.betaLocal) || 0,
       }
     })
   }, [capas, unidadLong, unidadPesoU, unidadPres])
@@ -947,7 +965,6 @@ export default function PresionTierras() {
   // ── PESTAÑA 1: sin muro ──
   const [teoria1, setTeoria1] = useState<TeoriaEmpuje>("rankine")
   const [estado1, setEstado1] = useState<EstadoEmpuje>("activo")
-  const [beta1, setBeta1] = useState("0")
   const [delta1, setDelta1] = useState("0")
 
   const capasLat1 = capasResueltas.map(c => ({
@@ -957,20 +974,19 @@ export default function PresionTierras() {
   const validez1 = useMemo(() => {
     if (capasResueltas.length === 0) return { valido: true } as Validez
     for (const c of capasResueltas) {
-      const beta = c.betaLocal ?? (parseFloat(beta1) || 0)
       const v = estado1 === "reposo"
         ? { valido: true }
-        : teoria1 === "rankine" ? validezRankine(c.phi, beta) : validezCoulomb(c.phi, parseFloat(delta1) || 0, beta, 0, estado1)
+        : teoria1 === "rankine" ? validezRankine(c.phi, c.betaLocal) : validezCoulomb(c.phi, parseFloat(delta1) || 0, c.betaLocal, 0, estado1)
       if (!v.valido) return v
     }
     return { valido: true } as Validez
-  }, [capasResueltas, teoria1, estado1, beta1, delta1])
+  }, [capasResueltas, teoria1, estado1, delta1])
 
   const perfilLateral1: PuntoLateral[] = useMemo(() => {
     if (errorPerfil || !validez1.valido || perfilGeostatico.length === 0) return []
-    return resolverPerfilLateral(perfilGeostatico, capasLat1, teoria1, estado1, parseFloat(beta1) || 0, parseFloat(delta1) || 0, 0)
+    return resolverPerfilLateral(perfilGeostatico, capasLat1, teoria1, estado1, 0, parseFloat(delta1) || 0, 0)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [perfilGeostatico, capasResueltas, teoria1, estado1, beta1, delta1, errorPerfil, validez1])
+  }, [perfilGeostatico, capasResueltas, teoria1, estado1, delta1, errorPerfil, validez1])
 
   const resultante1 = useMemo(() => resultanteLateral(perfilLateral1), [perfilLateral1])
 
@@ -982,24 +998,23 @@ export default function PresionTierras() {
 
   const Ks1 = useMemo(() => {
     if (errorPerfil) return []
-    return resumenKPorCapa(capasLat1, teoria1, estado1, parseFloat(beta1) || 0, parseFloat(delta1) || 0, 0)
+    return resumenKPorCapa(capasLat1, teoria1, estado1, 0, parseFloat(delta1) || 0, 0)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [capasResueltas, teoria1, estado1, beta1, delta1, errorPerfil])
+  }, [capasResueltas, teoria1, estado1, delta1, errorPerfil])
 
   const grietaInfo1 = useMemo(() => {
     if (estado1 !== "activo" || capasResueltas.length === 0) return null
     const c0 = capasResueltas[0]
     if (c0.c <= 0) return null
-    const Ka0 = teoria1 === "rankine" ? kaRankine(c0.phi, c0.betaLocal ?? (parseFloat(beta1) || 0))
-      : kaCoulomb(c0.phi, parseFloat(delta1) || 0, c0.betaLocal ?? (parseFloat(beta1) || 0), 0)
+    const Ka0 = teoria1 === "rankine" ? kaRankine(c0.phi, c0.betaLocal)
+      : kaCoulomb(c0.phi, parseFloat(delta1) || 0, c0.betaLocal, 0)
     return profundidadGrieta(c0.c, c0.gammaArriba ?? GAMMA_W, Ka0)
-  }, [estado1, capasResueltas, teoria1, beta1, delta1])
+  }, [estado1, capasResueltas, teoria1, delta1])
 
   // ── PESTAÑA 2: muros ──
   const [tipoMuro, setTipoMuro] = useState<keyof typeof PRESETS_MURO>("voladizo")
   const [teoria2, setTeoria2] = useState<TeoriaEmpuje>("rankine")
   const [estado2, setEstado2] = useState<EstadoEmpuje>("activo")
-  const [beta2, setBeta2] = useState("0")
   const [delta2, setDelta2] = useState("0")
   const [theta2, setTheta2] = useState("0")
 
@@ -1009,9 +1024,9 @@ export default function PresionTierras() {
 
   // El trasdós inclinado (θ) solo tiene sentido físico en un muro de gravedad — en el
   // voladizo se analiza sobre el plano vertical virtual del talón, y en la pantalla el
-  // trasdós es vertical por definición. En vez de solo ocultar el campo, se ignora
-  // cualquier valor que haya quedado guardado en theta2 al cambiar de tipo de muro.
+  // trasdós es vertical por definición.
   const thetaEfectiva2 = tipoMuro === "gravedad" ? (parseFloat(theta2) || 0) : 0
+  const deltaEfectiva2 = estado2 !== "reposo" && teoria2 === "coulomb" ? (parseFloat(delta2) || 0) : 0
 
   function aplicarPreset() {
     const p = PRESETS_MURO[tipoMuro]
@@ -1023,20 +1038,19 @@ export default function PresionTierras() {
 
   const validez2 = useMemo(() => {
     for (const c of capasResueltas) {
-      const beta = c.betaLocal ?? (parseFloat(beta2) || 0)
       const v = estado2 === "reposo"
         ? { valido: true }
-        : teoria2 === "rankine" ? validezRankine(c.phi, beta) : validezCoulomb(c.phi, parseFloat(delta2) || 0, beta, thetaEfectiva2, estado2)
+        : teoria2 === "rankine" ? validezRankine(c.phi, c.betaLocal) : validezCoulomb(c.phi, parseFloat(delta2) || 0, c.betaLocal, thetaEfectiva2, estado2)
       if (!v.valido) return v
     }
     return { valido: true } as Validez
-  }, [capasResueltas, teoria2, estado2, beta2, delta2, thetaEfectiva2])
+  }, [capasResueltas, teoria2, estado2, delta2, thetaEfectiva2])
 
   const perfilLateral2: PuntoLateral[] = useMemo(() => {
     if (errorPerfil || !validez2.valido || perfilGeostatico.length === 0) return []
-    return resolverPerfilLateral(perfilGeostatico, capasLat1, teoria2, estado2, parseFloat(beta2) || 0, parseFloat(delta2) || 0, thetaEfectiva2)
+    return resolverPerfilLateral(perfilGeostatico, capasLat1, teoria2, estado2, 0, parseFloat(delta2) || 0, thetaEfectiva2)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [perfilGeostatico, capasResueltas, teoria2, estado2, beta2, delta2, thetaEfectiva2, errorPerfil, validez2])
+  }, [perfilGeostatico, capasResueltas, teoria2, estado2, delta2, thetaEfectiva2, errorPerfil, validez2])
 
   const resultante2 = useMemo(() => resultanteLateral(perfilLateral2), [perfilLateral2])
   const desglose2 = useMemo(
@@ -1047,13 +1061,19 @@ export default function PresionTierras() {
 
   const Ks2 = useMemo(() => {
     if (errorPerfil) return []
-    return resumenKPorCapa(capasLat1, teoria2, estado2, parseFloat(beta2) || 0, parseFloat(delta2) || 0, parseFloat(theta2) || 0)
+    return resumenKPorCapa(capasLat1, teoria2, estado2, 0, parseFloat(delta2) || 0, thetaEfectiva2)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [capasResueltas, teoria2, estado2, beta2, delta2, theta2, errorPerfil])
+  }, [capasResueltas, teoria2, estado2, delta2, thetaEfectiva2, errorPerfil])
 
-  const deltaRad2 = (parseFloat(delta2) || 0) * Math.PI / 180
-  const Eh2 = resultante2.E * Math.cos(deltaRad2)
-  const Ev2 = resultante2.E * Math.sin(deltaRad2)
+  // Componentes horizontal/vertical de la resultante — Pa (o Pp) actúa a un ángulo δ
+  // respecto a la NORMAL del trasdós, y esa normal está inclinada θ respecto a la
+  // horizontal (porque el trasdós está inclinado θ respecto a la vertical). Por eso el
+  // ángulo total respecto a la horizontal verdadera es (θ + δ), no solo δ — antes el
+  // código usaba solo δ, lo cual es exacto para muro vertical (θ=0) pero no para un muro
+  // de gravedad inclinado. Solo aplica con Coulomb (Rankine no modela fricción muro-suelo).
+  const anguloResultante2 = teoria2 === "coulomb" ? (thetaEfectiva2 + deltaEfectiva2) * Math.PI / 180 : 0
+  const Eh2 = resultante2.E * Math.cos(anguloResultante2)
+  const Ev2 = resultante2.E * Math.sin(anguloResultante2)
   const alturaAplicacion2 = zMax - resultante2.zApp
 
   const seriesFactory = (perfil: PuntoLateral[]) => [
@@ -1095,7 +1115,7 @@ export default function PresionTierras() {
                 const r = capasResueltas[i]
                 return (
                   <TarjetaCapa key={c.id} capa={c} index={i} unidadLong={unidadLong} unidadPesoU={unidadPesoU} unidadPres={unidadPres}
-                    zTop={r?.zTop ?? 0} zBottom={r?.zBottom ?? 0} betaGlobal={tab === "sinmuro" ? beta1 : beta2}
+                    zTop={r?.zTop ?? 0} zBottom={r?.zBottom ?? 0}
                     onChange={nc => actualizarCapa(c.id, nc)} onEliminar={() => eliminarCapa(c.id)} />
                 )
               })}
@@ -1128,7 +1148,6 @@ export default function PresionTierras() {
                         onChange={v => setTeoria1(v === "Rankine" ? "rankine" : "coulomb")} opciones={["Rankine", "Coulomb"]} />
                     </div>
                   )}
-                  <div className="w-32"><Campo label="β talud (global)" value={beta1} onChange={setBeta1} sufijo="°" /></div>
                   {estado1 !== "reposo" && teoria1 === "coulomb" && (
                     <div className="w-32"><Campo label="δ (fricción)" value={delta1} onChange={setDelta1} sufijo="°" /></div>
                   )}
@@ -1147,8 +1166,6 @@ export default function PresionTierras() {
                   <>
                     <TarjetaK capasResueltas={capasResueltas} Ks={Ks1} estado={estado1} />
 
-                    {/* Esquema y gráfico en filas propias, a ancho completo (antes iban en la misma
-                        fila a 1/3 de ancho y se veían muy pequeños). */}
                     <div className="bg-white border border-gray-200 rounded-xl p-5">
                       <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">ESQUEMA DEL PERFIL</div>
                       <DiagramaCapasLateral capas={capasResueltas} nfActivo={nfActivo} nfDepth={nfDepthBase} unidadLong={unidadLong} unidadPesoU={unidadPesoU} />
@@ -1167,8 +1184,6 @@ export default function PresionTierras() {
 
                     <TablaPuntosPerfil perfil={perfilLateral1} capasResueltas={capasResueltas} unidadLong={unidadLong} unidadPres={unidadPres} estado={estado1} />
 
-                    {/* Solo 2 tarjetas de resultante — suelo combinado (sin desglosar por capa) y
-                        agua — con el mismo estilo que la tarjeta general de abajo. */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                       <TarjetaResultanteSimple titulo="Resultante del suelo" E={resultanteSuelo1.E} zApp={resultanteSuelo1.zApp}
                         zMax={zMax} unidadFuerza={unidadFuerza} unidadLong={unidadLong} />
@@ -1215,7 +1230,6 @@ export default function PresionTierras() {
                           onChange={v => setTeoria2(v === "Rankine" ? "rankine" : "coulomb")} opciones={["Rankine", "Coulomb"]} />
                       </div>
                     )}
-                    <div className="w-32"><Campo label="β talud" value={beta2} onChange={setBeta2} sufijo="°" /></div>
                     {tipoMuro === "gravedad" && (
                       <div className="w-32"><Campo label="θ trasdós" value={theta2} onChange={setTheta2} sufijo="°" /></div>
                     )}
@@ -1284,7 +1298,7 @@ export default function PresionTierras() {
                       <div className="text-xs text-gray-400 font-medium tracking-wider mb-3">ESQUEMA DEL MURO Y DIAGRAMA DE PRESIONES</div>
                       <DiagramaMuroYPresiones
                         capas={capasResueltas} nfActivo={nfActivo} nfDepth={nfDepthBase}
-                        tipoMuro={tipoMuro} teoria={teoria2} thetaDeg={thetaEfectiva2} betaDeg={parseFloat(beta2) || 0}
+                        tipoMuro={tipoMuro} teoria={teoria2} thetaDeg={thetaEfectiva2} deltaDeg={deltaEfectiva2}
                         perfil={perfilLateral2} desglose={desglose2} resultanteSuelo={resultanteSuelo2} estado={estado2}
                         unidadLong={unidadLong} unidadFuerza={unidadFuerza}
                         dimsVoladizo={dimsVoladizo} dimsGravedad={dimsGravedad} dimsPantalla={dimsPantalla}
@@ -1293,7 +1307,6 @@ export default function PresionTierras() {
 
                     <TablaPuntosPerfil perfil={perfilLateral2} capasResueltas={capasResueltas} unidadLong={unidadLong} unidadPres={unidadPres} estado={estado2} />
 
-                    {/* Solo 2 tarjetas de resultante — suelo combinado (sin desglosar por capa) y agua */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                       <TarjetaResultanteSimple titulo="Resultante del suelo" E={resultanteSuelo2.E} zApp={resultanteSuelo2.zApp}
                         zMax={zMax} unidadFuerza={unidadFuerza} unidadLong={unidadLong} />
@@ -1308,7 +1321,7 @@ export default function PresionTierras() {
                           <div className="text-2xl font-semibold text-blue-800">{fmt(aMostrarFuerzaPorLong(resultante2.E, unidadFuerza, unidadLong), 2)} {unidadFuerza}/{unidadLong}</div>
                         </div>
                         <span className="text-xs px-3 py-1 rounded-full bg-white text-blue-700 font-medium border border-blue-200">
-                          {teoria2 === "rankine" ? "Rankine" : "Coulomb"} · δ = {delta2 || "0"}°
+                          {teoria2 === "rankine" ? "Rankine" : "Coulomb"} · θ+δ = {fmt(thetaEfectiva2 + deltaEfectiva2, 1)}°
                         </span>
                       </div>
                       <div className="grid grid-cols-3 gap-3 text-sm">
